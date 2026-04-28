@@ -430,6 +430,10 @@
     .pu-table td:last-child,  .pu-table th:last-child  { padding-right: 1rem; }
     .pu-thead tr { background: #eef1f8; color: #212529; }
     .pu-thead th { font-size: 0.68rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: #6c757d; padding-top: 7px; padding-bottom: 7px; border-bottom: 1px solid #dce3f0; border-top: none; white-space: nowrap; }
+    /* Wrap multi-word headers onto 2 lines so the column can be narrower.
+       overflow-wrap: normal + word-break: keep-all → break only at spaces,
+       never inside a word ("Money" was being chopped to "Mone" + "y"). */
+    .pu-thead th.pu-th-2line { white-space: normal; line-height: 1.1; vertical-align: middle; overflow-wrap: normal; word-break: keep-all; word-wrap: normal; hyphens: none; }
 
     .pu-row-pending td  { border-bottom: 1px solid #f0f2f8; transition: background .12s; background: #fffbeb; color: #212529; }
     .pu-row-pending:hover td { background: #fef3c7; }
@@ -706,9 +710,10 @@
         return q.ToList();
     }
 
-    RenderFragment SortHeader(string col, string label, string extraClass = "") => __builder =>
+    RenderFragment SortHeader(string col, string label, string extraClass = "", string? widthPx = null) => __builder =>
     {
-        <th class="@extraClass" style="cursor:pointer;user-select:none;" @onclick="() => SetPurchaseSort(col)">
+        var style = "cursor:pointer;user-select:none;" + (widthPx != null ? $"width:{widthPx};" : "");
+        <th class="@extraClass" style="@style" @onclick="() => SetPurchaseSort(col)">
             @label
             @if (_sortCol == col)
             {
@@ -724,18 +729,18 @@
             <thead>
                 <tr class="pu-thead">
                     @SortHeader("name", LS.T("purchases.pcName"), "ps-4")
-                    @SortHeader("date", LS.T("purchases.paymentDate"), "")
-                    <th>Wallet</th>
-                    <th class="text-center">@LS.T("purchases.items")</th>
-                    @SortHeader("hours", LS.T("purchases.totalHours"), "text-end")
-                    @SortHeader("amount", LS.T("purchases.totalAmount"), "text-end")
+                    @SortHeader("date", LS.T("purchases.paymentDate"), "pu-th-2line", "70px")
+                    <th class="pu-th-2line" style="width:72px;">Wallet</th>
+                    <th class="text-center" style="width:42px;">@LS.T("purchases.items")</th>
+                    @SortHeader("hours", LS.T("purchases.totalHours"), "text-end pu-th-2line", "60px")
+                    @SortHeader("amount", LS.T("purchases.totalAmount"), "text-end pu-th-amount pu-th-2line", "60px")
                     <th>@LS.T("pcs.notes")</th>
-                    @SortHeader("created", LS.T("purchases.createdBy"), "")
+                    @SortHeader("created", LS.T("purchases.createdBy"), "pu-th-2line", "70px")
                     <th>@LS.T("courses.registrar")</th>
                     <th>@LS.T("courses.referral")</th>
                     <th class="text-center" style="width:40px;"></th>
-                    <th class="text-center" style="width:60px;">@LS.T("pcs.signature")</th>
-                    <th class="text-center" style="width:80px;">@LS.T("purchases.moneyInBank")</th>
+                    <th class="text-center pu-th-2line" style="width:44px;">@LS.T("pcs.signature")</th>
+                    <th class="text-center pu-th-2line" style="width:68px;">@LS.T("purchases.moneyInBank")</th>
                     @SortHeader("status", LS.T("common.status"), "text-center")
                     <th class="pe-4" style="width:180px;"></th>
                 </tr>
@@ -769,27 +774,26 @@
                                 }
                             }
                         </td>
-                        <td class="py-2 small" style="white-space:nowrap;">
+                        <td class="py-2" title="@(string.IsNullOrEmpty(p.WalletName) ? "" : $"{p.WalletName} ({p.Currency})")">
                             @if (!string.IsNullOrEmpty(p.WalletName))
                             {
-                                <span style="display:inline-flex; align-items:center; gap:5px; padding:2px 10px; border-radius:999px; font-size:0.75rem; font-weight:600; background:@WltBg(p.Currency); color:@WltFg(p.Currency); border:1px solid @WltFg(p.Currency);">
-                                    <span style="font-weight:900; font-size:0.9rem;">@CurrSym(p.Currency)</span>
-                                    <span>@p.WalletName</span>
-                                    <span style="opacity:.7; font-weight:500;">(@p.Currency)</span>
+                                <span style="display:inline-flex; align-items:center; gap:3px; padding:1px 6px; border-radius:999px; font-size:0.68rem; font-weight:600; background:@WltBg(p.Currency); color:@WltFg(p.Currency); border:1px solid @WltFg(p.Currency); max-width:80px; overflow:hidden; white-space:nowrap;">
+                                    <span style="font-weight:900;">@CurrSym(p.Currency)</span>
+                                    <span style="overflow:hidden; text-overflow:ellipsis;">@p.WalletName</span>
                                 </span>
                             }
                             else
                             {
-                                <span class="text-muted" style="font-size:.75rem;">—</span>
+                                <span class="text-muted" style="font-size:.7rem;">—</span>
                             }
                         </td>
                         <td class="text-center py-2">
-                            <span class="badge rounded-pill px-2" style="font-size:0.78rem;background:#f3f4f6;color:#374151;border:1px solid #e5e7eb;">
+                            <span class="badge rounded-pill" style="font-size:0.7rem;padding:2px 6px;background:#f3f4f6;color:#374151;border:1px solid #e5e7eb;">
                                 @GetItemCount(pid)
                             </span>
                         </td>
                         <td class="text-end py-2 small fw-semibold" style="@(p.TotalHours < 0 ? "color:#dc2626;" : "")">@(p.TotalHours != 0 ? $"{(p.TotalHours < 0 ? "-" : "")}{FmtHM(p.TotalHours)}" : "\u2014")</td>
-                        <td class="text-end py-2 small fw-semibold" style="@(p.TotalAmount < 0 ? "color:#dc2626;" : "")">@(p.TotalAmount != 0 ? $"{(p.TotalAmount < 0 ? "-" : "")}{CurrSym(p.Currency)}{(int)Math.Round(Math.Abs(p.TotalAmount))}" : "\u2014")</td>
+                        <td class="text-end py-2 small fw-semibold pu-cell-amount" style="white-space:nowrap;font-variant-numeric:tabular-nums;@(p.TotalAmount < 0 ? "color:#dc2626;" : "")">@(p.TotalAmount != 0 ? $"{(p.TotalAmount < 0 ? "-" : "")}{CurrSym(p.Currency)}{(int)Math.Round(Math.Abs(p.TotalAmount))}" : "\u2014")</td>
                         <td class="py-2 small" style="color:#6b7280;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="@p.Notes">@(p.Notes ?? "\u2014")</td>
                         <td class="py-2 small" style="color:#6b7280;">@p.CreatedByName</td>
                         @{ var rr = _regRefCache.GetValueOrDefault(pid); }
@@ -806,11 +810,11 @@
                             @{ var sig = _signatures.GetValueOrDefault(pid); }
                             @if (!string.IsNullOrEmpty(sig))
                             {
-                                <img src="@sig" style="max-width:40px;max-height:22px;border-radius:3px;border:1px solid #dee2e6;background:#fff;" alt="Sig" />
+                                <img src="@sig" style="max-width:32px;max-height:18px;border-radius:3px;border:1px solid #dee2e6;background:#fff;" alt="Sig" title="Buyer signature" />
                             }
                             else
                             {
-                                <span class="badge" style="font-size:0.65rem;background:#fef3c7;color:#92400e;">@LS.T("pcs.noSignature")</span>
+                                <span class="badge" style="font-size:0.6rem;padding:2px 4px;background:#fef3c7;color:#92400e;" title="@LS.T("pcs.noSignature")">—</span>
                             }
                         </td>
                         <td class="text-center py-2">

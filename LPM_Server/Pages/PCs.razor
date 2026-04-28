@@ -114,10 +114,10 @@
                 <col style="width:72px;" />
                 <col style="width:110px;" />
                 <col style="width:85px;" />
-                <col style="width:80px;" />
-                <col style="width:80px;" />
+                <col style="width:60px;" />
                 <col style="width:65px;" />
                 <col style="width:65px;" />
+                <col style="width:55px;" />
                 <col style="width:65px;" />
                 <col />
                 <col style="width:66px;" />
@@ -128,11 +128,11 @@
                     <th class="small text-center pc-th-sort @SortClass("org")" @onclick='() => ToggleSort("org")'>Org</th>
                     <th class="small text-center">Wallet</th>
                     <th class="small text-center pc-th-sort @SortClass("balance")" @onclick='() => ToggleSort("balance")'>@LS.T("pcs.balance")</th>
-                    <th class="small text-center pc-th-sort @SortClass("hoursLeft")" @onclick='() => ToggleSort("hoursLeft")'>@LS.T("pcs.hoursLeft")</th>
-                    <th class="small text-center pc-th-sort @SortClass("totalTime")" @onclick='() => ToggleSort("totalTime")'>@LS.T("pcs.totalSessionTime")</th>
+                    <th class="small text-center pc-th-sort pc-th-wrap @SortClass("hoursLeft")" @onclick='() => ToggleSort("hoursLeft")'>@LS.T("pcs.hoursLeft")</th>
+                    <th class="small text-center pc-th-sort pc-th-wrap @SortClass("totalTime")" @onclick='() => ToggleSort("totalTime")'>@LS.T("pcs.totalSessionTime")</th>
                     <th class="small text-center pc-th-sort @SortClass("sessions")" @onclick='() => ToggleSort("sessions")'>@LS.T("pcs.auditorSessions")</th>
-                    <th class="small text-center pc-th-sort @SortClass("visits")" @onclick='() => ToggleSort("visits")'>@LS.T("pcs.totalVisits")</th>
-                    <th class="small text-center pc-th-sort @SortClass("purchased")" @onclick='() => ToggleSort("purchased")'>@LS.T("pcs.hoursPurchased")</th>
+                    <th class="small text-center pc-th-sort pc-th-wrap @SortClass("visits")" @onclick='() => ToggleSort("visits")'>@LS.T("pcs.totalVisits")</th>
+                    <th class="small text-center pc-th-sort pc-th-wrap @SortClass("purchased")" @onclick='() => ToggleSort("purchased")'>@LS.T("pcs.hoursPurchased")</th>
                     <th class="small pc-th-sort @SortClass("auditor")" @onclick='() => ToggleSort("auditor")'>Auditor</th>
                     <th class="small text-center" style="width:66px;"></th>
                 </tr>
@@ -3020,6 +3020,9 @@
     .pc-list-table th { font-size:0.7rem; font-weight:700; letter-spacing:.03em; text-transform:uppercase; white-space:nowrap; }
     .pc-list-table td { vertical-align:middle; }
     .pc-th-sort { cursor:pointer; user-select:none; position:relative; padding-right:16px !important; }
+    /* Allow specific narrow headers to wrap onto 2 lines instead of forcing nowrap */
+    .pc-list-table th.pc-th-wrap,
+    .pc-list-table thead th.pc-th-wrap { white-space: normal !important; line-height: 1.15; word-break: normal; }
     .pc-th-sort::after { content:''; display:inline-block; width:0; height:0; border-left:4px solid transparent;
                          border-right:4px solid transparent; margin-left:4px; vertical-align:middle; opacity:0.3;
                          border-bottom:4px solid currentColor; }
