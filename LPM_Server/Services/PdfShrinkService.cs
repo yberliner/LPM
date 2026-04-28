@@ -90,6 +90,7 @@ public class PdfShrinkService(
 
     private async Task RunCycleAsync(CancellationToken ct)
     {
+        await Task.CompletedTask; Console.WriteLine($"[PdfShrink] DISABLED — remove this line in PdfShrinkService.RunCycleAsync to re-enable"); return;
         var now = DateTime.Now;
         Console.WriteLine($"[PdfShrink] {now:yyyy-MM-dd HH:mm:ss} — Starting nightly PDF shrink cycle");
 
