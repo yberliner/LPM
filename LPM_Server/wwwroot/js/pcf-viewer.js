@@ -501,20 +501,42 @@ window.pcfViewer = {
     },
 
     // Load an image file (jpg/jpeg/png) into a pane — read-only, no annotations
-    loadImage(url, paneId) {
+    async loadImage(url, paneId) {
         paneId = paneId || this.activePane;
         const pane = this._initPane(paneId);
         pane.loadGen = (pane.loadGen || 0) + 1;
+        const myGen = pane.loadGen;
 
         // Clear PDF state
         if (pane.pdfDoc) { pane.pdfDoc.destroy(); pane.pdfDoc = null; }
         pane.pages = [];
         pane.annotations = [];
-        pane.filePath = url;
+        // Store the path query param (not the full URL) so subsequent loadPdf isSameFile
+        // comparisons see a relative path on both sides — matches loadPdf's convention.
+        try {
+            const u = new URL(url, location.origin);
+            pane.filePath = u.searchParams.get('path') || url;
+        } catch (_) {
+            pane.filePath = url;
+        }
         pane.isImage = true;
+        console.log('[txt-dbg] loadImage paneId=' + paneId + ' filePath=' + pane.filePath);
 
-        const viewer = document.getElementById('pcf-viewer-' + paneId);
-        if (!viewer) return;
+        // Wait for the viewer element to exist (it may not be in the DOM yet on a fresh
+        // pane reveal — same race loadPdf protects against). Bail out if a newer load
+        // supersedes us mid-wait.
+        let viewer = document.getElementById('pcf-viewer-' + paneId);
+        for (let attempt = 0; attempt < 60 && !viewer; attempt++) {
+            await new Promise(r => requestAnimationFrame(r));
+            if (pane.loadGen !== myGen) return;
+            viewer = document.getElementById('pcf-viewer-' + paneId);
+        }
+        if (!viewer) {
+            console.warn('[txt-dbg] loadImage: viewer #pcf-viewer-' + paneId + ' not found after wait — aborting');
+            return;
+        }
+        if (pane.loadGen !== myGen) { console.log('[txt-dbg] loadImage superseded paneId=' + paneId); return; }
+
         viewer.innerHTML = '';
 
         const wrap = document.createElement('div');
@@ -526,11 +548,12 @@ window.pcfViewer = {
         img.alt = 'Image';
         img.draggable = false;
         img.onload = () => {
-            // Apply current zoom
+            console.log('[txt-dbg] loadImage onload paneId=' + paneId + ' nat=' + img.naturalWidth + 'x' + img.naturalHeight);
             const z = pane.zoomLevel || 1;
             img.style.width = (z * 100) + '%';
         };
-        img.onerror = () => {
+        img.onerror = (e) => {
+            console.warn('[txt-dbg] loadImage onerror paneId=' + paneId + ' src=' + img.src);
             viewer.innerHTML = '<div style="color:#f87171;padding:40px;text-align:center;">' +
                 '<i class="ri-image-line" style="font-size:2rem;display:block;margin-bottom:8px;"></i>' +
                 'Failed to load image</div>';

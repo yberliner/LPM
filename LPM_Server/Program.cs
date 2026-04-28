@@ -65,7 +65,10 @@ builder.Services.AddServerSideBlazor()
     {
         options.DisconnectedCircuitRetentionPeriod = TimeSpan.FromHours(12);
     });
-// 200 MB decrypted-file cache — shared across all users, keyed by absolute disk path
+// 200 MB decrypted-file cache — shared across all users, keyed by absolute disk path.
+// PDF-CACHE TOGGLE: cache writes/reads are gated by _pdfCacheEnabled in FolderService.cs.
+// Currently DISABLED — registration kept so DI / MemoryWatchdogService still resolve,
+// but the cache stays empty. Search "PDF-CACHE TOGGLE" in FolderService.cs to re-enable.
 builder.Services.AddMemoryCache(o =>
 {
     o.SizeLimit = 200L * 1024 * 1024;
@@ -1005,7 +1008,7 @@ static bool CanAccessPcFile(HttpContext ctx, int pcId, bool solo, LPM.Services.D
     return dashSvc.CanAccessPcFolder(userId, pcId, uname);  // non-solo: must have permission
 }
 
-// ── PWA Share Target: receive scanned PDF ──
+// ── PWA Share Target: receive scanned PDF (or image — see image branch below) ──
 app.MapPost("/share-receive", async (HttpContext ctx, LPM.Services.FolderService svc,
     LPM.Services.UserActivityService activitySvc) =>
 {
@@ -1021,9 +1024,31 @@ app.MapPost("/share-receive", async (HttpContext ctx, LPM.Services.FolderService
 
     using var ms = new MemoryStream();
     await file.CopyToAsync(ms);
+    var bytes = ms.ToArray();
+    var savedName = file.FileName ?? "scan.pdf";
+
+    // ── Image branch (NEW): non-PDF image → hand off to /share-image flow ──
+    // Strictly additive — runs ONLY when the bytes are NOT a PDF. PDF path below is unchanged.
+    var imgExt = LPM.Services.FolderService.LooksLikeImage(bytes);
+    if (imgExt != null)
+    {
+        var token = Guid.NewGuid().ToString("N");
+        try { svc.SaveImageInboxBlob(username, token, imgExt, savedName, bytes); }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ShareTarget] image hand-off failed: {ex.Message}");
+            return Results.Redirect("/scan-received?status=nopdf");
+        }
+        activitySvc.RecordActivity(username, $"Shared image '{savedName}' (token={token})", "scan");
+        activitySvc.RecordInteraction(username);
+        Console.WriteLine($"[ShareTarget] Received image '{savedName}' ({file.Length} bytes) from '{username}' → token={token}");
+        return Results.Redirect($"/share-image?token={token}");
+    }
+
+    // ── PDF branch (UNCHANGED) ──
     try
     {
-        svc.SaveToScanInbox(username, file.FileName ?? "scan.pdf", ms.ToArray());
+        svc.SaveToScanInbox(username, savedName, bytes);
     }
     catch (InvalidOperationException ex)
     {
@@ -1031,7 +1056,6 @@ app.MapPost("/share-receive", async (HttpContext ctx, LPM.Services.FolderService
         return Results.Redirect("/scan-received?status=nopdf");
     }
 
-    var savedName = file.FileName ?? "scan.pdf";
     activitySvc.RecordActivity(username, $"Shared '{savedName}' to scan inbox", "scan");
     activitySvc.RecordInteraction(username);
 
@@ -1125,60 +1149,68 @@ app.MapGet("/api/pc-file-folder-summary", (int pcId, string path,
     }
     Console.WriteLine($"[FolderSummary] originalPageCount for PC {pcId}: {originalPageCount}");
 
-    // ── Step 1: Ghostscript combine (primary — authoritative PDF impl, handles
-    // complex/older PDFs that PdfSharpCore silently damages). Returns null when
-    // Ghostscript is not configured — falls through to PdfSharpCore below.
+    // ── Step 1: PdfSharpCore combine (PRIMARY — copies pages by object reference,
+    // preserves original content streams byte-for-byte, no re-rendering. Cannot
+    // silently drop content the way Ghostscript's pdfwrite can. Throws openly when
+    // it can't parse a PDF (e.g. mangled XRef) — that's when we fall through to GS.)
     try
     {
-        var summaryPdf = pdfSvc.GenerateSessionSummariesPdf(pcName, summaries, originalPageCount);
-        summaryPageCount = pdfSvc.CountPdfPages(summaryPdf);
-        combined = folderSvc.CombinePdfsViaGhostscript(summaryPdf, originalBytes);
-
-        // If originalPageCount was 0 (PdfSharpCore couldn't read it), recover from the combined output
-        if (combined != null && originalPageCount <= 0)
+        var summaryPdf    = pdfSvc.GenerateSessionSummariesPdf(pcName, summaries, originalPageCount);
+        summaryPageCount  = pdfSvc.CountPdfPages(summaryPdf);
+        var candidate     = pdfSvc.CombinePdfs(summaryPdf, originalBytes);
+        int combinedCount = pdfSvc.CountPdfPages(candidate);
+        int expectedMin   = summaryPageCount + Math.Max(originalPageCount, 0);
+        if (combinedCount >= expectedMin && combinedCount > summaryPageCount)
         {
-            int combinedPages = pdfSvc.CountPdfPages(combined); // GS output is clean, PdfSharpCore can read it
-            originalPageCount = combinedPages - summaryPageCount;
-            Console.WriteLine($"[FolderSummary] Recovered originalPageCount={originalPageCount} from GS combined ({combinedPages} - {summaryPageCount})");
-            if (originalPageCount > 0)
-            {
-                // Regenerate summary with correct page numbers and recombine
-                var summaryPdf2 = pdfSvc.GenerateSessionSummariesPdf(pcName, summaries, originalPageCount);
-                combined = folderSvc.CombinePdfsViaGhostscript(summaryPdf2, originalBytes);
-            }
+            combined = candidate;
+            Console.WriteLine($"[FolderSummary] PSC OK for PC {pcId}: orig={originalBytes.Length / 1024}KB → combined={combined.Length / 1024}KB pages={combinedCount} (summary={summaryPageCount} + original={originalPageCount})");
         }
-
-        if (combined == null)
-            Console.WriteLine($"[FolderSummary] Ghostscript returned null for PC {pcId} path={path} — trying PdfSharpCore");
+        else
+        {
+            Console.WriteLine($"[FolderSummary] PSC produced {combinedCount} pages (expected ≥{expectedMin}) for PC {pcId} — trying Ghostscript");
+        }
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"[FolderSummary] Ghostscript combine threw for PC {pcId}: {ex.Message} — trying PdfSharpCore");
+        Console.WriteLine($"[FolderSummary] PSC combine threw for PC {pcId}: {ex.Message} — trying Ghostscript");
     }
 
-    // ── Step 2: PdfSharpCore fallback (when Ghostscript unavailable or failed) ──
+    // ── Step 2: Ghostscript fallback (when PdfSharpCore can't parse the PDF or
+    // produced an invalid count). Ghostscript repairs malformed XRef but its
+    // pdfwrite re-renders content so it can silently drop edge-case content
+    // (handwritten/scanned pages with unusual XObjects) — only used as last resort.
     if (combined == null)
     {
         try
         {
-            var summaryPdf    = pdfSvc.GenerateSessionSummariesPdf(pcName, summaries, originalPageCount);
-            summaryPageCount  = pdfSvc.CountPdfPages(summaryPdf);
-            var candidate     = pdfSvc.CombinePdfs(summaryPdf, originalBytes);
-            int combinedCount = pdfSvc.CountPdfPages(candidate);
-            int expectedMin   = summaryPageCount + originalPageCount;
-            if (combinedCount >= expectedMin)
+            var summaryPdf = pdfSvc.GenerateSessionSummariesPdf(pcName, summaries, originalPageCount);
+            summaryPageCount = pdfSvc.CountPdfPages(summaryPdf);
+            combined = folderSvc.CombinePdfsViaGhostscript(summaryPdf, originalBytes);
+
+            // If originalPageCount was 0 (PdfSharpCore couldn't count earlier), recover from
+            // the combined GS output and regenerate the summary with correct page numbers.
+            if (combined != null && originalPageCount <= 0)
             {
-                combined = candidate;
+                int combinedPages = pdfSvc.CountPdfPages(combined);
+                originalPageCount = combinedPages - summaryPageCount;
+                Console.WriteLine($"[FolderSummary] Recovered originalPageCount={originalPageCount} from GS combined ({combinedPages} - {summaryPageCount})");
+                if (originalPageCount > 0)
+                {
+                    var summaryPdf2 = pdfSvc.GenerateSessionSummariesPdf(pcName, summaries, originalPageCount);
+                    combined = folderSvc.CombinePdfsViaGhostscript(summaryPdf2, originalBytes);
+                }
             }
+
+            if (combined == null)
+                Console.WriteLine($"[FolderSummary] GS also returned null for PC {pcId} path={path}");
             else
             {
-                Console.WriteLine($"[FolderSummary] PdfSharpCore produced corrupt output " +
-                                  $"({combinedCount} pages, expected ≥{expectedMin}) for PC {pcId}");
+                Console.WriteLine($"[FolderSummary] GS fallback OK for PC {pcId}: out={combined.Length / 1024}KB");
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[FolderSummary] PdfSharpCore combine failed for PC {pcId}: {ex.Message}");
+            Console.WriteLine($"[FolderSummary] GS combine threw for PC {pcId}: {ex.Message}");
         }
     }
 

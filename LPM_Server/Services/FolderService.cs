@@ -256,27 +256,57 @@ public class FolderService
     // ── Decrypted-file cache helpers ──────────────────────────────────────────
     // Key: absolute disk path. Value: decrypted bytes.
     // Size unit = bytes; total cap = 200 MB (set in Program.cs AddMemoryCache).
+    //
+    // ┌─────────────────────────────────────────────────────────────────────┐
+    // │  PDF-CACHE TOGGLE — flip ONE flag below to re-enable the cache.     │
+    // │                                                                     │
+    // │  When _pdfCacheEnabled = false (current state):                     │
+    // │    • ReadAndCache    → always reads disk + decrypts (no lookup, no  │
+    // │                        store).                                      │
+    // │    • StoreInCache    → no-op.                                       │
+    // │    • InvalidateCache → no-op.                                       │
+    // │  The IMemoryCache instance still exists (DI-injected, used by       │
+    // │  MemoryWatchdogService), it just stays empty. The System Health     │
+    // │  "PDF Cache" card will show 0 MB / 0 entries — that's expected.     │
+    // │                                                                     │
+    // │  Why it was disabled (2026-04-29): For LPM's scale (~30 users) the  │
+    // │  hit-rate didn't justify the 200 MB RAM. Re-enable if the System    │
+    // │  Health hit-rate ever climbs above ~50% during a normal workday or  │
+    // │  if the server runs on slower disk / under heavier concurrent load. │
+    // │                                                                     │
+    // │  To RE-ENABLE: set _pdfCacheEnabled = true. No other change needed. │
+    // │  grep PDF-CACHE TOGGLE to find this block again.                    │
+    // └─────────────────────────────────────────────────────────────────────┘
+    // Switch to `true` to re-enable caching. Kept as `static readonly` (not `const`)
+    // so the compiler doesn't mark the gated branches as unreachable code.
+    private static readonly bool _pdfCacheEnabled = false;
+
     private static readonly MemoryCacheEntryOptions _cacheOpts = new MemoryCacheEntryOptions()
         .SetSlidingExpiration(TimeSpan.FromMinutes(20));
 
     private byte[] ReadAndCache(string fullPath)
     {
-        if (_cache.TryGetValue(fullPath, out byte[]? cached) && cached != null)
+        if (_pdfCacheEnabled && _cache.TryGetValue(fullPath, out byte[]? cached) && cached != null)
             return cached;
         var bytes = DecryptBytes(File.ReadAllBytes(fullPath));
-        StoreInCache(fullPath, bytes);
+        StoreInCache(fullPath, bytes); // no-op when disabled
         return bytes;
     }
 
     private void StoreInCache(string fullPath, byte[] plainBytes)
     {
+        if (!_pdfCacheEnabled) return;   // PDF-CACHE TOGGLE
         var opts = new MemoryCacheEntryOptions()
             .SetSlidingExpiration(TimeSpan.FromMinutes(20))
             .SetSize(plainBytes.Length);
         _cache.Set(fullPath, plainBytes, opts);
     }
 
-    private void InvalidateCache(string fullPath) => _cache.Remove(fullPath);
+    private void InvalidateCache(string fullPath)
+    {
+        if (!_pdfCacheEnabled) return;   // PDF-CACHE TOGGLE
+        _cache.Remove(fullPath);
+    }
 
     /// <summary>Returns the absolute path to the PC-Folders root directory.</summary>
     public string GetPcFoldersRoot() => _basePath;
@@ -3839,6 +3869,125 @@ public class FolderService
                 return true;
         }
         return false;
+    }
+
+    /// <summary>
+    /// Returns "jpg" / "png" if the bytes start with a recognised image magic header,
+    /// otherwise null. JPG: FF D8 FF · PNG: 89 50 4E 47 0D 0A 1A 0A. Other formats
+    /// (HEIC/WebP/GIF/BMP) are not recognised and should fall through to the existing
+    /// non-PDF rejection path.
+    /// </summary>
+    public static string? LooksLikeImage(byte[] bytes)
+    {
+        if (bytes == null || bytes.Length < 8) return null;
+        if (bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF) return "jpg";
+        if (bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47 &&
+            bytes[4] == 0x0D && bytes[5] == 0x0A && bytes[6] == 0x1A && bytes[7] == 0x0A) return "png";
+        return null;
+    }
+
+    // ── Image-share hand-off (separate from the PDF ScanInbox; PDF flow untouched) ──
+
+    private string GetImageInboxPath(string username)
+    {
+        var safeName = SanitizeName(username);
+        var dir = Path.Combine(Directory.GetCurrentDirectory(), "ImageInbox", safeName);
+        Directory.CreateDirectory(dir);
+        return dir;
+    }
+
+    /// <summary>Writes the shared image bytes + a tiny meta file under a per-user folder, keyed by token.
+    /// Cleans up blobs older than 6 hours on every write. Returns the disk path of the saved blob.</summary>
+    public string SaveImageInboxBlob(string username, string token, string ext, string originalFileName, byte[] bytes)
+    {
+        var dir = GetImageInboxPath(username);
+        CleanupImageInbox(username);
+        var safeExt   = (ext ?? "").ToLowerInvariant();
+        if (safeExt != "jpg" && safeExt != "jpeg" && safeExt != "png") safeExt = "bin";
+        var blobPath  = Path.Combine(dir, $"{token}.{safeExt}");
+        var metaPath  = Path.Combine(dir, $"{token}.meta.json");
+        File.WriteAllBytes(blobPath, bytes);
+        var meta = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            originalFileName,
+            ext       = safeExt,
+            sizeBytes = bytes.Length,
+            savedAtUtc = DateTime.UtcNow.ToString("o")
+        });
+        File.WriteAllText(metaPath, meta);
+        Console.WriteLine($"[ImageInbox] Saved blob token={token} user='{username}' size={bytes.Length} ext={safeExt}");
+        return blobPath;
+    }
+
+    /// <summary>Reads a previously stored image blob. Returns null if missing/expired or owned by a different user.</summary>
+    public (byte[] Bytes, string Ext, string OriginalFileName)? ReadImageInboxBlob(string username, string token)
+    {
+        if (string.IsNullOrEmpty(token) || token.Length > 64) return null;
+        // Reject obvious traversal attempts; tokens are GUIDs ("N" format = 32 hex chars).
+        foreach (var ch in token)
+            if (!(ch >= '0' && ch <= '9') && !(ch >= 'a' && ch <= 'f') && !(ch >= 'A' && ch <= 'F')) return null;
+
+        var dir = GetImageInboxPath(username);
+        foreach (var ext in new[] { "jpg", "jpeg", "png" })
+        {
+            var blob = Path.Combine(dir, $"{token}.{ext}");
+            if (!File.Exists(blob)) continue;
+            try
+            {
+                var bytes = File.ReadAllBytes(blob);
+                string original = "shared-image";
+                var metaPath = Path.Combine(dir, $"{token}.meta.json");
+                if (File.Exists(metaPath))
+                {
+                    try
+                    {
+                        using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(metaPath));
+                        if (doc.RootElement.TryGetProperty("originalFileName", out var ofn))
+                            original = ofn.GetString() ?? original;
+                    }
+                    catch { /* non-fatal */ }
+                }
+                return (bytes, ext, original);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ImageInbox] ReadImageInboxBlob failed: {ex.Message}");
+                return null;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>Deletes a token's blob + meta after a successful attach.</summary>
+    public void DeleteImageInboxBlob(string username, string token)
+    {
+        if (string.IsNullOrEmpty(token)) return;
+        var dir = GetImageInboxPath(username);
+        foreach (var f in Directory.EnumerateFiles(dir, token + ".*"))
+        {
+            try { File.Delete(f); } catch { /* best-effort */ }
+        }
+    }
+
+    /// <summary>Sweep: deletes anything older than 6 hours from this user's image inbox.</summary>
+    public void CleanupImageInbox(string username)
+    {
+        try
+        {
+            var dir = GetImageInboxPath(username);
+            if (!Directory.Exists(dir)) return;
+            var cutoff = DateTime.Now.AddHours(-6);
+            foreach (var f in Directory.GetFiles(dir))
+            {
+                try
+                {
+                    if (File.GetCreationTime(f) < cutoff)
+                        File.Delete(f);
+                }
+                catch { /* best-effort */ }
+            }
+        }
+        catch { /* swallow */ }
     }
 
     public void SaveToScanInbox(string username, string fileName, byte[] bytes)

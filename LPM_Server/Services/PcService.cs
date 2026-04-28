@@ -1023,12 +1023,19 @@ public List<PcListItem> GetAllPcs()
         int RatePerHour,
         string Currency,
         int? CourseId,
-        string? CourseName);
-    public record SessionRateEntry(int SessionId, string Date, int LengthSec, int AdminSec, int RateCentsPerHour, string Currency, string AuditorName);
+        string? CourseName,
+        int? WalletId,
+        string? WalletName);
+    public record SessionRateEntry(int SessionId, string Date, int LengthSec, int AdminSec,
+        int RateCentsPerHour, string Currency, string AuditorName,
+        int? WalletId, string? WalletName,
+        int BilledCents, string VerifiedStatus);
 
     /// <summary>
     /// Returns PCs that had 2+ approved sessions in the last 30 days at different per-hour rates
-    /// WITHIN THE SAME CURRENCY. Free / pending (no rate set) sessions are excluded.
+    /// WITHIN THE SAME WALLET. Free / pending (no rate set) sessions are excluded.
+    /// Two wallets at different rates each consistent within their own wallet do NOT trigger the
+    /// flag — the same wallet must have rate variance for the PC to be flagged.
     /// Each flagged PC's full session list (in date desc order) is included so the caller can
     /// render a per-rate-color hover panel and let the user click into Session Manager.
     /// </summary>
@@ -1042,7 +1049,11 @@ public List<PcListItem> GetAllPcs()
             SELECT s.PcId, s.SessionId, s.SessionDate, s.LengthSeconds, s.AdminSeconds,
                    s.ChargedRateCentsPerHour,
                    COALESCE(w.Currency, 'ILS') AS Currency,
-                   COALESCE(TRIM(pa.FirstName || ' ' || COALESCE(NULLIF(pa.LastName,''), '')), 'Solo') AS AuditorName
+                   COALESCE(TRIM(pa.FirstName || ' ' || COALESCE(NULLIF(pa.LastName,''), '')), 'Solo') AS AuditorName,
+                   s.WalletId,
+                   w.Name AS WalletName,
+                   COALESCE(s.ChargeSeconds, 0) AS ChargeSeconds,
+                   COALESCE(s.VerifiedStatus, 'Draft') AS VerifiedStatus
             FROM sess_sessions s
             LEFT JOIN core_persons pa ON pa.PersonId = s.AuditorId
             LEFT JOIN fin_wallets   w  ON w.WalletId  = s.WalletId
@@ -1064,24 +1075,34 @@ public List<PcListItem> GetAllPcs()
             int rate      = r.GetInt32(5);
             string curr   = r.GetString(6);
             string aud    = r.GetString(7);
+            int? walletId = r.IsDBNull(8) ? (int?)null : r.GetInt32(8);
+            string? wname = r.IsDBNull(9) ? null : r.GetString(9);
+            int chargeSec = r.IsDBNull(10) ? 0 : r.GetInt32(10);
+            string vstat  = r.IsDBNull(11) ? "Draft" : r.GetString(11);
+            // billed cents = chargeSeconds × rate(cents/hr) ÷ 3600 — long math to avoid overflow
+            int billedCents = (int)(((long)chargeSec * rate) / 3600);
             if (!all.ContainsKey(pcId)) all[pcId] = new();
-            all[pcId].Add(new SessionRateEntry(sessId, date, lenSec, adminSec, rate, curr, aud));
+            all[pcId].Add(new SessionRateEntry(sessId, date, lenSec, adminSec, rate, curr, aud, walletId, wname, billedCents, vstat));
         }
 
-        // Keep only PCs with 2+ distinct rates *within the same currency*.
-        // (Cross-currency rate differences in raw cents aren't a meaningful "mixed rate" signal.)
+        // Keep only PCs with 2+ distinct rates *within the same wallet*.
+        // Two wallets at different rates (each rate consistent within its wallet) is not a
+        // mixed-rate signal — that's the legitimate use case of separate-purpose wallets.
         var result = new Dictionary<int, List<SessionRateEntry>>();
         foreach (var (pcId, entries) in all)
         {
             bool flag = entries
-                .GroupBy(e => e.Currency)
+                .GroupBy(e => e.WalletId)
                 .Any(g => g.Select(e => e.RateCentsPerHour).Distinct().Count() >= 2);
             if (flag) result[pcId] = entries;
         }
         return result;
     }
 
-    /// Returns PCs that have 2+ auditing items with different per-hour rates in the last 365 days.
+    /// Returns PCs that have 2+ auditing items in the last 365 days at different per-hour rates
+    /// WITHIN THE SAME WALLET. Different wallets with rates each consistent within their own
+    /// wallet do NOT trigger the flag — separate wallets at different rates is the legitimate
+    /// use case (e.g. study wallet vs auditing wallet, or ILS wallet vs EUR wallet).
     public Dictionary<int, List<PurchaseRateEntry>> GetPcsWithMixedRates()
     {
         using var conn = new SqliteConnection(_connectionString);
@@ -1091,10 +1112,12 @@ public List<PcListItem> GetAllPcs()
         cmd.CommandText = @"
             SELECT pu.PcId, pu.PurchaseDate, pi.HoursBought, pi.AmountPaid,
                    pu.PurchaseId, COALESCE(pu.Currency, 'ILS') AS Currency,
-                   pi.CourseId, c.Name AS CourseName
+                   pi.CourseId, c.Name AS CourseName,
+                   pu.WalletId, w.Name AS WalletName
             FROM fin_purchase_items pi
             JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
             LEFT JOIN lkp_courses c ON c.CourseId = pi.CourseId
+            LEFT JOIN fin_wallets  w ON w.WalletId  = pu.WalletId
             LEFT JOIN (SELECT PcId, MAX(ResetDate) AS ResetDate FROM fin_budget_reset WHERE IsActive=1 GROUP BY PcId) br ON br.PcId = pu.PcId
             WHERE pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'
               AND pu.PurchaseDate >= @cutoff
@@ -1116,16 +1139,20 @@ public List<PcListItem> GetAllPcs()
             string curr    = r.GetString(5);
             int? courseId  = r.IsDBNull(6) ? null : r.GetInt32(6);
             string? cname  = r.IsDBNull(7) ? null : r.GetString(7);
+            int? walletId  = r.IsDBNull(8) ? (int?)null : r.GetInt32(8);
+            string? wname  = r.IsDBNull(9) ? null : r.GetString(9);
             if (!all.ContainsKey(pcId)) all[pcId] = new();
-            all[pcId].Add(new PurchaseRateEntry(purchaseId, date, hrs, rate, curr, courseId, cname));
+            all[pcId].Add(new PurchaseRateEntry(purchaseId, date, hrs, rate, curr, courseId, cname, walletId, wname));
         }
 
-        // Keep only PCs with 2+ distinct rates
+        // Keep only PCs with 2+ distinct rates *within the same wallet*.
         var result = new Dictionary<int, List<PurchaseRateEntry>>();
         foreach (var (pcId, entries) in all)
         {
-            if (entries.Select(e => e.RatePerHour).Distinct().Count() >= 2)
-                result[pcId] = entries;
+            bool flag = entries
+                .GroupBy(e => e.WalletId)
+                .Any(g => g.Select(e => e.RatePerHour).Distinct().Count() >= 2);
+            if (flag) result[pcId] = entries;
         }
         return result;
     }

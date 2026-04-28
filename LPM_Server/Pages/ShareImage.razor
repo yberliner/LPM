@@ -1,0 +1,558 @@
+@page "/share-image"
+@attribute [Authorize(Roles = "Admin,Customer")]
+@using Microsoft.AspNetCore.Authorization
+@using LPM.Services
+@inject FolderService FolderSvc
+@inject DashboardService DashSvc
+@inject PcService PcSvc
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthState
+
+<div class="si-page">
+    @if (_invalid)
+    {
+        <div class="si-card">
+            <div class="si-icon-wrap"><i class="ri-error-warning-line" style="color:#f87171;"></i></div>
+            <div class="si-title">Image not found</div>
+            <div class="si-sub">@_invalidMsg</div>
+            <button class="si-ok-btn" @onclick='() => Nav.NavigateTo("/Home", true)'>Back to Home</button>
+        </div>
+    }
+    else if (_showSuccess)
+    {
+        <div class="si-success-overlay">
+            <div class="si-success-card">
+                <div class="si-ring"></div>
+                <div class="si-check"><i class="ri-check-line"></i></div>
+                <div class="si-success-title">Photo Attached!</div>
+                <div class="si-success-sub">
+                    <i class="ri-user-line me-1" style="color:#8b5cf6;"></i>
+                    <span>@_successPcName</span>
+                    @if (_successIsSolo) { <span class="si-solo-badge">Solo</span> }
+                </div>
+                <div class="si-success-list">
+                    <div class="si-success-item">
+                        <i class="ri-checkbox-circle-fill" style="color:#22c55e;font-size:1.15rem;"></i>
+                        <div>
+                            <div style="font-weight:700;color:#0f172a;">Attached to session</div>
+                            <div class="si-sub-line">@_successSessionDate · @_successSessionName</div>
+                        </div>
+                    </div>
+                    <div class="si-success-item">
+                        <i class="ri-checkbox-circle-fill" style="color:#22c55e;font-size:1.15rem;"></i>
+                        <div>
+                            <div style="font-weight:700;color:#0f172a;">Saved as</div>
+                            <div class="si-sub-line" style="word-break:break-all;">@_successSavedName</div>
+                        </div>
+                    </div>
+                    <div class="si-success-item">
+                        <i class="ri-checkbox-circle-fill" style="color:#22c55e;font-size:1.15rem;"></i>
+                        <div>
+                            <div style="font-weight:700;color:#0f172a;">Original</div>
+                            <div class="si-sub-line">@_successOriginalName · @FormatBytes(_successSize) · @_successFormat.ToUpperInvariant()</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="si-sparkles">
+                    <span class="si-spark" style="--d:0;--x:-60px;--y:-50px;"></span>
+                    <span class="si-spark" style="--d:1;--x:65px;--y:-45px;"></span>
+                    <span class="si-spark" style="--d:2;--x:-55px;--y:45px;"></span>
+                    <span class="si-spark" style="--d:3;--x:60px;--y:50px;"></span>
+                    <span class="si-spark" style="--d:4;--x:0;--y:-70px;"></span>
+                    <span class="si-spark" style="--d:5;--x:-75px;--y:0;"></span>
+                    <span class="si-spark" style="--d:6;--x:75px;--y:0;"></span>
+                    <span class="si-spark" style="--d:7;--x:0;--y:75px;"></span>
+                </div>
+                <button class="si-ok-btn" @onclick="OnGreatClick">
+                    <i class="ri-thumb-up-line me-2"></i>Great!
+                </button>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="si-card">
+            <div class="si-header">
+                <i class="ri-image-2-line si-header-icon"></i>
+                <div>
+                    <div class="si-title">Attach photo</div>
+                    <div class="si-sub">@_originalFileName · @FormatBytes(_imageBytes?.Length ?? 0)</div>
+                </div>
+            </div>
+
+            @if (_step == 1)
+            {
+                <div class="si-step-label">Step 1 · Select PC</div>
+                @if (_pcs.Count == 0)
+                {
+                    <div class="si-empty">
+                        <i class="ri-lock-line si-empty-icon"></i>
+                        <div class="si-empty-title">No folders assigned</div>
+                        <div class="si-empty-sub">You haven't been granted access to any PC folder yet.<br/>Ask your administrator.</div>
+                    </div>
+                }
+                else
+                {
+                    <input type="text" class="si-search" placeholder="Search PCs…"
+                           @bind="_pcSearch" @bind:event="oninput" />
+                    <div class="si-list">
+                        @foreach (var pc in _pcs.Where(p => string.IsNullOrEmpty(_pcSearch) || p.FullName.Contains(_pcSearch, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            var thisPc = pc;
+                            <div class="si-row" @onclick="() => OnPcSelected(thisPc.PcId, thisPc.FullName, false)">
+                                <i class="ri-user-line" style="color:#8b5cf6;"></i>
+                                <span class="si-row-name">@thisPc.FullName</span>
+                                <i class="ri-arrow-right-s-line si-row-arrow"></i>
+                            </div>
+                            @if (thisPc.IsAlsoSolo)
+                            {
+                                <div class="si-row" @onclick="() => OnPcSelected(thisPc.PcId, thisPc.FullName, true)">
+                                    <i class="ri-user-line" style="color:#ef4444;"></i>
+                                    <span class="si-row-name">@thisPc.FullName</span>
+                                    <span class="si-solo-badge">Solo</span>
+                                    <i class="ri-arrow-right-s-line si-row-arrow"></i>
+                                </div>
+                            }
+                        }
+                    </div>
+                }
+            }
+            else if (_step == 2)
+            {
+                <div class="si-pc-pill">
+                    <i class="ri-user-line"></i>
+                    <span>@_selectedPcName</span>
+                    @if (_selectedSolo) { <span class="si-solo-badge">Solo</span> }
+                    <button class="si-back-btn" @onclick="BackToStep1">
+                        <i class="ri-arrow-left-s-line"></i>Change
+                    </button>
+                </div>
+                <div class="si-step-label">Step 2 · Select session / report (last 5)</div>
+                @if (_recentSessions.Count == 0)
+                {
+                    <div class="si-empty">
+                        <i class="ri-folder-line si-empty-icon"></i>
+                        <div class="si-empty-title">No sessions yet</div>
+                        <div class="si-empty-sub">This PC has no sessions.<br/>Add a session first or pick a different PC.</div>
+                        <button class="si-ok-btn" style="margin-top:14px;" @onclick="BackToStep1">Pick different PC</button>
+                    </div>
+                }
+                else
+                {
+                    <div class="si-list">
+                        @foreach (var s in _recentSessions)
+                        {
+                            var sid = s.SessionId;
+                            var sname = s.Name;
+                            var sdate = s.CreatedAt;
+                            <div class="si-row si-session-row" @onclick="() => OnSessionSelected(sid, sname, sdate)">
+                                <i class="ri-file-paper-2-line" style="color:#0ea5e9;"></i>
+                                <div class="si-session-main">
+                                    <div class="si-session-name">@sname</div>
+                                    <div class="si-session-date">@FormatDateShort(sdate)</div>
+                                </div>
+                                <i class="ri-arrow-right-s-line si-row-arrow"></i>
+                            </div>
+                        }
+                    </div>
+                }
+            }
+            else if (_step == 3)
+            {
+                <div class="si-saving">
+                    <span class="spinner-border" style="color:#8b5cf6;width:32px;height:32px;border-width:3px;"></span>
+                    <div class="si-saving-text">Saving photo as attachment…</div>
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <div class="si-error"><i class="ri-error-warning-line me-1"></i>@_error</div>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .si-page {
+        min-height: 100vh; padding: 24px 16px;
+        background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
+        display: flex; align-items: flex-start; justify-content: center;
+    }
+    .si-card {
+        max-width: 520px; width: 100%;
+        background: #ffffff; color: #0f172a;
+        border-radius: 18px;
+        box-shadow: 0 20px 60px rgba(0,0,0,.45);
+        padding: 22px;
+        animation: si-in .35s cubic-bezier(.175,.885,.32,1.275);
+    }
+    @@keyframes si-in { from { opacity:0; transform: translateY(12px) scale(.97); } to { opacity:1; transform: translateY(0) scale(1); } }
+
+    .si-header { display:flex; align-items:center; gap:14px; margin-bottom:18px; padding-bottom:14px; border-bottom:1px solid #e5e7eb; }
+    .si-header-icon {
+        font-size: 2rem;
+        background: linear-gradient(135deg, #fbcfe8, #fef9c3);
+        color: #7c3aed;
+        padding: 12px; border-radius: 14px;
+    }
+    .si-title    { font-size: 1.25rem; font-weight: 800; line-height: 1.2; }
+    .si-sub      { font-size: .82rem; color: #475569; margin-top: 2px; }
+    .si-step-label { font-size: .78rem; font-weight: 700; color: #6d28d9; letter-spacing: .04em; text-transform: uppercase; margin: 6px 0 10px; }
+
+    .si-search {
+        width: 100%; padding: 10px 12px; min-height: 44px;
+        font-size: 1rem; border-radius: 10px;
+        border: 1px solid #cbd5e1; background: #f8fafc; color: #0f172a;
+        outline: none; margin-bottom: 10px;
+    }
+    .si-search:focus { border-color: #8b5cf6; box-shadow: 0 0 0 3px rgba(139,92,246,.15); }
+
+    .si-list { display: flex; flex-direction: column; gap: 6px; max-height: 60vh; overflow-y: auto; }
+    .si-row {
+        display: flex; align-items: center; gap: 10px;
+        padding: 12px 14px; min-height: 44px;
+        background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 10px;
+        cursor: pointer; user-select: none;
+        transition: background .12s ease, border-color .12s ease, transform .08s ease;
+    }
+    .si-row:hover  { background: #ede9fe; border-color: #c4b5fd; }
+    .si-row:active { transform: scale(.985); }
+    .si-row-name   { flex: 1; font-weight: 600; color: #0f172a; }
+    .si-row-arrow  { color: #94a3b8; }
+    .si-session-row .si-session-main { flex: 1; min-width: 0; }
+    .si-session-name { font-weight: 700; color: #0f172a; word-break: break-word; }
+    .si-session-date { font-size: .78rem; color: #64748b; margin-top: 2px; }
+
+    .si-pc-pill {
+        display: flex; align-items: center; gap: 8px;
+        background: #f0f4ff; border: 1px solid #e5e7eb; border-radius: 12px;
+        padding: 8px 12px; margin-bottom: 12px;
+        font-weight: 700; color: #1e293b;
+    }
+    .si-back-btn {
+        margin-left: auto; background: transparent; border: none;
+        color: #6d28d9; font-weight: 700; font-size: .85rem; cursor: pointer;
+        display: inline-flex; align-items: center; gap: 2px;
+        padding: 4px 8px; border-radius: 8px;
+    }
+    .si-back-btn:hover { background: rgba(139,92,246,.12); }
+
+    .si-solo-badge {
+        font-size: .62rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase;
+        color: #fff; background: linear-gradient(135deg, #ef4444, #b91c1c);
+        border-radius: 999px; padding: 2px 9px;
+        box-shadow: 0 0 8px rgba(239,68,68,.45);
+    }
+
+    .si-empty { text-align: center; padding: 30px 16px; }
+    .si-empty-icon { font-size: 3rem; color: #cbd5e1; margin-bottom: 12px; }
+    .si-empty-title { font-size: 1.1rem; font-weight: 700; color: #475569; }
+    .si-empty-sub { font-size: .85rem; color: #94a3b8; margin-top: 6px; }
+
+    .si-saving { padding: 30px 16px; text-align: center; }
+    .si-saving-text { margin-top: 12px; font-size: .92rem; color: #475569; font-weight: 600; }
+
+    .si-error { margin-top: 12px; padding: 10px 12px; background: #fee2e2; border: 1px solid #fecaca; border-radius: 8px; color: #991b1b; font-size: .85rem; }
+
+    /* ── Success overlay (WOW animation) ── */
+    .si-success-overlay {
+        position: fixed; inset: 0; z-index: 99998;
+        background: radial-gradient(ellipse at center, rgba(15,23,42,.78), rgba(15,23,42,.95));
+        display: flex; align-items: center; justify-content: center;
+        animation: si-fade .35s ease;
+        padding: 16px;
+    }
+    @@keyframes si-fade { from { opacity:0; } to { opacity:1; } }
+
+    .si-success-card {
+        position: relative;
+        background: linear-gradient(135deg, #fff 0%, #f0f4ff 100%);
+        border-radius: 24px;
+        padding: 48px 36px 28px;
+        box-shadow: 0 25px 80px rgba(0,0,0,.55), 0 0 100px rgba(34,197,94,.25);
+        max-width: 520px; width: 100%; text-align: center;
+        animation: si-pop .55s cubic-bezier(.175,.885,.32,1.275);
+        overflow: hidden;
+    }
+    @@keyframes si-pop { 0% { transform: scale(.65); opacity:0; } 100% { transform: scale(1); opacity:1; } }
+
+    .si-ring {
+        position: absolute; top: 4px; left: 50%;
+        transform: translateX(-50%);
+        width: 130px; height: 130px;
+        border: 3px solid rgba(34,197,94,.35);
+        border-radius: 50%;
+        animation: si-ring 2s ease-in-out infinite;
+        pointer-events: none;
+    }
+    @@keyframes si-ring {
+        0%, 100% { transform: translateX(-50%) scale(1);    opacity: .55; }
+        50%      { transform: translateX(-50%) scale(1.18); opacity: .15; }
+    }
+    .si-check {
+        position: relative; z-index: 2;
+        margin: 0 auto 18px;
+        width: 92px; height: 92px;
+        background: linear-gradient(135deg, #22c55e, #15803d);
+        border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        box-shadow: 0 10px 36px rgba(34,197,94,.55);
+        animation: si-bounce .65s cubic-bezier(.175,.885,.32,1.275);
+    }
+    .si-check i { color: #fff; font-size: 3.2rem; font-weight: 900; animation: si-draw .45s ease .22s both; }
+    @@keyframes si-bounce { 0% { transform: scale(0); } 60% { transform: scale(1.18); } 100% { transform: scale(1); } }
+    @@keyframes si-draw   { from { opacity:0; transform: scale(0) rotate(-50deg); } to { opacity:1; transform: scale(1) rotate(0); } }
+
+    .si-success-title { font-size: 1.7rem; font-weight: 800; color: #0f172a; margin-bottom: 8px; line-height: 1.2; letter-spacing: -.02em; }
+    .si-success-sub   { display:flex; align-items:center; justify-content:center; gap:8px; font-size: 1.05rem; color: #475569; margin-bottom: 20px; font-weight: 600; word-break: break-all; }
+
+    .si-success-list {
+        text-align: left;
+        margin: 16px auto 8px;
+        max-width: 460px;
+        background: rgba(241,245,249,.65);
+        border: 1px solid rgba(226,232,240,.8);
+        border-radius: 14px;
+        padding: 14px 16px;
+    }
+    .si-success-item {
+        display: flex; align-items: flex-start; gap: 12px;
+        padding: 8px 0; color: #334155; font-size: .92rem;
+        animation: si-slide .45s ease both;
+    }
+    .si-success-item:nth-child(1) { animation-delay: .30s; }
+    .si-success-item:nth-child(2) { animation-delay: .45s; }
+    .si-success-item:nth-child(3) { animation-delay: .60s; }
+    @@keyframes si-slide { from { opacity:0; transform: translateX(-14px); } to { opacity:1; transform: translateX(0); } }
+    .si-sub-line { font-size: .82rem; color: #64748b; margin-top: 2px; word-break: break-all; }
+
+    .si-sparkles { position: absolute; top: 80px; left: 50%; width: 0; height: 0; pointer-events: none; z-index: 3; }
+    .si-spark {
+        position: absolute; top: 0; left: 0;
+        width: 10px; height: 10px;
+        background: linear-gradient(135deg, #fbbf24, #f59e0b);
+        border-radius: 50%;
+        box-shadow: 0 0 14px rgba(251,191,36,.9), 0 0 28px rgba(251,191,36,.5);
+        animation-name: si-spark;
+        animation-duration: 1.6s;
+        animation-timing-function: ease-out;
+        animation-iteration-count: infinite;
+        animation-delay: calc(var(--d, 0) * 0.12s);
+    }
+    @@keyframes si-spark {
+        0%   { transform: translate(-50%,-50%) scale(0); opacity: 1; }
+        50%  { transform: translate(calc(-50% + var(--x)), calc(-50% + var(--y))) scale(1); opacity: .85; }
+        100% { transform: translate(calc(-50% + var(--x) * 1.6), calc(-50% + var(--y) * 1.6)) scale(0); opacity: 0; }
+    }
+
+    .si-ok-btn {
+        margin-top: 20px;
+        background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+        color: #fff; border: none;
+        font-weight: 700; font-size: 1rem; letter-spacing: .02em;
+        padding: 12px 32px; border-radius: 12px;
+        box-shadow: 0 8px 24px rgba(34,197,94,.4);
+        cursor: pointer;
+        transition: transform .2s, box-shadow .2s;
+        display: inline-flex; align-items: center; min-height: 44px;
+    }
+    .si-ok-btn:hover  { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(34,197,94,.55); }
+    .si-ok-btn:active { transform: translateY(0); }
+
+    @@media (max-width: 480px) {
+        .si-card { padding: 18px; border-radius: 14px; }
+        .si-success-card { padding: 40px 20px 24px; border-radius: 18px; }
+        .si-success-title { font-size: 1.35rem; }
+        .si-check { width: 78px; height: 78px; }
+        .si-check i { font-size: 2.6rem; }
+        .si-ring { width: 110px; height: 110px; }
+    }
+</style>
+
+@code {
+    [SupplyParameterFromQuery] public string? Token { get; set; }
+
+    string _username = "";
+    int? _personId;
+    byte[]? _imageBytes;
+    string _imageExt = "";
+    string _originalFileName = "shared-image";
+
+    bool _invalid;
+    string _invalidMsg = "";
+
+    int _step = 1;
+
+    // PC list
+    List<DashboardService.ApprovedPc> _pcs = new();
+    string _pcSearch = "";
+
+    // Selected PC
+    int    _selectedPcId;
+    string _selectedPcName = "";
+    bool   _selectedSolo;
+
+    // Recent sessions for selected PC
+    List<(int SessionId, string Name, string CreatedAt)> _recentSessions = new();
+
+    string _error = "";
+
+    // Success modal state
+    bool   _showSuccess;
+    string _successPcName = "";
+    bool   _successIsSolo;
+    string _successSessionName = "";
+    string _successSessionDate = "";
+    string _successSavedName = "";
+    string _successOriginalName = "";
+    int    _successSize;
+    string _successFormat = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        _username = auth.User.Identity?.Name ?? "";
+        if (string.IsNullOrEmpty(_username) || string.IsNullOrEmpty(Token))
+        {
+            _invalid = true;
+            _invalidMsg = "Missing token or user. Try sharing the photo again.";
+            return;
+        }
+
+        var blob = FolderSvc.ReadImageInboxBlob(_username, Token);
+        if (blob == null)
+        {
+            _invalid = true;
+            _invalidMsg = "This shared photo is no longer available (it expires after 6 hours). Try sharing it again.";
+            return;
+        }
+        _imageBytes       = blob.Value.Bytes;
+        _imageExt         = blob.Value.Ext;
+        _originalFileName = blob.Value.OriginalFileName;
+
+        _personId = PcSvc.GetPersonIdByUsername(_username);
+        if (_personId.HasValue)
+            _pcs = DashSvc.GetApprovedPcsForUser(_personId.Value, _username);
+    }
+
+    void OnPcSelected(int pcId, string pcName, bool solo)
+    {
+        _error = "";
+        if (_personId.HasValue && !DashSvc.CanAccessPcFolder(_personId.Value, pcId, _username))
+        {
+            _error = "You do not have permission to attach to this PC.";
+            return;
+        }
+        _selectedPcId   = pcId;
+        _selectedPcName = pcName;
+        _selectedSolo   = solo;
+
+        // Last 5 sessions, ordered by CreatedAt desc
+        _recentSessions = DashSvc.GetSessionsForPc(pcId, isSolo: solo)
+            .OrderByDescending(s => s.CreatedAt)
+            .ThenByDescending(s => s.SessionId)
+            .Take(5)
+            .ToList();
+        _step = 2;
+    }
+
+    void BackToStep1()
+    {
+        _step = 1;
+        _selectedPcId = 0;
+        _selectedPcName = "";
+        _selectedSolo = false;
+        _recentSessions.Clear();
+    }
+
+    async Task OnSessionSelected(int sessionId, string sessionName, string sessionCreatedAt)
+    {
+        _error = "";
+        _step = 3;
+        StateHasChanged();
+
+        try
+        {
+            // Compute "picture_N.{ext}" by inspecting existing attachments alongside this session
+            string ext = _imageExt;
+            string baseName = ComputeNextPictureName(_selectedPcId, sessionName, ext, _selectedSolo);
+            var saved = await Task.Run(() =>
+                FolderSvc.SaveAttachment(_selectedPcId, sessionName, baseName, _imageBytes!, _selectedSolo));
+            if (saved == null)
+            {
+                _error = "Failed to save the attachment (folder not found).";
+                _step = 2;
+                StateHasChanged();
+                return;
+            }
+
+            // Clean up the temp blob — the photo now lives in the PC folder as an attachment
+            FolderSvc.DeleteImageInboxBlob(_username, Token!);
+
+            _successPcName       = _selectedPcName;
+            _successIsSolo       = _selectedSolo;
+            _successSessionName  = sessionName;
+            _successSessionDate  = FormatDateShort(sessionCreatedAt);
+            _successSavedName    = saved;
+            _successOriginalName = _originalFileName;
+            _successSize         = _imageBytes?.Length ?? 0;
+            _successFormat       = ext;
+            _showSuccess         = true;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ShareImage] OnSessionSelected failed: {ex}");
+            _error = $"Save failed: {ex.Message}";
+            _step = 2;
+            StateHasChanged();
+        }
+    }
+
+    string ComputeNextPictureName(int pcId, string sessionName, string ext, bool solo)
+    {
+        try
+        {
+            var folder = FolderSvc.GetFolderInfo(pcId, solo);
+            var sessionStem = System.IO.Path.GetFileNameWithoutExtension(sessionName);
+            var ws = folder?.WorkSheets.FirstOrDefault(w =>
+                System.IO.Path.GetFileNameWithoutExtension(w.File.FileName)
+                    .Equals(sessionStem, StringComparison.OrdinalIgnoreCase));
+            int maxN = 0;
+            if (ws != null)
+            {
+                var rx = new System.Text.RegularExpressions.Regex(
+                    @"_att_picture_(\d+)\.(jpg|jpeg|png)$",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                foreach (var att in ws.Attachments)
+                {
+                    var m = rx.Match(att.FileName);
+                    if (m.Success && int.TryParse(m.Groups[1].Value, out var n) && n > maxN) maxN = n;
+                }
+            }
+            return $"picture_{maxN + 1}.{ext}";
+        }
+        catch
+        {
+            return $"picture_1.{ext}";
+        }
+    }
+
+    void OnGreatClick() => Nav.NavigateTo("/Home", true);
+
+    static string FormatBytes(long b)
+    {
+        if (b <= 0) return "0 B";
+        if (b < 1024) return $"{b} B";
+        if (b < 1024 * 1024) return $"{b / 1024.0:0.#} KB";
+        return $"{b / (1024.0 * 1024):0.##} MB";
+    }
+
+    static string FormatDateShort(string raw)
+    {
+        if (string.IsNullOrEmpty(raw)) return "";
+        if (DateTime.TryParse(raw, out var dt)) return dt.ToString("dd/MM/yyyy");
+        return raw;
+    }
+}

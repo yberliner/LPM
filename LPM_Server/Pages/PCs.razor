@@ -226,19 +226,46 @@
                                                     var sid = s.SessionId;
                                                     var delay = $"{rowIdx * 40}ms";
                                                     rowIdx++;
-                                                    <div class="pc-srm-row" style="--row-color:@rowColor; animation-delay:@delay;"
+                                                    var isLong   = totalSec > 10800;        // 3h+ → flag as suspicious
+                                                    var isFinal  = s.VerifiedStatus == "Verified" || s.VerifiedStatus == "Approved";
+                                                    var statusCls   = isFinal ? "pc-srm-status-ok" : "pc-srm-status-pending";
+                                                    var statusIcon  = isFinal ? "ri-checkbox-circle-fill" : "ri-time-line";
+                                                    var statusLabel = isFinal ? s.VerifiedStatus : "Draft";
+                                                    var rowCls      = isLong ? "pc-srm-row pc-srm-row-long" : "pc-srm-row";
+                                                    var billedTxt   = s.BilledCents > 0
+                                                        ? $"{CurrSym(s.Currency)}{(s.BilledCents / 100.0).ToString("0.##")}"
+                                                        : $"{CurrSym(s.Currency)}0";
+                                                    <div class="@rowCls" style="--row-color:@rowColor; animation-delay:@delay;"
                                                          @onclick="() => OpenSessionFromHover(sid)" @onclick:stopPropagation="true">
                                                         <div class="pc-srm-row-rail"></div>
                                                         <div class="pc-srm-row-main">
                                                             <div class="pc-srm-row-top">
                                                                 <span class="pc-srm-row-date">@FormatDate(s.Date)</span>
                                                                 <span class="pc-srm-row-dur">@FormatHM(totalSec)</span>
+                                                                @if (isLong)
+                                                                {
+                                                                    <span class="pc-srm-long-pill" title="Session + admin > 3 hours — likely a logging mistake">
+                                                                        <i class="ri-alarm-warning-fill"></i>&gt;3h
+                                                                    </span>
+                                                                }
+                                                                <span class="pc-srm-status-pill @statusCls" title="@statusLabel">
+                                                                    <i class="@statusIcon"></i>@statusLabel
+                                                                </span>
                                                             </div>
+                                                            @if (!string.IsNullOrEmpty(s.WalletName))
+                                                            {
+                                                                <div class="pc-srm-row-wallet"><i class="ri-wallet-3-line me-1"></i>@s.WalletName</div>
+                                                            }
                                                             <div class="pc-srm-row-aud">@s.AuditorName</div>
                                                         </div>
-                                                        <span class="pc-srm-rate-badge" style="background:@rowColor;">
-                                                            @CurrSym(s.Currency)@FormatRatePerHour(s.RateCentsPerHour)<span class="pc-srm-per-hr">/hr</span>
-                                                        </span>
+                                                        <div class="pc-srm-row-rstack">
+                                                            <span class="pc-srm-rate-badge" style="background:@rowColor;">
+                                                                @CurrSym(s.Currency)@FormatRatePerHour(s.RateCentsPerHour)<span class="pc-srm-per-hr">/hr</span>
+                                                            </span>
+                                                            <span class="pc-srm-billed" title="Total billed for this session">
+                                                                @billedTxt
+                                                            </span>
+                                                        </div>
                                                         <i class="ri-external-link-line pc-srm-row-arrow"></i>
                                                     </div>
                                                 }
@@ -3867,7 +3894,10 @@
     /* ── The "WOW" hover panel ── */
     .pc-srm-panel {
         position: absolute;
-        top: calc(100% + 6px);
+        /* No gap — panel touches the cell so traversing mouse never leaves the
+           cell→panel hover surface. The ::before arrow protrudes upward and
+           visually attaches the panel to the cell like a speech bubble. */
+        top: 100%;
         left: 0;
         z-index: 50;
         width: 360px;
@@ -3880,7 +3910,8 @@
         box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.04);
         opacity: 0;
         transform: translateY(8px) scale(0.985);
-        transition: opacity 0.18s ease, transform 0.22s cubic-bezier(.175,.885,.32,1.275);
+        /* Hide direction has a 120 ms delay — forgives a brief mouse exit. */
+        transition: opacity 0.18s ease 0.12s, transform 0.22s cubic-bezier(.175,.885,.32,1.275) 0.12s;
         pointer-events: none;
         cursor: default;
         backdrop-filter: blur(6px);
@@ -3901,6 +3932,8 @@
         opacity: 1;
         transform: translateY(0) scale(1);
         pointer-events: auto;
+        /* Show direction: 0 delay (instant). The base style's 0.12s delay only applies to hide. */
+        transition: opacity 0.18s ease 0s, transform 0.22s cubic-bezier(.175,.885,.32,1.275) 0s;
     }
     .pc-srm-glow {
         position: absolute; inset: -1px;
@@ -3975,6 +4008,63 @@
     }
     .pc-srm-row-date { font-weight: 700; }
     .pc-srm-row-dur  { font-size: 0.74rem; color: #94a3b8; font-weight: 500; }
+    .pc-srm-row-wallet {
+        font-size: 0.7rem; color: #fbcfe8; font-weight: 600; margin-top: 2px;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .pc-srm-row-wallet i { color: #fbcfe8; opacity: 0.85; }
+
+    /* ── Status pill (Verified / Approved / Draft) ── */
+    .pc-srm-status-pill {
+        display: inline-flex; align-items: center; gap: 3px;
+        font-size: 0.62rem; font-weight: 700; letter-spacing: 0.04em;
+        padding: 1px 7px; border-radius: 999px;
+        margin-left: auto;
+    }
+    .pc-srm-status-pill i { font-size: 0.78rem; line-height: 1; }
+    .pc-srm-status-ok      { background: rgba(34,197,94,.18);  color: #86efac; }
+    .pc-srm-status-pending { background: rgba(251,146,60,.22); color: #fdba74; }
+
+    /* ── >3h long-session warning pill on the row ── */
+    .pc-srm-long-pill {
+        display: inline-flex; align-items: center; gap: 3px;
+        font-size: 0.62rem; font-weight: 800; letter-spacing: 0.05em;
+        padding: 1px 7px; border-radius: 999px;
+        background: linear-gradient(135deg, #ef4444, #b91c1c);
+        color: #fff;
+        box-shadow: 0 0 6px rgba(239,68,68,.55);
+        margin-left: 4px;
+        animation: pcSrmLongPulse 1.4s ease-in-out infinite;
+    }
+    .pc-srm-long-pill i { font-size: 0.78rem; line-height: 1; }
+    @@keyframes pcSrmLongPulse {
+        0%, 100% { box-shadow: 0 0 6px  rgba(239,68,68,.55), 0 0 0    rgba(239,68,68,0);  }
+        50%      { box-shadow: 0 0 12px rgba(239,68,68,.85), 0 0 18px rgba(239,68,68,.45); }
+    }
+
+    /* ── Long-session row outline (so it can't be missed even if user scrolled past the pill) ── */
+    .pc-srm-row-long {
+        background: linear-gradient(90deg, rgba(239,68,68,0.18), rgba(30, 41, 59, 0.55) 60%) !important;
+        border-color: rgba(239,68,68,.55) !important;
+        box-shadow: 0 0 0 1px rgba(239,68,68,.35), 0 0 14px rgba(239,68,68,.35);
+        animation: pcSrmRowGlow 1.8s ease-in-out infinite;
+    }
+    @@keyframes pcSrmRowGlow {
+        0%, 100% { box-shadow: 0 0 0 1px rgba(239,68,68,.35), 0 0 8px  rgba(239,68,68,.30); }
+        50%      { box-shadow: 0 0 0 1px rgba(239,68,68,.65), 0 0 22px rgba(239,68,68,.55); }
+    }
+    .pc-srm-row-long:hover {
+        background: linear-gradient(90deg, rgba(239,68,68,0.28), rgba(30, 41, 59, 0.85) 60%) !important;
+    }
+
+    /* ── Right stack: rate badge + billed amount ── */
+    .pc-srm-row-rstack {
+        display: flex; flex-direction: column; align-items: flex-end; gap: 2px;
+        flex-shrink: 0;
+    }
+    .pc-srm-billed {
+        font-size: 0.7rem; color: #cbd5e1; font-weight: 700; letter-spacing: 0.01em;
+    }
     .pc-srm-row-aud {
         font-size: 0.72rem; color: #cbd5e1; margin-top: 2px;
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis;

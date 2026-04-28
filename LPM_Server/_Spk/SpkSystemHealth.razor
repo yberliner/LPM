@@ -124,8 +124,8 @@
             {
                 var y = 190 - (pct / 100.0) * 170;
                 <g>
-                    <line class="shg-grid" x1="40" x2="780" y1="@y.ToString("F1")" y2="@y.ToString("F1")" />
-                    <text class="shg-grid-lbl" x="34" y="@(y + 4).ToString("F1")" text-anchor="end">@pct%</text>
+                    <line class="shg-grid" x1="40" x2="780" y1="@(y.ToString("F1"))" y2="@(y.ToString("F1"))" />
+                    <text class="shg-grid-lbl" x="34" y="@((y + 4).ToString("F1"))" text-anchor="end">@pct%</text>
                 </g>
             }
             @* X-axis time labels *@
@@ -140,8 +140,8 @@
             @* Polyline of samples *@
             <polyline class="shg-line shg-line-mem" points="@_memPolyline" />
             @* Min / Max dots *@
-            <circle class="shg-dot shg-dot-max" cx="@_memMaxX.ToString("F1")" cy="@_memMaxY.ToString("F1")" r="4" />
-            <circle class="shg-dot shg-dot-min" cx="@_memMinX.ToString("F1")" cy="@_memMinY.ToString("F1")" r="4" />
+            <circle class="shg-dot shg-dot-max" cx="@(_memMaxX.ToString("F1"))" cy="@(_memMaxY.ToString("F1"))" r="4" />
+            <circle class="shg-dot shg-dot-min" cx="@(_memMinX.ToString("F1"))" cy="@(_memMinY.ToString("F1"))" r="4" />
         </svg>
     }
     else
@@ -182,8 +182,8 @@
                 var y     = 190 - frac * 170;
                 var label = FormatMB((long)(yMax * frac));
                 <g>
-                    <line class="shg-grid" x1="60" x2="780" y1="@y.ToString("F1")" y2="@y.ToString("F1")" />
-                    <text class="shg-grid-lbl" x="54" y="@(y + 4).ToString("F1")" text-anchor="end">@label</text>
+                    <line class="shg-grid" x1="60" x2="780" y1="@(y.ToString("F1"))" y2="@(y.ToString("F1"))" />
+                    <text class="shg-grid-lbl" x="54" y="@((y + 4).ToString("F1"))" text-anchor="end">@label</text>
                 </g>
             }
             @{
@@ -195,8 +195,8 @@
                 <text class="shg-grid-lbl" x="780" y="198" text-anchor="end">@lastT.ToString("MM-dd HH:mm")</text>
             </g>
             <polyline class="shg-line shg-line-cache" points="@_cachePolyline" />
-            <circle class="shg-dot shg-dot-max" cx="@_cacheMaxX.ToString("F1")" cy="@_cacheMaxY.ToString("F1")" r="4" />
-            <circle class="shg-dot shg-dot-min" cx="@_cacheMinX.ToString("F1")" cy="@_cacheMinY.ToString("F1")" r="4" />
+            <circle class="shg-dot shg-dot-max" cx="@(_cacheMaxX.ToString("F1"))" cy="@(_cacheMaxY.ToString("F1"))" r="4" />
+            <circle class="shg-dot shg-dot-min" cx="@(_cacheMinX.ToString("F1"))" cy="@(_cacheMinY.ToString("F1"))" r="4" />
         </svg>
     }
     else

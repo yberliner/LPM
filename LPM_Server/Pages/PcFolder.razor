@@ -4604,7 +4604,9 @@
                     else
                     {
                         var url = $"/api/pc-file?pcId={PcId}&path={Uri.EscapeDataString(_panes[i].File!)}{SoloParam}&_t={DateTime.UtcNow.Ticks}";
-                        paneTasks.Add(JS.InvokeVoidAsync("pcfViewer.loadPdf", url, paneId).AsTask());
+                        // Images are rendered as <img>, not via PDF.js — dispatch the right loader.
+                        var jsFn = IsImageFile(fn) ? "pcfViewer.loadImage" : "pcfViewer.loadPdf";
+                        paneTasks.Add(JS.InvokeVoidAsync(jsFn, url, paneId).AsTask());
                     }
                 }
             }
@@ -4795,11 +4797,14 @@
                 return (paneId, file, url, isFs, wasDual, savedPage);
             }).ToList();
 
-            // Load all panes in parallel; folder summaries use two-phase load
+            // Load all panes in parallel; folder summaries use two-phase load;
+            // images use loadImage (no PDF.js / no targetPage parameter).
             await Task.WhenAll(items.Select(i =>
                 i.isFs
                     ? LoadFolderSummaryTwoPhase(i.file, i.paneId)
-                    : JS.InvokeVoidAsync("pcfViewer.loadPdf", i.url, i.paneId, i.savedPage).AsTask()));
+                    : IsImageFile(i.file)
+                        ? JS.InvokeVoidAsync("pcfViewer.loadImage", i.url, i.paneId).AsTask()
+                        : JS.InvokeVoidAsync("pcfViewer.loadPdf", i.url, i.paneId, i.savedPage).AsTask()));
 
             // Restore dual mode (with saved page) after all panes are loaded
             foreach (var (paneId, _, _, _, wasDual, savedPage) in items)
@@ -5524,11 +5529,13 @@
 
         Console.WriteLine($"[PcFolder] Applied preset {presetNum} ({count} panes) by '{_userName}' — PC {PcId}");
 
-        // Schedule PDF loads via _pendingReloads (DOM panes may not exist yet if _paneCount increased)
+        // Schedule loads via _pendingReloads (DOM panes may not exist yet if _paneCount increased).
+        // Include both PDFs and images (.jpg/.jpeg/.png) — the reload consumer dispatches the
+        // right loader per file type. Excel files (.xlsx) stay excluded — they're handled separately.
         var reloads = new List<(string, string)>();
         for (int i = 0; i < count; i++)
             if (!string.IsNullOrEmpty(_panes[i].File)
-                && IsPdfViewable(_panes[i].File))
+                && (IsPdfViewable(_panes[i].File) || IsImageFile(_panes[i].File)))
                 reloads.Add((PaneIds[i], _panes[i].File!));
         if (reloads.Count > 0)
             _pendingReloads = reloads;
@@ -5613,11 +5620,13 @@
             if (firstEmpty >= 0) _activeIdx = firstEmpty;
         }
 
-        // Reload all visible panes so they re-render at the new width
+        // Reload all visible panes so they re-render at the new width.
+        // Include images alongside PDFs — the reload consumer dispatches per file type.
         var reloads = new List<(string, string)>();
         for (int i = 0; i < newCount; i++)
         {
-            if (!string.IsNullOrEmpty(_panes[i].File) && IsPdfViewable(_panes[i].File))
+            if (!string.IsNullOrEmpty(_panes[i].File)
+                && (IsPdfViewable(_panes[i].File) || IsImageFile(_panes[i].File)))
                 reloads.Add((PaneIds[i], _panes[i].File!));
         }
         if (reloads.Count > 0)
