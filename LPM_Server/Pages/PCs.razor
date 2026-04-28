@@ -231,11 +231,10 @@
                                                     var statusCls   = isFinal ? "pc-srm-status-ok" : "pc-srm-status-pending";
                                                     var statusIcon  = isFinal ? "ri-checkbox-circle-fill" : "ri-time-line";
                                                     var statusLabel = isFinal ? s.VerifiedStatus : "Draft";
-                                                    var rowCls      = isLong ? "pc-srm-row pc-srm-row-long" : "pc-srm-row";
                                                     var billedTxt   = s.BilledCents > 0
                                                         ? $"{CurrSym(s.Currency)}{(s.BilledCents / 100.0).ToString("0.##")}"
                                                         : $"{CurrSym(s.Currency)}0";
-                                                    <div class="@rowCls" style="--row-color:@rowColor; animation-delay:@delay;"
+                                                    <div class="pc-srm-row" style="--row-color:@rowColor; animation-delay:@delay;"
                                                          @onclick="() => OpenSessionFromHover(sid)" @onclick:stopPropagation="true">
                                                         <div class="pc-srm-row-rail"></div>
                                                         <div class="pc-srm-row-main">
@@ -245,7 +244,7 @@
                                                                 @if (isLong)
                                                                 {
                                                                     <span class="pc-srm-long-pill" title="Session + admin > 3 hours — likely a logging mistake">
-                                                                        <i class="ri-alarm-warning-fill"></i>&gt;3h
+                                                                        <i class="ri-alarm-warning-fill"></i>&nbsp;&gt; 3 HOURS — CHECK!
                                                                     </span>
                                                                 }
                                                                 <span class="pc-srm-status-pill @statusCls" title="@statusLabel">
@@ -3980,6 +3979,7 @@
         background: rgba(30, 41, 59, 0.55);
         border: 1px solid transparent;
         cursor: pointer;
+        color: #f1f5f9 !important;  /* defeat any ancestor that forces dark text (e.g. Bootstrap .table-primary) */
         opacity: 0; transform: translateX(-12px);
         animation: srmRowIn 0.32s cubic-bezier(.175,.885,.32,1.275) forwards;
         transition: background 0.15s ease, border-color 0.15s ease, transform 0.12s ease;
@@ -4006,13 +4006,16 @@
         display: flex; align-items: baseline; gap: 8px;
         font-size: 0.82rem; line-height: 1.15; color: #f1f5f9;
     }
-    .pc-srm-row-date { font-weight: 700; }
-    .pc-srm-row-dur  { font-size: 0.74rem; color: #94a3b8; font-weight: 500; }
+    /* Explicit colors with !important — defends every panel line against any
+       ancestor color rule (Bootstrap .table-primary, theme overrides, etc.)
+       so no row line can ever render dark-on-dark. */
+    .pc-srm-row-date   { font-weight: 700; color: #f1f5f9 !important; }
+    .pc-srm-row-dur    { font-size: 0.74rem; color: #cbd5e1 !important; font-weight: 500; }
     .pc-srm-row-wallet {
-        font-size: 0.7rem; color: #fbcfe8; font-weight: 600; margin-top: 2px;
+        font-size: 0.72rem; color: #f9a8d4 !important; font-weight: 700; margin-top: 2px;
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
-    .pc-srm-row-wallet i { color: #fbcfe8; opacity: 0.85; }
+    .pc-srm-row-wallet i { color: #f9a8d4 !important; opacity: 0.95; }
 
     /* ── Status pill (Verified / Approved / Draft) ── */
     .pc-srm-status-pill {
@@ -4022,39 +4025,25 @@
         margin-left: auto;
     }
     .pc-srm-status-pill i { font-size: 0.78rem; line-height: 1; }
-    .pc-srm-status-ok      { background: rgba(34,197,94,.18);  color: #86efac; }
-    .pc-srm-status-pending { background: rgba(251,146,60,.22); color: #fdba74; }
+    .pc-srm-status-ok      { background: rgba(34,197,94,.22);  color: #4ade80 !important; }
+    .pc-srm-status-pending { background: rgba(251,146,60,.26); color: #fdba74 !important; }
 
-    /* ── >3h long-session warning pill on the row ── */
+    /* ── >3h glowing pill (the row itself stays normal — only this pill flags it) ── */
     .pc-srm-long-pill {
-        display: inline-flex; align-items: center; gap: 3px;
-        font-size: 0.62rem; font-weight: 800; letter-spacing: 0.05em;
-        padding: 1px 7px; border-radius: 999px;
-        background: linear-gradient(135deg, #ef4444, #b91c1c);
-        color: #fff;
-        box-shadow: 0 0 6px rgba(239,68,68,.55);
-        margin-left: 4px;
-        animation: pcSrmLongPulse 1.4s ease-in-out infinite;
+        display: inline-flex; align-items: center; gap: 4px;
+        font-size: 0.78rem; font-weight: 900; letter-spacing: 0.06em;
+        padding: 3px 12px; border-radius: 999px;
+        background: linear-gradient(135deg, #fbbf24 0%, #ef4444 60%, #b91c1c 100%);
+        color: #ffffff !important;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.45);
+        margin-left: 6px;
+        white-space: nowrap;
+        animation: pcSrmLongPulse 1.1s ease-in-out infinite;
     }
-    .pc-srm-long-pill i { font-size: 0.78rem; line-height: 1; }
+    .pc-srm-long-pill i { font-size: 1rem; line-height: 1; color: #ffffff !important; }
     @@keyframes pcSrmLongPulse {
-        0%, 100% { box-shadow: 0 0 6px  rgba(239,68,68,.55), 0 0 0    rgba(239,68,68,0);  }
-        50%      { box-shadow: 0 0 12px rgba(239,68,68,.85), 0 0 18px rgba(239,68,68,.45); }
-    }
-
-    /* ── Long-session row outline (so it can't be missed even if user scrolled past the pill) ── */
-    .pc-srm-row-long {
-        background: linear-gradient(90deg, rgba(239,68,68,0.18), rgba(30, 41, 59, 0.55) 60%) !important;
-        border-color: rgba(239,68,68,.55) !important;
-        box-shadow: 0 0 0 1px rgba(239,68,68,.35), 0 0 14px rgba(239,68,68,.35);
-        animation: pcSrmRowGlow 1.8s ease-in-out infinite;
-    }
-    @@keyframes pcSrmRowGlow {
-        0%, 100% { box-shadow: 0 0 0 1px rgba(239,68,68,.35), 0 0 8px  rgba(239,68,68,.30); }
-        50%      { box-shadow: 0 0 0 1px rgba(239,68,68,.65), 0 0 22px rgba(239,68,68,.55); }
-    }
-    .pc-srm-row-long:hover {
-        background: linear-gradient(90deg, rgba(239,68,68,0.28), rgba(30, 41, 59, 0.85) 60%) !important;
+        0%, 100% { box-shadow: 0 0 8px  rgba(239,68,68,.7), 0 0 0    rgba(239,68,68,0);   transform: scale(1);    }
+        50%      { box-shadow: 0 0 16px rgba(239,68,68,1),  0 0 30px rgba(251,191,36,.7); transform: scale(1.06); }
     }
 
     /* ── Right stack: rate badge + billed amount ── */
@@ -4063,10 +4052,10 @@
         flex-shrink: 0;
     }
     .pc-srm-billed {
-        font-size: 0.7rem; color: #cbd5e1; font-weight: 700; letter-spacing: 0.01em;
+        font-size: 0.74rem; color: #fde68a !important; font-weight: 700; letter-spacing: 0.01em;
     }
     .pc-srm-row-aud {
-        font-size: 0.72rem; color: #cbd5e1; margin-top: 2px;
+        font-size: 0.72rem; color: #e2e8f0 !important; margin-top: 2px;
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
 
@@ -4125,7 +4114,10 @@
         width: 360px;
         max-width: calc(100vw - 32px);
         background: rgba(15, 23, 42, 0.97);
-        color: #f1f5f9;
+        /* !important so the panel's text doesn't inherit the brown
+           "mixed-rate" color the parent table cell sets via inline style on
+           the PC-name cell (e.g. style="color:#b45309"). */
+        color: #f1f5f9 !important;
         border: 1px solid rgba(202, 138, 4, 0.30);
         border-radius: 14px;
         padding: 12px 12px 10px;
@@ -4137,7 +4129,21 @@
         cursor: default;
         backdrop-filter: blur(6px);
         -webkit-backdrop-filter: blur(6px);
+        font-weight: 400;
     }
+    /* Belt-and-suspenders: force readable text colors on EVERY descendant
+       so the panel can never inherit "black-on-black" from a styled table
+       row / cell outside our control. */
+    .pc-mix-panel .pc-mix-row-date    { color: #cbd5e1 !important; }
+    .pc-mix-panel .pc-mix-row-hours   { color: #94a3b8 !important; }
+    .pc-mix-panel .pc-mix-row-label   { color: #94a3b8 !important; }
+    .pc-mix-panel .pc-mix-rate-badge  { color: #1e1e1e !important; }
+    .pc-mix-panel .pc-mix-chip        { color: #422006 !important; }
+    .pc-mix-panel .pc-mix-footer-hint { color: #64748b !important; }
+    .pc-mix-panel .pc-mix-row-arrow   { color: #64748b !important; }
+    .pc-mix-panel .pc-mix-row:hover .pc-mix-row-arrow { color: #f1f5f9 !important; }
+    .pc-mix-panel .pc-mix-header,
+    .pc-mix-panel .pc-mix-header > span:first-of-type { color: #f8fafc !important; }
     .pc-mix-panel::before {
         content: '';
         position: absolute;

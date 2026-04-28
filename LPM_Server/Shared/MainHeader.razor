@@ -2492,6 +2492,40 @@
     </div>
 }
 
+@* ── Admin-Time sanity confirmation (when > 20 min on Add Session step 3) ── *@
+@if (_showAdminTimeConfirm)
+{
+    <div class="atc-overlay" @onclick="CancelAdminTimeConfirm">
+        <div class="atc-card" @onclick:stopPropagation="true">
+            <div class="atc-glow"></div>
+            <div class="atc-icon-wrap">
+                <i class="ri-alarm-warning-fill atc-icon"></i>
+            </div>
+            <div class="atc-title">Are you sure?</div>
+            <div class="atc-subtitle">That's a long admin time</div>
+            <div class="atc-time-display">
+                <span class="atc-time-label">You entered</span>
+                <span class="atc-time-value">@_arfAdminTime</span>
+                <span class="atc-time-hint">(hours : minutes)</span>
+            </div>
+            <div class="atc-explain">
+                Admin time is usually under <strong>20 minutes</strong>.
+                Did you mean to type <code>0:@(_arfAdminTime?.Replace(":", "").PadLeft(2, '0').Substring(0, Math.Min(2, _arfAdminTime?.Replace(":", "").Length ?? 0)) ?? "00")</code>?
+            </div>
+            <div class="atc-actions">
+                <button class="atc-btn atc-btn-cancel" @onclick="CancelAdminTimeConfirm">
+                    <i class="ri-arrow-left-line"></i>
+                    No, let me fix it
+                </button>
+                <button class="atc-btn atc-btn-confirm" @onclick="ConfirmAdminTimeAndProceed">
+                    <i class="ri-check-double-line"></i>
+                    Yes, save it
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @* ── Add Session Records celebration overlay ── *@
 @if (_asdShowCelebrate)
 {
@@ -5988,6 +6022,162 @@
         .asd-row .asd-x { flex: 0 0 30px; }
     }
 
+    /* ── Admin-Time sanity confirmation (glowing "are you sure?") ── */
+    .atc-overlay {
+        position: fixed; inset: 0; z-index: 100002; padding: 30px;
+        background: radial-gradient(ellipse at center, rgba(15,23,42,.92) 0%, rgba(2,6,23,.97) 70%);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        display: flex; align-items: center; justify-content: center;
+        animation: atcFadeIn .2s ease both;
+    }
+    @@keyframes atcFadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+    .atc-card {
+        position: relative;
+        width: min(460px, calc(100vw - 32px));
+        background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+        border: 2px solid #f59e0b;
+        border-radius: 18px;
+        padding: 32px 28px 24px;
+        box-shadow:
+            0 24px 64px rgba(0,0,0,.6),
+            0 0 0 1px rgba(245,158,11,.30),
+            0 0 60px rgba(245,158,11,.35),
+            inset 0 1px 0 rgba(255,255,255,.05);
+        text-align: center;
+        animation: atcCardIn .35s cubic-bezier(.175,.885,.32,1.275) both;
+    }
+    @@keyframes atcCardIn {
+        from { opacity: 0; transform: translateY(20px) scale(.92); }
+        to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    /* Pulsing glow ring around the card */
+    .atc-glow {
+        position: absolute; inset: -3px;
+        border-radius: 20px;
+        pointer-events: none;
+        background: linear-gradient(135deg, #fbbf24, #f59e0b, #ef4444, #f59e0b, #fbbf24);
+        background-size: 300% 300%;
+        opacity: .55;
+        filter: blur(14px);
+        z-index: -1;
+        animation: atcGlowShift 3s ease-in-out infinite, atcGlowPulse 2s ease-in-out infinite;
+    }
+    @@keyframes atcGlowShift {
+        0%, 100% { background-position: 0% 50%; }
+        50%      { background-position: 100% 50%; }
+    }
+    @@keyframes atcGlowPulse {
+        0%, 100% { opacity: .45; }
+        50%      { opacity: .75; }
+    }
+
+    .atc-icon-wrap {
+        width: 80px; height: 80px;
+        margin: 0 auto 12px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(251,191,36,.25), transparent 70%);
+        display: flex; align-items: center; justify-content: center;
+        animation: atcIconPulse 1.4s ease-in-out infinite;
+    }
+    @@keyframes atcIconPulse {
+        0%, 100% { transform: scale(1);    box-shadow: 0 0 0 0 rgba(251,191,36,.6); }
+        50%      { transform: scale(1.08); box-shadow: 0 0 0 16px rgba(251,191,36,0); }
+    }
+    .atc-icon {
+        font-size: 3rem;
+        color: #fbbf24;
+        filter: drop-shadow(0 0 12px rgba(251,191,36,.55));
+    }
+
+    .atc-title {
+        font-size: 1.65rem; font-weight: 900;
+        color: #fbbf24;
+        letter-spacing: .02em;
+        text-shadow: 0 0 24px rgba(251,191,36,.45);
+        margin-bottom: 4px;
+    }
+    .atc-subtitle {
+        font-size: .92rem;
+        color: #cbd5e1;
+        margin-bottom: 18px;
+    }
+
+    .atc-time-display {
+        background: rgba(15,23,42,.6);
+        border: 1px solid rgba(245,158,11,.4);
+        border-radius: 12px;
+        padding: 14px 18px;
+        margin: 0 auto 16px;
+        display: flex; flex-direction: column; align-items: center; gap: 4px;
+    }
+    .atc-time-label { font-size: .7rem; color: #94a3b8; text-transform: uppercase; letter-spacing: .08em; font-weight: 600; }
+    .atc-time-value {
+        font-size: 2.4rem; font-weight: 900;
+        color: #fff;
+        font-variant-numeric: tabular-nums;
+        line-height: 1;
+        text-shadow: 0 0 16px rgba(251,191,36,.55);
+    }
+    .atc-time-hint { font-size: .68rem; color: #64748b; font-style: italic; }
+
+    .atc-explain {
+        font-size: .85rem; color: #cbd5e1; line-height: 1.45;
+        margin-bottom: 22px;
+        padding: 0 8px;
+    }
+    .atc-explain strong { color: #fbbf24; }
+    .atc-explain code {
+        background: rgba(245,158,11,.15);
+        color: #fde68a;
+        padding: 2px 8px; border-radius: 5px;
+        font-family: ui-monospace, monospace;
+        font-weight: 700;
+    }
+
+    .atc-actions {
+        display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;
+    }
+    .atc-btn {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 11px 20px;
+        border-radius: 10px;
+        font-size: .9rem; font-weight: 700;
+        cursor: pointer;
+        border: 1px solid transparent;
+        transition: transform .12s ease, box-shadow .15s ease, background .15s ease;
+        min-height: 44px;
+    }
+    .atc-btn-cancel {
+        background: rgba(148,163,184,.12);
+        color: #e2e8f0;
+        border-color: rgba(148,163,184,.3);
+    }
+    .atc-btn-cancel:hover {
+        background: rgba(148,163,184,.22);
+        transform: translateY(-1px);
+    }
+    .atc-btn-confirm {
+        background: linear-gradient(135deg, #f59e0b, #ef4444);
+        color: #fff;
+        box-shadow: 0 4px 16px rgba(239,68,68,.4);
+    }
+    .atc-btn-confirm:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 6px 20px rgba(239,68,68,.55);
+    }
+
+    @@media (max-width: 480px) {
+        .atc-card { padding: 24px 20px 20px; }
+        .atc-icon { font-size: 2.4rem; }
+        .atc-title { font-size: 1.35rem; }
+        .atc-time-value { font-size: 2rem; }
+        .atc-actions { flex-direction: column-reverse; }
+        .atc-btn { width: 100%; justify-content: center; }
+    }
+
     /* ── Post-Go celebration overlay (records inserted) ── */
     .asd-celebrate-overlay {
         position: fixed; inset: 0; z-index: 100001; padding:30px;
@@ -7633,6 +7823,8 @@
     string _arfGrade         = "";
     string _arfSessionLength = "";  // auto-calculated from TA rows; user may override
     string _arfAdminTime     = "";
+    bool   _showAdminTimeConfirm;     // glowing "are you sure?" modal when admin time > 20 min
+    bool   _adminTimeConfirmed;       // set true once user confirms; reset on next ExecuteImport
     string _arfTotalTa       = "";
     string _arfTaRangeFrom   = "";
     string _arfTaRangeTo     = "";
@@ -8019,6 +8211,19 @@
         if (h < 0 || h > 23 || m < 0 || m > 59) return false;
         // Must be exactly HH:MM (2 digits : 2 digits)
         return parts[0].Length == 2 && parts[1].Length == 2;
+    }
+
+    void CancelAdminTimeConfirm()
+    {
+        _showAdminTimeConfirm = false;
+        // _adminTimeConfirmed stays false; user is back on step 3 to fix the value.
+    }
+
+    async Task ConfirmAdminTimeAndProceed()
+    {
+        _showAdminTimeConfirm = false;
+        _adminTimeConfirmed   = true;
+        await ExecuteImport();
     }
 
     int ArfTimeToMinutes(string val)
@@ -9090,6 +9295,19 @@
     async Task ExecuteImport()
     {
         if (!_msgUserId.HasValue || _importPcId == 0 || _importSessionBytes == null) return;
+
+        // Sanity check: admin time > 20 min is almost always a typo (user typed "3:00"
+        // instead of "0:03"). Show a glowing confirmation modal; if the user cancels,
+        // they go back to step 3 with all values intact.
+        var adminMins = ArfTimeToMinutes(_arfAdminTime.Trim());
+        if (adminMins > 20 && !_adminTimeConfirmed)
+        {
+            _showAdminTimeConfirm = true;
+            StateHasChanged();
+            return;
+        }
+        _adminTimeConfirmed = false; // reset for the next import action
+
         var pcName = _approvedPcs.FirstOrDefault(p => p.PcId == _importPcId)?.FullName ?? $"PC {_importPcId}";
         ActivitySvc.RecordActivity(_logUsername, $"Clicked Go on Add Session for: {pcName}", "session");
         // Read final summary from Quill editor before closing modal
@@ -11089,11 +11307,13 @@ string _actionPcSearch = "";
         // If the user uploaded a finished PDF, skip Quill and use the bytes directly.
         var uploadedPdf = _memoUploadedPdfBytes;
 
-        // Read HTML while modal is still open and Quill is in DOM (only needed in editor mode)
+        // Read HTML while modal is still open and Quill is in DOM (only needed in editor mode).
+        // Coalesce the JS-interop result to "" so `html` is non-nullable for the rest of the method
+        // (PdfService.GenerateMemoPdf takes a non-null string).
         var html = uploadedPdf != null
             ? ""
-            : await JSRuntime.InvokeAsync<string>("eval",
-                "window._memoQuill ? window._memoQuill.root.innerHTML : ''");
+            : (await JSRuntime.InvokeAsync<string>("eval",
+                "window._memoQuill ? window._memoQuill.root.innerHTML : ''")) ?? "";
 
         // Editor-mode guard: block submit if the Quill is empty (no uploaded PDF either).
         // Strip HTML tags + decode entities + trim — covers Quill's empty sentinels
@@ -11186,7 +11406,7 @@ string _actionPcSearch = "";
                     // Step 1: Generate PDF from Quill HTML
                     sGen.Status = 1;
                     await InvokeAsync(StateHasChanged);
-                    pdfBytes = PdfSvc.GenerateMemoPdf(html);
+                    pdfBytes = PdfSvc.GenerateMemoPdf(html ?? "");
                     sGen.Status = 2;
                     await InvokeAsync(StateHasChanged);
                 }

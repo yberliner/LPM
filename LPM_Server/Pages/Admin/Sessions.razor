@@ -296,10 +296,34 @@
                                         <td class="py-2">
                                             <span class="sa-id-sess" title="Session ID">sess #@s.SessionId</span>
                                         </td>
-                                        <td class="text-center py-2">
-                                            <span class="badge rounded-pill bg-light border text-dark px-2" style="font-size:0.78rem;">@DashboardService.Fmt(s.LengthSec)</span>
+                                        <td class="text-center py-2 @(s.LengthSec > 10800 ? "wr-warn-cell" : "")">
+                                            @if (s.LengthSec > 10800)
+                                            {
+                                                <span class="wr-warn-value">@DashboardService.Fmt(s.LengthSec)</span>
+                                                <span class="wr-warn-tip">
+                                                    <strong><i class="ri-alert-fill me-1"></i>Duration over 3 hours</strong>
+                                                    <span>Typical sessions are 1–2.5 hours. Please verify the length wasn't mistyped — e.g.&nbsp;<code>3:30</code> instead of <code>0:30</code>.</span>
+                                                </span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge rounded-pill bg-light border text-dark px-2" style="font-size:0.78rem;">@DashboardService.Fmt(s.LengthSec)</span>
+                                            }
                                         </td>
-                                        <td class="text-center py-2" style="font-size:0.83rem;color:#6b7280;">@DashboardService.Fmt(s.AdminSec)</td>
+                                        <td class="text-center py-2 @(s.AdminSec > 1800 ? "wr-warn-cell" : "")" style="@(s.AdminSec > 1800 ? "" : "font-size:0.83rem;color:#6b7280;")">
+                                            @if (s.AdminSec > 1800)
+                                            {
+                                                <span class="wr-warn-value">@DashboardService.Fmt(s.AdminSec)</span>
+                                                <span class="wr-warn-tip">
+                                                    <strong><i class="ri-alert-fill me-1"></i>Admin time over 30 minutes</strong>
+                                                    <span>Admin time is usually under 20&nbsp;min. Common typo: <code>3:00</code> instead of <code>0:03</code>. Please confirm.</span>
+                                                </span>
+                                            }
+                                            else
+                                            {
+                                                @DashboardService.Fmt(s.AdminSec)
+                                            }
+                                        </td>
                                         <td class="text-center py-2">@if (s.IsFree) { <span class="badge sa-badge-free">FREE</span> }</td>
                                         <td class="py-1" @oncontextmenu:stopPropagation="true">
                                             @{ var pcWallets = _pcWallets.GetValueOrDefault(pcGroup.PcId) ?? new(); }
@@ -753,6 +777,110 @@
     .sa-badge-pending      { background: #fef3c7; color: #92400e; font-size: 0.68rem; }
     .sa-badge-approved-sm  { background: #d1fae5; color: #065f46; font-size: 0.68rem; }
     .sa-badge-free         { background: #ede9fe; color: #5b21b6; font-size: 0.68rem; }
+
+    /* ── Warning cells (Duration > 3:00, Admin > 0:30) ──
+       Big red value with a pulsing aura + animated tooltip on hover. */
+    .wr-warn-cell {
+        position: relative !important;
+        overflow: visible !important;
+        cursor: help;
+    }
+    .wr-warn-value {
+        display: inline-block;
+        font-size: 1.05rem;
+        font-weight: 900;
+        color: #fff;
+        background: linear-gradient(135deg, #ef4444, #dc2626);
+        padding: 5px 12px;
+        border-radius: 8px;
+        font-variant-numeric: tabular-nums;
+        letter-spacing: .02em;
+        box-shadow:
+            0 2px 6px rgba(220, 38, 38, .35),
+            0 0 0 0 rgba(220, 38, 38, .55);
+        animation: wrWarnPulse 1.6s ease-in-out infinite;
+        transition: transform .18s ease, box-shadow .2s ease;
+    }
+    @@keyframes wrWarnPulse {
+        0%, 100% {
+            box-shadow: 0 2px 6px rgba(220, 38, 38, .35),
+                        0 0 0 0 rgba(220, 38, 38, .55);
+        }
+        50% {
+            box-shadow: 0 2px 6px rgba(220, 38, 38, .55),
+                        0 0 0 10px rgba(220, 38, 38, 0);
+        }
+    }
+    .wr-warn-cell:hover .wr-warn-value {
+        transform: scale(1.06);
+        box-shadow: 0 4px 14px rgba(220, 38, 38, .55);
+        animation-play-state: paused;
+    }
+
+    /* Animated tooltip — slides + fades in on hover */
+    .wr-warn-tip {
+        position: absolute;
+        top: calc(100% + 10px);
+        left: 50%;
+        transform: translate(-50%, -6px) scale(.94);
+        z-index: 60;
+        width: 280px;
+        background: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+        color: #fef3c7;
+        border: 1px solid rgba(239, 68, 68, .55);
+        border-radius: 10px;
+        padding: 10px 12px;
+        font-size: .78rem;
+        line-height: 1.45;
+        font-weight: 500;
+        text-align: left;
+        white-space: normal;
+        opacity: 0;
+        pointer-events: none;
+        box-shadow:
+            0 14px 36px rgba(0, 0, 0, .45),
+            0 0 24px rgba(239, 68, 68, .25);
+        transition: opacity .22s ease, transform .28s cubic-bezier(.175, .885, .32, 1.275);
+        cursor: default;
+    }
+    .wr-warn-tip::before {
+        content: '';
+        position: absolute;
+        bottom: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        border: 7px solid transparent;
+        border-bottom-color: #1e293b;
+        filter: drop-shadow(0 -2px 1px rgba(239, 68, 68, .35));
+    }
+    .wr-warn-tip strong {
+        display: block;
+        font-size: .82rem;
+        color: #fbbf24;
+        font-weight: 800;
+        letter-spacing: .02em;
+        margin-bottom: 4px;
+        text-shadow: 0 0 8px rgba(251, 191, 36, .35);
+    }
+    .wr-warn-tip span {
+        display: block;
+        color: #e2e8f0;
+        font-weight: 400;
+    }
+    .wr-warn-tip code {
+        background: rgba(239, 68, 68, .18);
+        color: #fecaca;
+        padding: 1px 6px;
+        border-radius: 4px;
+        font-family: ui-monospace, monospace;
+        font-weight: 700;
+    }
+    .wr-warn-cell:hover .wr-warn-tip,
+    .wr-warn-cell:focus-within .wr-warn-tip {
+        opacity: 1;
+        transform: translate(-50%, 0) scale(1);
+        pointer-events: auto;
+    }
     .sa-badge-status-draft    { background: #fef3c7; color: #92400e; font-size: 0.73rem; }
     .sa-badge-status-approved { background: #d1fae5; color: #065f46; font-size: 0.73rem; }
 
