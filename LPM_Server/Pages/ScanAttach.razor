@@ -1,0 +1,697 @@
+@page "/scan-attach"
+@attribute [Authorize(Roles = "Admin,Customer")]
+@using Microsoft.AspNetCore.Authorization
+@using LPM.Services
+@inject FolderService FolderSvc
+@inject DashboardService DashSvc
+@inject PcService PcSvc
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthState
+
+<div class="sa-page">
+    @if (_invalid)
+    {
+        <div class="sa-card">
+            <div class="sa-icon-wrap"><i class="ri-error-warning-line" style="color:#f87171;"></i></div>
+            <div class="sa-title">Nothing to attach</div>
+            <div class="sa-sub">@_invalidMsg</div>
+            <button class="sa-ok-btn" @onclick='() => Nav.NavigateTo("/Home", true)'>Back to home page</button>
+        </div>
+    }
+    else if (_showSuccess)
+    {
+        <div class="sa-success-overlay">
+            <div class="sa-success-card">
+                <div class="sa-ring"></div>
+                <div class="sa-check"><i class="ri-check-line"></i></div>
+                <div class="sa-success-title">Attached!</div>
+                <div class="sa-success-sub">
+                    <i class="ri-user-line me-1" style="color:#8b5cf6;"></i>
+                    <span>@_successPcName</span>
+                    @if (_successIsSolo) { <span class="sa-solo-badge">Solo</span> }
+                </div>
+                <div class="sa-success-list">
+                    <div class="sa-success-item">
+                        <i class="ri-checkbox-circle-fill" style="color:#22c55e;font-size:1.15rem;"></i>
+                        <div>
+                            <div style="font-weight:700;color:#0f172a;">Attached to session</div>
+                            <div class="sa-sub-line">@_successSessionDate · @_successSessionName</div>
+                        </div>
+                    </div>
+                    <div class="sa-success-item">
+                        <i class="ri-checkbox-circle-fill" style="color:#22c55e;font-size:1.15rem;"></i>
+                        <div>
+                            <div style="font-weight:700;color:#0f172a;">Type</div>
+                            <div class="sa-sub-line">
+                                <span class="sa-type-pill sa-type-@(_successTypeKey.ToLower())">@_successTypeLabel</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="sa-success-item">
+                        <i class="ri-checkbox-circle-fill" style="color:#22c55e;font-size:1.15rem;"></i>
+                        <div>
+                            <div style="font-weight:700;color:#0f172a;">
+                                @(_successSavedNames.Count > 1 ? $"Saved as ({_successSavedNames.Count} files)" : "Saved as")
+                            </div>
+                            @foreach (var n in _successSavedNames)
+                            {
+                                <div class="sa-sub-line" style="word-break:break-all;">@n</div>
+                            }
+                        </div>
+                    </div>
+                    <div class="sa-success-item">
+                        <i class="ri-checkbox-circle-fill" style="color:#22c55e;font-size:1.15rem;"></i>
+                        <div>
+                            <div style="font-weight:700;color:#0f172a;">Original</div>
+                            <div class="sa-sub-line">@_successOriginalName · @FormatBytes(_successTotalSize) · PDF</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="sa-sparkles">
+                    <span class="sa-spark" style="--d:0;--x:-60px;--y:-50px;"></span>
+                    <span class="sa-spark" style="--d:1;--x:65px;--y:-45px;"></span>
+                    <span class="sa-spark" style="--d:2;--x:-55px;--y:45px;"></span>
+                    <span class="sa-spark" style="--d:3;--x:60px;--y:50px;"></span>
+                    <span class="sa-spark" style="--d:4;--x:0;--y:-70px;"></span>
+                    <span class="sa-spark" style="--d:5;--x:-75px;--y:0;"></span>
+                    <span class="sa-spark" style="--d:6;--x:75px;--y:0;"></span>
+                    <span class="sa-spark" style="--d:7;--x:0;--y:75px;"></span>
+                </div>
+                <button class="sa-ok-btn" @onclick="OnGreatClick">
+                    <i class="ri-thumb-up-line me-2"></i>Great!
+                </button>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="sa-card">
+            <div class="sa-header">
+                <i class="ri-file-pdf-2-line sa-header-icon"></i>
+                <div>
+                    <div class="sa-title">Attach to existing session</div>
+                    <div class="sa-sub">@_originalFileName · @FormatBytes(_totalBytes) @(_inboxFiles.Count > 1 ? $" · {_inboxFiles.Count} files" : "")</div>
+                </div>
+            </div>
+
+            @if (_step == 1)
+            {
+                <div class="sa-step-label">Step 1 · Select PC</div>
+                @if (_pcs.Count == 0)
+                {
+                    <div class="sa-empty">
+                        <i class="ri-lock-line sa-empty-icon"></i>
+                        <div class="sa-empty-title">No folders assigned</div>
+                        <div class="sa-empty-sub">You haven't been granted access to any PC folder yet.<br/>Ask your administrator.</div>
+                    </div>
+                }
+                else
+                {
+                    <input type="text" class="sa-search" placeholder="Search PCs…"
+                           @bind="_pcSearch" @bind:event="oninput" />
+                    <div class="sa-list">
+                        @foreach (var pc in _pcs.Where(p => string.IsNullOrEmpty(_pcSearch) || p.FullName.Contains(_pcSearch, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            var thisPc = pc;
+                            <div class="sa-row" @onclick="() => OnPcSelected(thisPc.PcId, thisPc.FullName, false)">
+                                <i class="ri-user-line" style="color:#8b5cf6;"></i>
+                                <span class="sa-row-name">@thisPc.FullName</span>
+                                <i class="ri-arrow-right-s-line sa-row-arrow"></i>
+                            </div>
+                            @if (thisPc.IsAlsoSolo)
+                            {
+                                <div class="sa-row" @onclick="() => OnPcSelected(thisPc.PcId, thisPc.FullName, true)">
+                                    <i class="ri-user-line" style="color:#ef4444;"></i>
+                                    <span class="sa-row-name">@thisPc.FullName</span>
+                                    <span class="sa-solo-badge">Solo</span>
+                                    <i class="ri-arrow-right-s-line sa-row-arrow"></i>
+                                </div>
+                            }
+                        }
+                    </div>
+                }
+            }
+            else if (_step == 2)
+            {
+                <div class="sa-pc-pill">
+                    <i class="ri-user-line"></i>
+                    <span>@_selectedPcName</span>
+                    @if (_selectedSolo) { <span class="sa-solo-badge">Solo</span> }
+                    <button class="sa-back-btn" @onclick="BackToStep1">
+                        <i class="ri-arrow-left-s-line"></i>Change
+                    </button>
+                </div>
+                <div class="sa-step-label">Step 2 · Select session / report (last 5)</div>
+                @if (_recentSessions.Count == 0)
+                {
+                    <div class="sa-empty">
+                        <i class="ri-folder-line sa-empty-icon"></i>
+                        <div class="sa-empty-title">No sessions yet</div>
+                        <div class="sa-empty-sub">This PC has no sessions.<br/>Add a session first or pick a different PC.</div>
+                        <button class="sa-ok-btn" style="margin-top:14px;" @onclick="BackToStep1">Pick different PC</button>
+                    </div>
+                }
+                else
+                {
+                    <div class="sa-list">
+                        @foreach (var s in _recentSessions)
+                        {
+                            var sid = s.SessionId;
+                            var sname = s.Name;
+                            var sdate = s.CreatedAt;
+                            <div class="sa-row sa-session-row" @onclick="() => OnSessionSelected(sid, sname, sdate)">
+                                <i class="ri-file-paper-2-line" style="color:#0ea5e9;"></i>
+                                <div class="sa-session-main">
+                                    <div class="sa-session-name">@sname</div>
+                                    <div class="sa-session-date">@FormatDateShort(sdate)</div>
+                                </div>
+                                <i class="ri-arrow-right-s-line sa-row-arrow"></i>
+                            </div>
+                        }
+                    </div>
+                }
+            }
+            else if (_step == 3)
+            {
+                <div class="sa-pc-pill">
+                    <i class="ri-user-line"></i>
+                    <span>@_selectedPcName</span>
+                    @if (_selectedSolo) { <span class="sa-solo-badge">Solo</span> }
+                    <span style="color:#94a3b8;">·</span>
+                    <i class="ri-file-paper-2-line" style="color:#0ea5e9;"></i>
+                    <span style="font-weight:600;">@_selectedSessionName</span>
+                    <button class="sa-back-btn" @onclick="BackToStep2">
+                        <i class="ri-arrow-left-s-line"></i>Change
+                    </button>
+                </div>
+                <div class="sa-step-label">Step 3 · Choose attachment type</div>
+                <div class="sa-type-grid">
+                    <button class="sa-type-card sa-type-normal" @onclick='() => OnTypeSelected("Normal", "Normal")'>
+                        <i class="ri-attachment-2"></i>
+                        <div class="sa-type-name">Normal</div>
+                        <div class="sa-type-desc">Plain attachment</div>
+                    </button>
+                    <button class="sa-type-card sa-type-pinksheet" @onclick='() => OnTypeSelected("PinkSheet", "Pink Sheet")'>
+                        <i class="ri-file-add-line"></i>
+                        <div class="sa-type-name">Pink Sheet</div>
+                        <div class="sa-type-desc">Pink-page report</div>
+                    </button>
+                    <button class="sa-type-card sa-type-cramming" @onclick='() => OnTypeSelected("Cramming", "Cramming")'>
+                        <i class="ri-file-add-line"></i>
+                        <div class="sa-type-name">Cramming</div>
+                        <div class="sa-type-desc">Cramming notes</div>
+                    </button>
+                    <button class="sa-type-card sa-type-instruct" @onclick='() => OnTypeSelected("Instruct", "Instruct")'>
+                        <i class="ri-file-add-line"></i>
+                        <div class="sa-type-name">Instruct</div>
+                        <div class="sa-type-desc">Shows in My Auditing Status</div>
+                    </button>
+                </div>
+            }
+            else if (_step == 4)
+            {
+                <div class="sa-saving">
+                    <span class="spinner-border" style="color:#8b5cf6;width:32px;height:32px;border-width:3px;"></span>
+                    <div class="sa-saving-text">Saving attachment…</div>
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <div class="sa-error"><i class="ri-error-warning-line me-1"></i>@_error</div>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .sa-page {
+        min-height: 100vh; padding: 24px 16px;
+        background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
+        display: flex; align-items: flex-start; justify-content: center;
+    }
+    .sa-card {
+        max-width: 560px; width: 100%;
+        background: #ffffff; color: #0f172a;
+        border-radius: 18px;
+        box-shadow: 0 20px 60px rgba(0,0,0,.45);
+        padding: 22px;
+        animation: sa-in .35s cubic-bezier(.175,.885,.32,1.275);
+    }
+    @@keyframes sa-in { from { opacity:0; transform: translateY(12px) scale(.97); } to { opacity:1; transform: translateY(0) scale(1); } }
+
+    .sa-header { display:flex; align-items:center; gap:14px; margin-bottom:18px; padding-bottom:14px; border-bottom:1px solid #e5e7eb; }
+    .sa-header-icon {
+        font-size: 2rem;
+        background: linear-gradient(135deg, #fee2e2, #fef9c3);
+        color: #ef4444;
+        padding: 12px; border-radius: 14px;
+    }
+    .sa-icon-wrap { font-size: 3rem; text-align:center; margin-bottom: 8px; }
+    .sa-title    { font-size: 1.25rem; font-weight: 800; line-height: 1.2; }
+    .sa-sub      { font-size: .82rem; color: #475569; margin-top: 2px; }
+    .sa-step-label { font-size: .78rem; font-weight: 700; color: #6d28d9; letter-spacing: .04em; text-transform: uppercase; margin: 6px 0 10px; }
+
+    .sa-search {
+        width: 100%; padding: 10px 12px; min-height: 44px;
+        font-size: 1rem; border-radius: 10px;
+        border: 1px solid #cbd5e1; background: #f8fafc; color: #0f172a;
+        outline: none; margin-bottom: 10px;
+    }
+    .sa-search:focus { border-color: #8b5cf6; box-shadow: 0 0 0 3px rgba(139,92,246,.15); }
+
+    .sa-list { display: flex; flex-direction: column; gap: 6px; max-height: 60vh; overflow-y: auto; }
+    .sa-row {
+        display: flex; align-items: center; gap: 10px;
+        padding: 12px 14px; min-height: 44px;
+        background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 10px;
+        cursor: pointer; user-select: none;
+        transition: background .12s ease, border-color .12s ease, transform .08s ease;
+    }
+    .sa-row:hover  { background: #ede9fe; border-color: #c4b5fd; }
+    .sa-row:active { transform: scale(.985); }
+    .sa-row-name   { flex: 1; font-weight: 600; color: #0f172a; }
+    .sa-row-arrow  { color: #94a3b8; }
+    .sa-session-row .sa-session-main { flex: 1; min-width: 0; }
+    .sa-session-name { font-weight: 700; color: #0f172a; word-break: break-word; }
+    .sa-session-date { font-size: .78rem; color: #64748b; margin-top: 2px; }
+
+    .sa-pc-pill {
+        display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+        background: #f0f4ff; border: 1px solid #e5e7eb; border-radius: 12px;
+        padding: 8px 12px; margin-bottom: 12px;
+        font-weight: 700; color: #1e293b;
+    }
+    .sa-back-btn {
+        margin-left: auto; background: transparent; border: none;
+        color: #6d28d9; font-weight: 700; font-size: .85rem; cursor: pointer;
+        display: inline-flex; align-items: center; gap: 2px;
+        padding: 4px 8px; border-radius: 8px;
+    }
+    .sa-back-btn:hover { background: rgba(139,92,246,.12); }
+
+    .sa-solo-badge {
+        font-size: .62rem; font-weight: 800; letter-spacing: .12em; text-transform: uppercase;
+        color: #fff; background: linear-gradient(135deg, #ef4444, #b91c1c);
+        border-radius: 999px; padding: 2px 9px;
+        box-shadow: 0 0 8px rgba(239,68,68,.45);
+    }
+
+    .sa-empty { text-align: center; padding: 30px 16px; }
+    .sa-empty-icon { font-size: 3rem; color: #cbd5e1; margin-bottom: 12px; }
+    .sa-empty-title { font-size: 1.1rem; font-weight: 700; color: #475569; }
+    .sa-empty-sub { font-size: .85rem; color: #94a3b8; margin-top: 6px; }
+
+    .sa-saving { padding: 30px 16px; text-align: center; }
+    .sa-saving-text { margin-top: 12px; font-size: .92rem; color: #475569; font-weight: 600; }
+
+    .sa-error { margin-top: 12px; padding: 10px 12px; background: #fee2e2; border: 1px solid #fecaca; border-radius: 8px; color: #991b1b; font-size: .85rem; }
+
+    /* ── Type grid (Step 3) ── */
+    .sa-type-grid {
+        display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;
+        margin-top: 6px;
+    }
+    .sa-type-card {
+        position: relative;
+        border: 2px solid; border-radius: 14px;
+        padding: 18px 14px; min-height: 120px;
+        background: #fff; cursor: pointer;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 6px; text-align: center;
+        transition: transform .12s ease, box-shadow .12s ease, background .12s ease;
+        font: inherit; color: inherit;
+    }
+    .sa-type-card:hover  { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(0,0,0,.12); }
+    .sa-type-card:active { transform: translateY(0); }
+    .sa-type-card i      { font-size: 2rem; }
+    .sa-type-name { font-size: 1rem; font-weight: 800; }
+    .sa-type-desc { font-size: .74rem; color: #64748b; }
+
+    .sa-type-normal     { border-color: #94a3b8; }
+    .sa-type-normal i   { color: #475569; }
+    .sa-type-normal:hover     { background: #f1f5f9; }
+    .sa-type-pinksheet  { border-color: #ec4899; }
+    .sa-type-pinksheet i { color: #ec4899; }
+    .sa-type-pinksheet:hover  { background: #fdf2f8; }
+    .sa-type-cramming   { border-color: #34d399; }
+    .sa-type-cramming i { color: #10b981; }
+    .sa-type-cramming:hover   { background: #ecfdf5; }
+    .sa-type-instruct   { border-color: #60a5fa; }
+    .sa-type-instruct i { color: #2563eb; }
+    .sa-type-instruct:hover   { background: #eff6ff; }
+
+    /* ── Type pill (success card) ── */
+    .sa-type-pill {
+        display: inline-block; padding: 3px 10px;
+        border-radius: 999px; font-size: .78rem; font-weight: 700;
+        letter-spacing: .02em;
+    }
+    .sa-type-pill.sa-type-normal    { background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; }
+    .sa-type-pill.sa-type-pinksheet { background: #fce7f3; color: #9d174d; border: 1px solid #f9a8d4; }
+    .sa-type-pill.sa-type-cramming  { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
+    .sa-type-pill.sa-type-instruct  { background: #dbeafe; color: #1e3a8a; border: 1px solid #93c5fd; }
+
+    /* ── Success overlay (WOW animation) ── */
+    .sa-success-overlay {
+        position: fixed; inset: 0; z-index: 99998;
+        background: radial-gradient(ellipse at center, rgba(15,23,42,.78), rgba(15,23,42,.95));
+        display: flex; align-items: center; justify-content: center;
+        animation: sa-fade .35s ease;
+        padding: 16px; overflow-y: auto;
+    }
+    @@keyframes sa-fade { from { opacity:0; } to { opacity:1; } }
+
+    .sa-success-card {
+        position: relative;
+        background: linear-gradient(135deg, #fff 0%, #f0f4ff 100%);
+        border-radius: 24px;
+        padding: 48px 36px 28px;
+        box-shadow: 0 25px 80px rgba(0,0,0,.55), 0 0 100px rgba(34,197,94,.25);
+        max-width: 520px; width: 100%; text-align: center;
+        animation: sa-pop .55s cubic-bezier(.175,.885,.32,1.275);
+        overflow: hidden;
+    }
+    @@keyframes sa-pop { 0% { transform: scale(.65); opacity:0; } 100% { transform: scale(1); opacity:1; } }
+
+    .sa-ring {
+        position: absolute; top: 4px; left: 50%;
+        transform: translateX(-50%);
+        width: 130px; height: 130px;
+        border: 3px solid rgba(34,197,94,.35);
+        border-radius: 50%;
+        animation: sa-ring 2s ease-in-out infinite;
+        pointer-events: none;
+    }
+    @@keyframes sa-ring {
+        0%, 100% { transform: translateX(-50%) scale(1);    opacity: .55; }
+        50%      { transform: translateX(-50%) scale(1.18); opacity: .15; }
+    }
+    .sa-check {
+        position: relative; z-index: 2;
+        margin: 0 auto 18px;
+        width: 92px; height: 92px;
+        background: linear-gradient(135deg, #22c55e, #15803d);
+        border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        box-shadow: 0 10px 36px rgba(34,197,94,.55);
+        animation: sa-bounce .65s cubic-bezier(.175,.885,.32,1.275);
+    }
+    .sa-check i { color: #fff; font-size: 3.2rem; font-weight: 900; animation: sa-draw .45s ease .22s both; }
+    @@keyframes sa-bounce { 0% { transform: scale(0); } 60% { transform: scale(1.18); } 100% { transform: scale(1); } }
+    @@keyframes sa-draw   { from { opacity:0; transform: scale(0) rotate(-50deg); } to { opacity:1; transform: scale(1) rotate(0); } }
+
+    .sa-success-title { font-size: 1.7rem; font-weight: 800; color: #0f172a; margin-bottom: 8px; line-height: 1.2; letter-spacing: -.02em; }
+    .sa-success-sub   { display:flex; align-items:center; justify-content:center; gap:8px; font-size: 1.05rem; color: #475569; margin-bottom: 20px; font-weight: 600; word-break: break-all; }
+
+    .sa-success-list {
+        text-align: left;
+        margin: 16px auto 8px;
+        max-width: 460px;
+        background: rgba(241,245,249,.65);
+        border: 1px solid rgba(226,232,240,.8);
+        border-radius: 14px;
+        padding: 14px 16px;
+    }
+    .sa-success-item {
+        display: flex; align-items: flex-start; gap: 12px;
+        padding: 8px 0; color: #334155; font-size: .92rem;
+        animation: sa-slide .45s ease both;
+    }
+    .sa-success-item:nth-child(1) { animation-delay: .30s; }
+    .sa-success-item:nth-child(2) { animation-delay: .42s; }
+    .sa-success-item:nth-child(3) { animation-delay: .54s; }
+    .sa-success-item:nth-child(4) { animation-delay: .66s; }
+    @@keyframes sa-slide { from { opacity:0; transform: translateX(-14px); } to { opacity:1; transform: translateX(0); } }
+    .sa-sub-line { font-size: .82rem; color: #64748b; margin-top: 2px; word-break: break-all; }
+
+    .sa-sparkles { position: absolute; top: 80px; left: 50%; width: 0; height: 0; pointer-events: none; z-index: 3; }
+    .sa-spark {
+        position: absolute; top: 0; left: 0;
+        width: 10px; height: 10px;
+        background: linear-gradient(135deg, #fbbf24, #f59e0b);
+        border-radius: 50%;
+        box-shadow: 0 0 14px rgba(251,191,36,.9), 0 0 28px rgba(251,191,36,.5);
+        animation-name: sa-spark;
+        animation-duration: 1.6s;
+        animation-timing-function: ease-out;
+        animation-iteration-count: infinite;
+        animation-delay: calc(var(--d, 0) * 0.12s);
+    }
+    @@keyframes sa-spark {
+        0%   { transform: translate(-50%,-50%) scale(0); opacity: 1; }
+        50%  { transform: translate(calc(-50% + var(--x)), calc(-50% + var(--y))) scale(1); opacity: .85; }
+        100% { transform: translate(calc(-50% + var(--x) * 1.6), calc(-50% + var(--y) * 1.6)) scale(0); opacity: 0; }
+    }
+
+    .sa-ok-btn {
+        margin-top: 20px;
+        background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+        color: #fff; border: none;
+        font-weight: 700; font-size: 1rem; letter-spacing: .02em;
+        padding: 12px 32px; border-radius: 12px;
+        box-shadow: 0 8px 24px rgba(34,197,94,.4);
+        cursor: pointer;
+        transition: transform .2s, box-shadow .2s;
+        display: inline-flex; align-items: center; min-height: 44px;
+    }
+    .sa-ok-btn:hover  { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(34,197,94,.55); }
+    .sa-ok-btn:active { transform: translateY(0); }
+
+    @@media (max-width: 480px) {
+        .sa-card { padding: 18px; border-radius: 14px; }
+        .sa-success-card { padding: 40px 20px 24px; border-radius: 18px; }
+        .sa-success-title { font-size: 1.35rem; }
+        .sa-check { width: 78px; height: 78px; }
+        .sa-check i { font-size: 2.6rem; }
+        .sa-ring { width: 110px; height: 110px; }
+        .sa-type-grid { grid-template-columns: 1fr; }
+    }
+</style>
+
+@code {
+    [SupplyParameterFromQuery] public string? Name { get; set; }
+
+    string _username = "";
+    int? _personId;
+
+    // Inbox payload
+    List<(string FileName, byte[] Data, bool IsAttachment)> _inboxFiles = new();
+    string _originalFileName = "";
+    long _totalBytes;
+
+    bool _invalid;
+    string _invalidMsg = "";
+
+    int _step = 1;
+
+    // PC list
+    List<DashboardService.ApprovedPc> _pcs = new();
+    string _pcSearch = "";
+
+    // Selected PC
+    int    _selectedPcId;
+    string _selectedPcName = "";
+    bool   _selectedSolo;
+
+    // Selected session
+    int    _selectedSessionId;
+    string _selectedSessionName = "";
+    string _selectedSessionDate = "";
+
+    // Recent sessions for selected PC
+    List<(int SessionId, string Name, string CreatedAt)> _recentSessions = new();
+
+    string _error = "";
+    bool _saving;
+
+    // Success modal state
+    bool   _showSuccess;
+    string _successPcName = "";
+    bool   _successIsSolo;
+    string _successSessionName = "";
+    string _successSessionDate = "";
+    List<string> _successSavedNames = new();
+    string _successOriginalName = "";
+    long   _successTotalSize;
+    string _successTypeKey = "";
+    string _successTypeLabel = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        _username = auth.User.Identity?.Name ?? "";
+        var staffRole = auth.User.FindFirst("StaffRole")?.Value ?? "";
+
+        // Defense in depth — Solo users should not reach this page
+        if (staffRole == LPM.StaffRoles.Solo)
+        {
+            _invalid = true;
+            _invalidMsg = "Redirecting…";
+            Nav.NavigateTo("/Home", true);
+            return;
+        }
+
+        if (string.IsNullOrEmpty(_username))
+        {
+            _invalid = true;
+            _invalidMsg = "Not signed in. Please log in and try sharing again.";
+            return;
+        }
+
+        _inboxFiles = FolderSvc.GetScanInboxFiles(_username);
+        if (_inboxFiles.Count == 0)
+        {
+            _invalid = true;
+            _invalidMsg = "This shared file is no longer available (it expires after 3 hours). Try sharing it again.";
+            return;
+        }
+
+        _totalBytes = _inboxFiles.Sum(f => (long)(f.Data?.Length ?? 0));
+        _originalFileName = !string.IsNullOrEmpty(Name)
+            ? Name!
+            : StripInboxPrefix(_inboxFiles.First().FileName);
+
+        _personId = PcSvc.GetPersonIdByUsername(_username);
+        if (_personId.HasValue)
+            _pcs = DashSvc.GetApprovedPcsForUser(_personId.Value, _username);
+    }
+
+    void OnPcSelected(int pcId, string pcName, bool solo)
+    {
+        _error = "";
+        if (_personId.HasValue && !DashSvc.CanAccessPcFolder(_personId.Value, pcId, _username))
+        {
+            _error = "You do not have permission to attach to this PC.";
+            return;
+        }
+        _selectedPcId   = pcId;
+        _selectedPcName = pcName;
+        _selectedSolo   = solo;
+
+        _recentSessions = DashSvc.GetSessionsForPc(pcId, isSolo: solo)
+            .OrderByDescending(s => s.CreatedAt)
+            .ThenByDescending(s => s.SessionId)
+            .Take(5)
+            .ToList();
+        _step = 2;
+    }
+
+    void OnSessionSelected(int sessionId, string sessionName, string sessionCreatedAt)
+    {
+        _error = "";
+        _selectedSessionId   = sessionId;
+        _selectedSessionName = sessionName;
+        _selectedSessionDate = sessionCreatedAt;
+        _step = 3;
+    }
+
+    void BackToStep1()
+    {
+        _step = 1;
+        _selectedPcId = 0;
+        _selectedPcName = "";
+        _selectedSolo = false;
+        _recentSessions.Clear();
+    }
+
+    void BackToStep2()
+    {
+        _step = 2;
+        _selectedSessionId = 0;
+        _selectedSessionName = "";
+        _selectedSessionDate = "";
+    }
+
+    async Task OnTypeSelected(string typeKey, string typeLabel)
+    {
+        if (_saving) return;            // guard against double-tap before re-render
+        _saving = true;
+        _error = "";
+
+        // Re-check permission right before the write
+        if (_personId.HasValue && !DashSvc.CanAccessPcFolder(_personId.Value, _selectedPcId, _username))
+        {
+            _error = "You do not have permission to attach to this PC.";
+            _step = 2;
+            _saving = false;
+            StateHasChanged();
+            return;
+        }
+
+        _step = 4;
+        StateHasChanged();
+
+        try
+        {
+            var savedNames = new List<string>();
+            await Task.Run(() =>
+            {
+                foreach (var f in _inboxFiles)
+                {
+                    var saved = FolderSvc.SaveSharedPdfAsAttachment(
+                        _selectedPcId, _selectedSessionName, typeKey, f.Data, _selectedSolo);
+                    if (!string.IsNullOrEmpty(saved))
+                        savedNames.Add(saved!);
+                }
+            });
+
+            if (savedNames.Count == 0)
+            {
+                _error = "Failed to save the attachment (folder not found).";
+                _step = 3;
+                _saving = false;
+                StateHasChanged();
+                return;
+            }
+
+            // Inbox has been consumed — clear so it does not auto-load into Add Session
+            FolderSvc.ClearScanInbox(_username);
+
+            _successPcName       = _selectedPcName;
+            _successIsSolo       = _selectedSolo;
+            _successSessionName  = _selectedSessionName;
+            _successSessionDate  = FormatDateShort(_selectedSessionDate);
+            _successSavedNames   = savedNames;
+            _successOriginalName = _originalFileName;
+            _successTotalSize    = _totalBytes;
+            _successTypeKey      = typeKey;
+            _successTypeLabel    = typeLabel;
+            _showSuccess         = true;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ScanAttach] OnTypeSelected failed: {ex}");
+            _error = $"Save failed: {ex.Message}";
+            _step = 3;
+            _saving = false;
+            StateHasChanged();
+        }
+    }
+
+    void OnGreatClick() => Nav.NavigateTo("/Home", true);
+
+    static string StripInboxPrefix(string name)
+    {
+        var n = System.IO.Path.GetFileNameWithoutExtension(name);
+        if (n.StartsWith("ses_", StringComparison.OrdinalIgnoreCase)) n = n[4..];
+        else if (n.StartsWith("att_", StringComparison.OrdinalIgnoreCase)) n = n[4..];
+        return n + ".pdf";
+    }
+
+    static string FormatBytes(long b)
+    {
+        if (b <= 0) return "0 B";
+        if (b < 1024) return $"{b} B";
+        if (b < 1024 * 1024) return $"{b / 1024.0:0.#} KB";
+        return $"{b / (1024.0 * 1024):0.##} MB";
+    }
+
+    static string FormatDateShort(string raw)
+    {
+        if (string.IsNullOrEmpty(raw)) return "";
+        if (DateTime.TryParse(raw, out var dt)) return dt.ToString("dd/MM/yyyy");
+        return raw;
+    }
+}

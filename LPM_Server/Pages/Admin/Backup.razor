@@ -37,80 +37,8 @@
         </div>
     </div>
 
-    @* ── Warning Banner ── *@
-    @if (_downloading)
-    {
-        <div class="bk-warning-banner">
-            <div class="bk-warning-icon">
-                <i class="ri-alarm-warning-fill"></i>
-            </div>
-            <div style="flex:1;">
-                <div class="bk-warning-title">BACKUP IN PROGRESS</div>
-                <div class="bk-warning-text">
-                    You may switch to other tabs — the download continues in the background.
-                    Do NOT close this tab, navigate away from this page, or let your computer sleep.
-                </div>
-                @* ── User Backup bar ── *@
-                <div class="bk-phase-row mt-3">
-                    <div class="d-flex align-items-center gap-2 mb-1">
-                        @if (_userDone)
-                        {   <i class="ri-checkbox-circle-fill" style="color:#22c55e;font-size:1rem;"></i> }
-                        else if (_userActive)
-                        {   <span class="spinner-border spinner-border-sm" style="color:#fbbf24;width:14px;height:14px;border-width:2px;"></span> }
-                        else
-                        {   <i class="ri-time-line" style="color:#475569;font-size:1rem;"></i> }
-                        <span style="font-size:.8rem;font-weight:600;color:@(_userDone?"#22c55e":_userActive?"#fbbf24":"#64748b");">
-                            User Backup (1/2)
-                        </span>
-                        <span class="ms-auto" style="font-size:.75rem;color:#94a3b8;">
-                            @(_userTotal>0 ? $"{_userCurrent}/{_userTotal}" : (_userActive?"counting…":""))
-                        </span>
-                    </div>
-                    <div class="progress" style="height:7px;background:#0f172a;border-radius:4px;">
-                        <div class="progress-bar" style="width:@(_userTotal>0?(_userCurrent*100/_userTotal):0)%;
-                             background:@(_userDone?"#22c55e":"#3b82f6");transition:width .3s ease;"></div>
-                    </div>
-                    @if (_userActive && !string.IsNullOrEmpty(_userFile))
-                    {
-                        <div style="font-size:.7rem;color:#64748b;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-                            @_userFile
-                        </div>
-                    }
-                </div>
-
-                @* ── Server Backup bar ── *@
-                <div class="bk-phase-row mt-2">
-                    <div class="d-flex align-items-center gap-2 mb-1">
-                        @if (_serverDone)
-                        {   <i class="ri-checkbox-circle-fill" style="color:#22c55e;font-size:1rem;"></i> }
-                        else if (_serverActive)
-                        {   <span class="spinner-border spinner-border-sm" style="color:#fbbf24;width:14px;height:14px;border-width:2px;"></span> }
-                        else
-                        {   <i class="ri-time-line" style="color:#475569;font-size:1rem;"></i> }
-                        <span style="font-size:.8rem;font-weight:600;color:@(_serverDone?"#22c55e":_serverActive?"#fbbf24":"#64748b");">
-                            Server Backup (2/2)
-                        </span>
-                        <span class="ms-auto" style="font-size:.75rem;color:#94a3b8;">
-                            @(_serverTotal>0 ? $"{_serverCurrent}/{_serverTotal}" : (_serverActive?"counting…":"Waiting…"))
-                        </span>
-                    </div>
-                    <div class="progress" style="height:7px;background:#0f172a;border-radius:4px;opacity:@(_serverActive||_serverDone?"1":".35");">
-                        <div class="progress-bar" style="width:@(_serverTotal>0?(_serverCurrent*100/_serverTotal):0)%;
-                             background:@(_serverDone?"#22c55e":"#3b82f6");transition:width .3s ease;"></div>
-                    </div>
-                    @if (_serverActive && !string.IsNullOrEmpty(_serverFile))
-                    {
-                        <div style="font-size:.7rem;color:#64748b;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-                            @_serverFile
-                        </div>
-                    }
-                </div>
-            </div>
-        </div>
-    }
-
     @* ── Blocked by another user banner ── *@
-    @if (!string.IsNullOrEmpty(_blockedByUser) && !_downloading)
+    @if (!string.IsNullOrEmpty(_blockedByUser))
     {
         <div class="bk-blocked-banner mt-3">
             <div style="font-size:2.6rem; color:#f59e0b; flex-shrink:0; line-height:1;">
@@ -128,7 +56,7 @@
 
     @* ── Action ── *@
     <div class="d-flex align-items-center gap-3 mt-3 flex-wrap">
-        @if (!_downloading && !_fbfDownloading)
+        @if (!_fbfDownloading)
         {
             <button class="btn btn-primary btn-lg d-flex align-items-center gap-2 @(_shakeActive ? "bk-shake" : "")"
                     disabled="@(!string.IsNullOrEmpty(_blockedByUser) || !_fbfSupported)"
@@ -141,7 +69,7 @@
                 <span style="font-size:.75rem;color:#94a3b8;">Folder download requires Chrome or Edge</span>
             }
         }
-        else if (_fbfDownloading)
+        else
         {
             <button class="btn btn-secondary btn-lg" disabled>
                 <span class="spinner-border spinner-border-sm me-2"></span>
@@ -149,18 +77,6 @@
             </button>
             <button class="btn btn-outline-danger btn-lg d-flex align-items-center gap-2"
                     @onclick="CancelFolderBackup">
-                <i class="ri-close-circle-line"></i>
-                Cancel
-            </button>
-        }
-        else
-        {
-            <button class="btn btn-secondary btn-lg" disabled>
-                <span class="spinner-border spinner-border-sm me-2"></span>
-                Backup in progress…
-            </button>
-            <button class="btn btn-outline-danger btn-lg d-flex align-items-center gap-2"
-                    @onclick="CancelBackup">
                 <i class="ri-close-circle-line"></i>
                 Cancel
             </button>
@@ -287,22 +203,6 @@
             {
                 <span>(@_fbfSkipped skipped, @_fbfErrors errors)</span>
             }
-        </div>
-    }
-
-    @if (_timedOutFiles.Count > 0)
-    {
-        <div class="alert mt-3" style="max-width:700px; background:rgba(251,191,36,.12); border:2px solid #fbbf24; border-radius:10px; color:#fde68a;">
-            <div class="d-flex align-items-center gap-2 mb-2">
-                <i class="ri-alarm-warning-line" style="font-size:1.2rem; color:#fbbf24;"></i>
-                <strong style="color:#fbbf24;">@_timedOutFiles.Count file(s) skipped — could not be read within 60 seconds</strong>
-            </div>
-            <ul class="mb-0" style="font-size:.78rem; font-family:monospace; color:#94a3b8; padding-left:1.2rem;">
-                @foreach (var f in _timedOutFiles)
-                {
-                    <li>@f</li>
-                }
-            </ul>
         </div>
     }
 
@@ -626,17 +526,10 @@
     long _dbSize;
     long _pcSize;
     int _totalFiles;
-    bool _downloading;
     bool _done;
     string _error = "";
-    System.Threading.Timer? _pollTimer;
-
-    // Per-phase progress
-    int    _userCurrent;  int    _userTotal;  string _userFile   = ""; bool _userActive;  bool _userDone;
-    int    _serverCurrent; int   _serverTotal; string _serverFile = ""; bool _serverActive; bool _serverDone;
 
     string _integrityWarning = "";
-    List<string> _timedOutFiles = new();
 
     // Concurrency guard
     string _blockedByUser = "";   // non-empty = another user's backup is running
@@ -674,12 +567,12 @@
             return;
         }
 
-        // Check if another user's backup is already running
+        // Check if another user's backup is already running (legacy guard — file-by-file
+        // does not currently set BackupProgress.Running, so this branch only fires if a stale
+        // flag is left over from before the zip flow was removed).
         if (BackupProgress.Running)
         {
             _blockedByUser = string.IsNullOrEmpty(BackupProgress.ActiveUser) ? "another user" : BackupProgress.ActiveUser;
-            // Start polling so the banner clears automatically when the other backup finishes
-            _pollTimer = new System.Threading.Timer(PollProgress, null, 1000, 1500);
         }
 
         var info = FolderSvc.GetBackupSizeInfo();
@@ -703,21 +596,6 @@
             }
             StateHasChanged();
         }
-    }
-
-    void ShowPasswordPrompt()
-    {
-        // Race condition: someone else started a backup after this page loaded
-        if (BackupProgress.Running)
-        {
-            _blockedByUser = string.IsNullOrEmpty(BackupProgress.ActiveUser) ? "another user" : BackupProgress.ActiveUser;
-            TriggerBlockedShake();
-            return;
-        }
-        _backupPassword = "";
-        _passwordError = "";
-        _authBusy = false;
-        _showPasswordModal = true;
     }
 
     async void TriggerBlockedShake()
@@ -780,158 +658,13 @@
                 _integrityWarning = integrityResult;
             StateHasChanged();
 
-            if (_fbfPendingStart)
-            {
-                _fbfPendingStart = false;
-                await StartFolderBackupWithToken(token);
-            }
-            else
-            {
-                await StartBackup(token);
-            }
+            await StartFolderBackupWithToken(token);
         }
         catch
         {
             _passwordError = "Authentication failed";
             _authBusy = false;
         }
-    }
-
-    async Task StartBackup(string token)
-    {
-        Console.WriteLine($"[Backup] Backup started by '{_username}'");
-        _downloading   = true;
-        _done          = false;
-        _error         = "";
-        _timedOutFiles = new();
-        _userCurrent   = 0; _userTotal   = 0; _userFile   = ""; _userActive   = false; _userDone   = false;
-        _serverCurrent = 0; _serverTotal = 0; _serverFile = ""; _serverActive = false; _serverDone = false;
-        BackupProgress.CurrentTempFile = null;
-        BackupProgress.ActiveUser = _username;
-        StateHasChanged();
-
-        try
-        {
-            await JS.InvokeVoidAsync("eval", "navigator.wakeLock?.request('screen').catch(()=>{})");
-            _pollTimer?.Dispose();
-            _pollTimer = new System.Threading.Timer(PollProgress, null, 500, 800);
-
-            // Phase 1: User Backup
-            _userActive = true;
-            await TriggerAndWait(token, "/api/user-backup-download", "user");
-            _userActive = false;
-            if (!string.IsNullOrEmpty(_error) || BackupProgress.CancelRequested)
-            {
-                if (BackupProgress.CancelRequested) _error = "Backup was cancelled.";
-                return;
-            }
-            _userCurrent = _userTotal; // snap to 100%
-            _userDone = true;
-            StateHasChanged();
-
-            // Wait for the phase-1 zip to be fully downloaded and deleted from disk
-            // before building phase 2 — prevents both ~60GB zips existing simultaneously.
-            var waitMs = 0;
-            while (BackupProgress.CurrentTempFile != null
-                   && File.Exists(BackupProgress.CurrentTempFile)
-                   && waitMs < 86_400_000) // cap at 24 hours
-            {
-                await Task.Delay(2000);
-                waitMs += 2000;
-            }
-
-            // Phase 2: Server Backup
-            _serverActive = true;
-            await TriggerAndWait(token, "/api/server-backup-download", "server");
-            _serverActive = false;
-            if (!string.IsNullOrEmpty(_error) || BackupProgress.CancelRequested)
-            {
-                if (BackupProgress.CancelRequested) _error = "Backup was cancelled.";
-                return;
-            }
-            _serverCurrent = _serverTotal; // snap to 100%
-            _serverDone = true;
-
-            Console.WriteLine($"[Backup] Both backups completed successfully by '{_username}'");
-            _done = true;
-        }
-        catch (Exception ex)
-        {
-            _error = $"Backup failed: {ex.Message}";
-        }
-        finally
-        {
-            _userActive   = false;
-            _serverActive = false;
-            _pollTimer?.Dispose();
-            _pollTimer = null;
-            _downloading = false;
-            BackupProgress.ActiveUser = "";
-            _blockedByUser = "";
-            await InvokeAsync(StateHasChanged);
-        }
-    }
-
-    async Task TriggerAndWait(string token, string endpoint, string expectedPhase)
-    {
-        var dlName = expectedPhase == "user" ? "LPM-UserBackup.zip" : "LPM-ServerBackup.zip";
-        await JS.InvokeVoidAsync("lpmTriggerDownload", endpoint + "?token=" + token, dlName);
-
-        // Wait up to 8 seconds for the server to start this phase
-        var startWait = 0;
-        while (BackupProgress.Phase != expectedPhase && startWait < 8000)
-        {
-            await Task.Delay(500);
-            startWait += 500;
-        }
-        if (BackupProgress.Phase != expectedPhase)
-        {
-            _error = $"Backup phase '{expectedPhase}' did not start — the download request may have failed.";
-            return;
-        }
-
-        while (BackupProgress.Running)
-            await Task.Delay(1000);
-
-        if (!string.IsNullOrEmpty(BackupProgress.LastError))
-            _error = $"Backup failed: {BackupProgress.LastError}";
-    }
-
-    void PollProgress(object? state)
-    {
-        var phase = BackupProgress.Phase;
-        if (phase == "user")
-        {
-            _userCurrent = BackupProgress.Current;
-            _userTotal   = BackupProgress.TotalFiles;
-            _userFile    = BackupProgress.CurrentFile;
-        }
-        else if (phase == "server")
-        {
-            _serverCurrent = BackupProgress.Current;
-            _serverTotal   = BackupProgress.TotalFiles;
-            _serverFile    = BackupProgress.CurrentFile;
-        }
-
-        // Snapshot timed-out files list
-        lock (BackupProgress.TimedOutFiles)
-            _timedOutFiles = BackupProgress.TimedOutFiles.ToList();
-
-        // Keep blocked-by-user banner in sync for the non-downloading observer
-        if (!_downloading)
-        {
-            _blockedByUser = BackupProgress.Running
-                ? (string.IsNullOrEmpty(BackupProgress.ActiveUser) ? "another user" : BackupProgress.ActiveUser)
-                : "";
-        }
-
-        try { _ = InvokeAsync(StateHasChanged); } catch { /* circuit disposed or SignalR dropped */ }
-    }
-
-    void CancelBackup()
-    {
-        Console.WriteLine($"[Backup] Backup cancel requested by '{_username}'");
-        BackupProgress.CancelRequested = true;
     }
 
     // ── File-by-file backup ──
@@ -958,12 +691,10 @@
         _passwordError = "";
         _authBusy = false;
         _showPasswordModal = true;
-        _fbfPendingStart = true;
         StateHasChanged();
     }
 
     DotNetObjectReference<Backup>? _fbfDotNetRef;
-    bool _fbfPendingStart; // true = after auth, start folder backup instead of ZIP
 
     async Task StartFolderBackupWithToken(string token)
     {
@@ -1140,7 +871,6 @@
 
     public void Dispose()
     {
-        _pollTimer?.Dispose();
         _fbfDotNetRef?.Dispose();
     }
 

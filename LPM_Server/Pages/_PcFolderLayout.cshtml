@@ -191,6 +191,17 @@
 
         window.pcfSaveAnnotatedPdf = async function(pcId, filePath, dataJson, solo, paneId) {
             const meta = JSON.parse(dataJson);
+
+            // Short-circuit: if every page is 'original' there are no non-text changes to bake.
+            // Text annotations live only in the .ann.json sidecar (saved separately by _saveSidecar),
+            // so re-encoding the PDF would be a wasted round-trip and risks PdfSharp re-import bugs.
+            const needsSave = meta.pages.some(p => p.action !== 'original');
+            if (!needsSave) {
+                const recoveryKey = 'lpm-pending-save|' + pcId + '|' + filePath;
+                try { localStorage.removeItem(recoveryKey); } catch (e) {}
+                return;
+            }
+
             const formData = new FormData();
             const metaForSend = { totalPages: meta.totalPages, pages: [] };
             let imgIdx = 0;
@@ -239,20 +250,36 @@
             }
 
             if (saveResp.status === 422 && paneId) {
-                // Corrupt XRef — retry by rasterising ALL pages from the live canvases
+                // Corrupt XRef — retry by rasterising ALL pages from the live canvases.
+                // The pg.overlay canvas contains BOTH draw strokes and text annotations,
+                // but text annotations live in the sidecar and must never be burned into
+                // the PDF. So we rebuild a draw-only overlay for each page from
+                // pane.annotations, skipping any 'text' entries.
                 console.warn('[pcfSave] 422 corrupt XRef, retrying as full raster for pane:', paneId);
                 const pane = window.pcfViewer && window.pcfViewer.panes && window.pcfViewer.panes[paneId];
                 if (pane && pane.pages && pane.pages.length > 0) {
                     const rfd = new FormData();
                     const rmeta = { totalPages: pane.pages.length, pages: [] };
                     let ri = 0;
-                    for (const pg of pane.pages) {
+                    for (let pgIdx = 0; pgIdx < pane.pages.length; pgIdx++) {
+                        const pg = pane.pages[pgIdx];
                         const off = document.createElement('canvas');
                         off.width  = pg.canvas.width;
                         off.height = pg.canvas.height;
                         const ctx = off.getContext('2d');
                         ctx.drawImage(pg.canvas, 0, 0);
-                        ctx.drawImage(pg.overlay, 0, 0);
+
+                        // Draw-only overlay (text excluded — sidecar handles those)
+                        const drawOverlay = document.createElement('canvas');
+                        drawOverlay.width  = pg.overlay.width;
+                        drawOverlay.height = pg.overlay.height;
+                        const drawCtx = drawOverlay.getContext('2d');
+                        const anns = (pane.annotations || []).filter(a => a.pageIdx === pgIdx && a.type === 'draw');
+                        for (const ann of anns) {
+                            window.pcfViewer._drawStroke(drawCtx, ann.stroke);
+                        }
+                        ctx.drawImage(drawOverlay, 0, 0, off.width, off.height);
+
                         const blob = await new Promise(res => off.toBlob(res, 'image/png'));
                         rfd.append('img_' + ri, blob, 'img_' + ri + '.png');
                         const rentry = { action: 'full_new', srcPageIdx: -1, w: pg.canvas.width, h: pg.canvas.height, imgIdx: ri };

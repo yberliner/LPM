@@ -6110,8 +6110,10 @@
             var paneId = PaneIds[_activeIdx];
             try
             {
-                var dataJson = await JS.InvokeAsync<string>("pcfViewer.getAnnotationData", paneId);
-                await JS.InvokeVoidAsync("pcfSaveAnnotatedPdf", PcId, file, dataJson, Solo, paneId);
+                // savePane writes both the .ann.json sidecar (text annotations) and, if any
+                // non-text annotations exist, the re-rendered PDF. Text-only saves short-circuit
+                // the PDF round-trip inside pcfSaveAnnotatedPdf.
+                await JS.InvokeVoidAsync("pcfViewer.savePane", paneId);
             }
             catch (Exception ex)
             {
@@ -6507,7 +6509,6 @@
                 if (wasStopwatchRunning) _ = RunStopwatchAsync();
                 return;
             }
-            _ = FolderSvc.BurnAnnotationSidecarsForSessionAsync(PcId, _csSessionName + ".pdf", Solo);
 
             // Update notes if free flag changed (solo sessions)
             bool freeChanged = Solo && _csFreeSession != _existingFreeSession;
@@ -6551,8 +6552,6 @@
             if (wasStopwatchRunning) _ = RunStopwatchAsync();
             return;
         }
-        // Burn session sidecars into PDFs (fire-and-forget — doesn't block the confirm dialog)
-        _ = FolderSvc.BurnAnnotationSidecarsForSessionAsync(PcId, _csSessionName + ".pdf", Solo);
 
         var confirmed = await JS.InvokeAsync<bool>("confirm",
             $"Mark this session's CS review as done?\nReview time: {FormatReviewTime(_csReviewSeconds)}");
@@ -6712,8 +6711,6 @@
         {
             Console.WriteLine($"[PcFolder] Warning: pane save failed on close for PC {PcId}: {ex.Message}");
         }
-        // Burn all sidecar files in the entire PC folder (fire-and-forget — navigate immediately)
-        _ = FolderSvc.BurnAllAnnotationSidecarsAsync(PcId, Solo);
         await JS.InvokeVoidAsync("lpmNavigateTo", "/Home");
     }
 

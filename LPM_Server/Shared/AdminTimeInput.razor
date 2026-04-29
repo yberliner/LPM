@@ -1,0 +1,27 @@
+@* H:MM admin-time input. Used by Add Session wizard step 3 and Add Misc Report ("Bill the PC").
+   The label and input are siblings (no wrapping div) so the parent's flex container can place
+   adjacent controls (e.g. Add Session's "Go" button) on the same row.
+   The .arf-time-input class is wired to a global JS auto-formatter (MainHeader.razor) that
+   inserts the colon as the user types — keeping that class makes this component reuse it. *@
+
+<span style="font-weight:600; color:#cbd5e1; font-size:.85rem; white-space:nowrap;">
+    Admin Time
+    @if (string.IsNullOrWhiteSpace(Value))
+    {
+        <span style="color:#ef4444;font-weight:700;margin-left:2px;">*</span>
+    }
+</span>
+<input type="text" inputmode="numeric" maxlength="5"
+       class="form-control form-control-sm arf-time-input"
+       style="width:72px; color:#e2e8f0; background:#1e293b; border-color:#475569; @(string.IsNullOrWhiteSpace(Value) ? "border:2px solid #ef4444 !important;background:rgba(239,68,68,.08) !important;" : "")"
+       placeholder="H:MM"
+       value="@Value"
+       @oninput="OnInput" />
+
+@code {
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+
+    Task OnInput(ChangeEventArgs e)
+        => ValueChanged.InvokeAsync(e.Value?.ToString() ?? string.Empty);
+}

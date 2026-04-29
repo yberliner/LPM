@@ -62,9 +62,19 @@
             </p>
         }
 
-        <button class="btn btn-primary mt-3" @onclick='() => Nav.NavigateTo("/Home")'>
-            <i class="ri-home-line me-1"></i>Go to Home
-        </button>
+        <div style="display:flex; flex-direction:column; gap:10px; margin-top:16px;">
+            @if (_status == "ok" && !_isSolo)
+            {
+                <button class="btn btn-success" style="min-height:44px; font-weight:700;"
+                        @onclick="GoAttachToSession">
+                    <i class="ri-link me-1"></i>Attach to existing session
+                </button>
+            }
+            <button class="btn btn-primary" style="min-height:44px;"
+                    @onclick='() => Nav.NavigateTo("/Home")'>
+                <i class="ri-home-line me-1"></i>Back to home page
+            </button>
+        </div>
     </div>
 </div>
 
@@ -75,6 +85,7 @@
     string _status = "";
     string _fileName = "";
     string _username = "";
+    bool _isSolo;
 
     protected override async Task OnInitializedAsync()
     {
@@ -82,5 +93,13 @@
         _fileName = name ?? "";
         var auth = await AuthStateProvider.GetAuthenticationStateAsync();
         _username = auth.User.Identity?.Name ?? "";
+        var staffRole = auth.User.FindFirst("StaffRole")?.Value ?? "";
+        _isSolo = staffRole == LPM.StaffRoles.Solo;
+    }
+
+    void GoAttachToSession()
+    {
+        var qs = string.IsNullOrEmpty(_fileName) ? "" : $"?name={Uri.EscapeDataString(_fileName)}";
+        Nav.NavigateTo($"/scan-attach{qs}");
     }
 }

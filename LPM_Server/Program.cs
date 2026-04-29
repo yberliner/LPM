@@ -1308,7 +1308,8 @@ app.MapPost("/api/pc-file-save-annotations", async (HttpContext ctx,
 
 // ── Persistent text-annotation audit log (sys_text_annotations table) ──────────
 // These endpoints DO NOT depend on file-system existence; the audit log lives
-// independently of the .ann.json sidecar and survives bake-and-burn.
+// independently of the .ann.json sidecar (the sidecar is the runtime source of truth
+// for rendering; the DB log is the who/when/what audit trail).
 
 app.MapPost("/api/text-ann/upsert", async (HttpContext ctx,
     LPM.Services.TextAnnotationService taSvc, LPM.Services.DashboardService dashSvc) =>
@@ -1692,487 +1693,6 @@ app.MapGet("/api/backup-integrity", (HttpContext ctx, LPM.Services.FolderService
     return Results.Ok(new { ok = result == "ok", detail = result });
 });
 
-// ── Backup: User Backup (DB snapshot + auto-backups + decrypted PC files) ──
-app.MapGet("/api/user-backup-download", (HttpContext ctx, LPM.Services.FolderService svc, IConfiguration cfg,
-    LPM.Services.DashboardService dashSvc, PdfService pdfSvc) =>
-{
-    if (ctx.User?.IsInRole("Admin") != true) return Results.Forbid();
-
-    var token = ctx.Request.Query["token"].ToString();
-    if (!LPM.Services.BackupProgress.ConsumeToken(token))
-    {
-        Console.WriteLine($"[Backup] REJECTED user-backup (bad/expired token) from {ctx.Connection.RemoteIpAddress} at {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-        return Results.Unauthorized();
-    }
-
-    var tempDir = Path.GetTempPath();
-
-    var integrity    = svc.CheckIntegrity();
-    var integrityTag = integrity == "ok" ? "OK" : "CORRUPT";
-
-    var backupFolder     = svc.GetAutoBackupFolder(cfg["Database:BackupFolder"]);
-    var autoBackupFiles  = Directory.Exists(backupFolder)
-        ? Directory.GetFiles(backupFolder, "lifepower_*.db").OrderByDescending(f => f).ToArray()
-        : [];
-    var pcFiles   = svc.EnumerateBackupFiles().ToList();
-    var totalFiles = 1 + autoBackupFiles.Length + pcFiles.Count;
-
-    LPM.Services.BackupProgress.Phase          = "user";
-    LPM.Services.BackupProgress.TotalFiles     = totalFiles;
-    LPM.Services.BackupProgress.Current        = 0;
-    LPM.Services.BackupProgress.CurrentFile    = "";
-    LPM.Services.BackupProgress.LastError      = null;
-    LPM.Services.BackupProgress.WasStarted     = true;
-    LPM.Services.BackupProgress.Running        = true;
-    LPM.Services.BackupProgress.CancelRequested = false;
-    LPM.Services.BackupProgress.CurrentTempFile = null;
-    LPM.Services.BackupProgress.TimedOutFiles.Clear();
-
-    var user = ctx.User.Identity?.Name ?? "unknown";
-    var dlIp = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-    var fileName = $"LPM-UserBackup-{integrityTag}-{DateTime.Now:yyyy-MM-dd_HHmm}.zip";
-
-    // Tell nginx not to buffer this response — stream straight to the browser
-    ctx.Response.Headers.Append("X-Accel-Buffering", "no");
-
-    return Results.Stream(responseStream =>
-    {
-        int processed = 0;
-        var phaseSw = System.Diagnostics.Stopwatch.StartNew();
-        var errorLog = new List<string>(); // collects per-file errors for summary
-        try
-        {
-            using (var zip = new System.IO.Compression.ZipArchive(responseStream, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
-            {
-                // 1. Live DB snapshot
-                var dbPath = svc.GetDbFilePath();
-                if (File.Exists(dbPath))
-                {
-                    LPM.Services.BackupProgress.CurrentFile = "db-live/lifepower.db";
-                    var tempDbCopy = Path.Combine(tempDir, $"db-snap-{Guid.NewGuid():N}.db");
-                    var dbSw = System.Diagnostics.Stopwatch.StartNew();
-                    try
-                    {
-                        svc.BackupDbTo(tempDbCopy);
-                        var dbSize = new FileInfo(tempDbCopy).Length;
-                        var entry = zip.CreateEntry("db-live/lifepower.db", System.IO.Compression.CompressionLevel.Fastest);
-                        using var es = entry.Open(); using var fs = File.OpenRead(tempDbCopy); fs.CopyTo(es);
-                        dbSw.Stop();
-                        Console.WriteLine($"[Backup][user][{processed + 1}/{totalFiles}] db-live/lifepower.db | {dbSize:N0} bytes | {dbSw.ElapsedMilliseconds}ms");
-                    }
-                    finally { try { File.Delete(tempDbCopy); } catch { } }
-                    LPM.Services.BackupProgress.Current = ++processed;
-                    responseStream.Flush();
-                }
-
-                // 2. Auto-backup files → db-autobackups/
-                foreach (var bf in autoBackupFiles)
-                {
-                    if (LPM.Services.BackupProgress.CancelRequested) break;
-                    var bfName = Path.GetFileName(bf);
-                    LPM.Services.BackupProgress.CurrentFile = $"db-autobackups/{bfName}";
-                    var bfSw = System.Diagnostics.Stopwatch.StartNew();
-                    try
-                    {
-                        var bfSize = new FileInfo(bf).Length;
-                        var entry = zip.CreateEntry($"db-autobackups/{bfName}", System.IO.Compression.CompressionLevel.Fastest);
-                        using var es = entry.Open(); using var fs = File.OpenRead(bf); fs.CopyTo(es);
-                        bfSw.Stop();
-                        Console.WriteLine($"[Backup][user][{processed + 1}/{totalFiles}] db-autobackups/{bfName} | {bfSize:N0} bytes | {bfSw.ElapsedMilliseconds}ms");
-                        LPM.Services.BackupProgress.Current = ++processed;
-                        responseStream.Flush();
-                    }
-                    catch (Exception ex) { Console.WriteLine($"[Backup][user] ERROR auto-backup {bfName}: {ex.Message}"); }
-                }
-
-                // 3. PC files — decrypted for portability
-                foreach (var (relPath, fullPath) in pcFiles)
-                {
-                    if (LPM.Services.BackupProgress.CancelRequested) break;
-                    if (ctx.RequestAborted.IsCancellationRequested)
-                    {
-                        Console.WriteLine($"[Backup][user] CLIENT DISCONNECTED at file {processed}/{totalFiles} — stopping");
-                        break;
-                    }
-
-                    // Skip files that hung in a previous backup this session (EBS bad-block protection)
-                    lock (LPM.Services.BackupProgress.PermSkipFiles)
-                        if (LPM.Services.BackupProgress.PermSkipFiles.Contains(relPath))
-                        {
-                            Console.WriteLine($"[Backup][user][{processed + 1}/{totalFiles}] PERM-SKIP {relPath}");
-                            errorLog.Add($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] PERM-SKIP (timed out in earlier phase) — {relPath}");
-                            lock (LPM.Services.BackupProgress.TimedOutFiles) LPM.Services.BackupProgress.TimedOutFiles.Add(relPath);
-                            continue;
-                        }
-
-                    try
-                    {
-                        LPM.Services.BackupProgress.CurrentFile = relPath;
-                        Console.WriteLine($"[Backup][user][{processed + 1}/{totalFiles}] reading: {relPath}");
-
-                        // Use Thread.Join timeout — more reliable than Task.Wait when OS read() never returns
-                        byte[]? bytes = null;
-                        long readBytes = 0;
-                        long readMs = 0;
-                        var readSw = System.Diagnostics.Stopwatch.StartNew();
-                        var readThread = new Thread(() =>
-                        {
-                            try
-                            {
-                                var decrypted = svc.DecryptFileForBackup(fullPath);
-
-                                // Folder Summary files: prepend session summaries PDF (same as live viewer)
-                                byte[] bytesToZip = decrypted;
-                                var (isSummary, fspcId, isSolo) = LPM.Services.FolderService.ParseFolderSummaryBackupPath(relPath);
-                                if (isSummary)
-                                {
-                                    try
-                                    {
-                                        var summaries = dashSvc.GetSessionSummariesForPc(fspcId, isSolo);
-                                        if (summaries.Count > 0)
-                                        {
-                                            var pcName = dashSvc.GetPersonName(fspcId) ?? $"PC {fspcId}";
-                                            var originalPageCount = pdfSvc.CountPdfPages(decrypted);
-                                            var summaryPdf = pdfSvc.GenerateSessionSummariesPdf(pcName, summaries, originalPageCount);
-                                            bytesToZip = pdfSvc.CombinePdfs(summaryPdf, decrypted);
-                                            Console.WriteLine($"[Backup][user] FolderSummary combined for PC {fspcId} ({summaries.Count} sessions)");
-                                        }
-                                    }
-                                    catch (Exception ex)
-                                    {
-                                        Console.WriteLine($"[Backup][user] FolderSummary failed for PC {fspcId}: {ex.Message} — using original");
-                                    }
-                                }
-                                bytes = bytesToZip;
-                                readBytes = bytesToZip.Length;
-                            }
-                            catch (Exception ex) { Console.WriteLine($"[Backup][user] read-thread ERROR {relPath}: {ex.Message}"); }
-                        }) { IsBackground = true };
-                        readThread.Start();
-
-                        if (!readThread.Join(TimeSpan.FromSeconds(30)))
-                        {
-                            Console.WriteLine($"[Backup][user][{processed + 1}/{totalFiles}] TIMEOUT 30s — skipping permanently: {relPath}");
-                            errorLog.Add($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] TIMEOUT (30s read timeout) — {relPath}");
-                            lock (LPM.Services.BackupProgress.PermSkipFiles) LPM.Services.BackupProgress.PermSkipFiles.Add(relPath);
-                            lock (LPM.Services.BackupProgress.TimedOutFiles) LPM.Services.BackupProgress.TimedOutFiles.Add(relPath);
-                            continue;
-                        }
-                        readMs = readSw.ElapsedMilliseconds;
-
-                        if (bytes == null) { Console.WriteLine($"[Backup][user] NULL bytes (read error): {relPath}"); errorLog.Add($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] NULL BYTES (read returned no data) — {relPath}"); continue; }
-
-                        var writeSw = System.Diagnostics.Stopwatch.StartNew();
-                        var entry = zip.CreateEntry(relPath, System.IO.Compression.CompressionLevel.Fastest);
-                        using var es = entry.Open(); es.Write(bytes);
-                        writeSw.Stop();
-
-                        Console.WriteLine($"[Backup][user][{processed + 1}/{totalFiles}] OK {relPath} | {readBytes:N0} bytes | read {readMs}ms | write {writeSw.ElapsedMilliseconds}ms | total {readMs + writeSw.ElapsedMilliseconds}ms");
-                        LPM.Services.BackupProgress.Current = ++processed;
-
-                        // Flush after every file to prevent nginx proxy_read_timeout during slow reads
-                        responseStream.Flush();
-
-                        // Release memory: clear reference immediately, GC every 200 files or for large files
-                        bytes = null;
-                        if (processed % 200 == 0)
-                            GC.Collect(1, GCCollectionMode.Optimized);
-                        else if (readBytes > 50 * 1024 * 1024)
-                            GC.Collect(0, GCCollectionMode.Optimized);
-                    }
-                    catch (Exception ex) { Console.WriteLine($"[Backup][user] OUTER ERROR {relPath}: {ex.Message}"); errorLog.Add($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] ERROR ({ex.Message}) — {relPath}"); }
-                }
-
-                // Write error summary file if there were any problems
-                if (errorLog.Count > 0)
-                {
-                    var summary = new System.Text.StringBuilder();
-                    summary.AppendLine($"LPM User Backup — Error Summary");
-                    summary.AppendLine($"Backup by: {user} from {dlIp}");
-                    summary.AppendLine($"Started:   {DateTime.Now.AddSeconds(-phaseSw.Elapsed.TotalSeconds):yyyy-MM-dd HH:mm:ss}");
-                    summary.AppendLine($"Finished:  {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-                    summary.AppendLine($"Duration:  {phaseSw.Elapsed.TotalSeconds:F1}s");
-                    summary.AppendLine($"Result:    {processed}/{totalFiles} files backed up, {errorLog.Count} error(s)");
-                    summary.AppendLine($"Integrity: {integrityTag}");
-                    summary.AppendLine();
-                    summary.AppendLine("─── Errors ───");
-                    foreach (var line in errorLog)
-                        summary.AppendLine(line);
-                    var summaryText = summary.ToString();
-                    Console.Write($"[Backup][user] {summaryText}");
-                    var errEntry = zip.CreateEntry("_backup_errors.txt", System.IO.Compression.CompressionLevel.Fastest);
-                    using var errStream = errEntry.Open();
-                    errStream.Write(System.Text.Encoding.UTF8.GetBytes(summaryText));
-                }
-            }
-
-            if (LPM.Services.BackupProgress.CancelRequested)
-                Console.WriteLine($"[Backup][user] CANCELLED by '{user}' from {dlIp} at {DateTime.Now:yyyy-MM-dd HH:mm:ss} — {processed}/{totalFiles} files in {phaseSw.Elapsed.TotalSeconds:F1}s");
-            else
-                Console.WriteLine($"[Backup][user] COMPLETE by '{user}' from {dlIp} at {DateTime.Now:yyyy-MM-dd HH:mm:ss} — {processed}/{totalFiles} files in {phaseSw.Elapsed.TotalSeconds:F1}s — {integrityTag}");
-        }
-        catch (Exception ex)
-        {
-            LPM.Services.BackupProgress.LastError = ex.Message;
-            LPM.Services.BackupProgress.ActiveUser = "";
-            Console.WriteLine($"[Backup][user] EXCEPTION by '{user}': {ex.Message}\n{ex.StackTrace}");
-        }
-        finally
-        {
-            LPM.Services.BackupProgress.Running = false;
-        }
-        return Task.CompletedTask;
-    }, "application/zip", fileName);
-});
-
-// ── Backup: Server Backup (DB + auto-backups + config + raw PC files + avatars) ──
-app.MapGet("/api/server-backup-download", (HttpContext ctx, LPM.Services.FolderService svc, IConfiguration cfg) =>
-{
-    if (ctx.User?.IsInRole("Admin") != true) return Results.Forbid();
-
-    var token = ctx.Request.Query["token"].ToString();
-    if (!LPM.Services.BackupProgress.ConsumeToken(token))
-    {
-        Console.WriteLine($"[Backup] REJECTED server-backup (bad/expired token) from {ctx.Connection.RemoteIpAddress} at {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-        return Results.Unauthorized();
-    }
-
-    var tempDir = Path.GetTempPath();
-
-    var integrity    = svc.CheckIntegrity();
-    var integrityTag = integrity == "ok" ? "OK" : "CORRUPT";
-
-    var backupFolder     = svc.GetAutoBackupFolder(cfg["Database:BackupFolder"]);
-    var backupFolderName = Path.GetFileName(backupFolder.TrimEnd('/', '\\'));
-    var autoBackupFiles  = Directory.Exists(backupFolder)
-        ? Directory.GetFiles(backupFolder, "lifepower_*.db").OrderByDescending(f => f).ToArray()
-        : [];
-    var extras    = svc.GetServerBackupExtras().ToList();
-    var rawPcFiles = svc.EnumerateBackupFiles().ToList();
-    var totalFiles = 1 + autoBackupFiles.Length + extras.Count + rawPcFiles.Count;
-
-    LPM.Services.BackupProgress.Phase          = "server";
-    LPM.Services.BackupProgress.TotalFiles     = totalFiles;
-    LPM.Services.BackupProgress.Current        = 0;
-    LPM.Services.BackupProgress.CurrentFile    = "";
-    LPM.Services.BackupProgress.LastError      = null;
-    LPM.Services.BackupProgress.WasStarted     = true;
-    LPM.Services.BackupProgress.Running        = true;
-    LPM.Services.BackupProgress.CancelRequested = false;
-    LPM.Services.BackupProgress.CurrentTempFile = null;
-    LPM.Services.BackupProgress.TimedOutFiles.Clear();
-
-    var user = ctx.User.Identity?.Name ?? "unknown";
-    var dlIp = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-    var fileName = $"LPM-ServerBackup-{integrityTag}-{DateTime.Now:yyyy-MM-dd_HHmm}.zip";
-
-    // Tell nginx not to buffer this response — stream straight to the browser
-    ctx.Response.Headers.Append("X-Accel-Buffering", "no");
-
-    return Results.Stream(responseStream =>
-    {
-        int processed = 0;
-        var phaseSw = System.Diagnostics.Stopwatch.StartNew();
-        var errorLog = new List<string>(); // collects per-file errors for summary
-        try
-        {
-            using (var zip = new System.IO.Compression.ZipArchive(responseStream, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
-            {
-                // 1. Live DB at root (ready to drop into app folder)
-                var dbPath = svc.GetDbFilePath();
-                if (File.Exists(dbPath))
-                {
-                    LPM.Services.BackupProgress.CurrentFile = "lifepower.db";
-                    var tempDbCopy = Path.Combine(tempDir, $"db-snap-{Guid.NewGuid():N}.db");
-                    var dbSw = System.Diagnostics.Stopwatch.StartNew();
-                    try
-                    {
-                        svc.BackupDbTo(tempDbCopy);
-                        var dbSize = new FileInfo(tempDbCopy).Length;
-                        var entry = zip.CreateEntry("lifepower.db", System.IO.Compression.CompressionLevel.Fastest);
-                        using var es = entry.Open(); using var fs = File.OpenRead(tempDbCopy); fs.CopyTo(es);
-                        dbSw.Stop();
-                        Console.WriteLine($"[Backup][server][{processed + 1}/{totalFiles}] lifepower.db | {dbSize:N0} bytes | {dbSw.ElapsedMilliseconds}ms");
-                    }
-                    finally { try { File.Delete(tempDbCopy); } catch { } }
-                    LPM.Services.BackupProgress.Current = ++processed;
-                    responseStream.Flush();
-                }
-
-                // 2. Auto-backup files (under configured folder name, e.g. db-backups/)
-                foreach (var bf in autoBackupFiles)
-                {
-                    if (LPM.Services.BackupProgress.CancelRequested) break;
-                    var bfName = Path.GetFileName(bf);
-                    LPM.Services.BackupProgress.CurrentFile = $"{backupFolderName}/{bfName}";
-                    var bfSw = System.Diagnostics.Stopwatch.StartNew();
-                    try
-                    {
-                        var bfSize = new FileInfo(bf).Length;
-                        var entry = zip.CreateEntry($"{backupFolderName}/{bfName}", System.IO.Compression.CompressionLevel.Fastest);
-                        using var es = entry.Open(); using var fs = File.OpenRead(bf); fs.CopyTo(es);
-                        bfSw.Stop();
-                        Console.WriteLine($"[Backup][server][{processed + 1}/{totalFiles}] {backupFolderName}/{bfName} | {bfSize:N0} bytes | {bfSw.ElapsedMilliseconds}ms");
-                        LPM.Services.BackupProgress.Current = ++processed;
-                        responseStream.Flush();
-                    }
-                    catch (Exception ex) { Console.WriteLine($"[Backup][server] ERROR auto-backup {bfName}: {ex.Message}"); }
-                }
-
-                // 3. Config files + avatars
-                foreach (var (zipPath, fullPath) in extras)
-                {
-                    if (LPM.Services.BackupProgress.CancelRequested) break;
-                    var extSw = System.Diagnostics.Stopwatch.StartNew();
-                    try
-                    {
-                        LPM.Services.BackupProgress.CurrentFile = zipPath;
-                        var extSize = new FileInfo(fullPath).Length;
-                        var entry = zip.CreateEntry(zipPath, System.IO.Compression.CompressionLevel.Fastest);
-                        using var es = entry.Open(); using var fs = File.OpenRead(fullPath); fs.CopyTo(es);
-                        extSw.Stop();
-                        Console.WriteLine($"[Backup][server][{processed + 1}/{totalFiles}] {zipPath} | {extSize:N0} bytes | {extSw.ElapsedMilliseconds}ms");
-                        LPM.Services.BackupProgress.Current = ++processed;
-                        responseStream.Flush();
-                    }
-                    catch (Exception ex) { Console.WriteLine($"[Backup][server] ERROR extra {zipPath}: {ex.Message}"); }
-                }
-
-                // 4. PC files — raw/encrypted, preserving exact server state
-                // No File.ReadAllBytes — stream directly disk→zip inside the thread to avoid loading entire file into RAM.
-                // Thread.Join(30s) stays safely under nginx proxy_read_timeout (default 60s).
-                foreach (var (relPath, fullPath) in rawPcFiles)
-                {
-                    if (LPM.Services.BackupProgress.CancelRequested) break;
-                    if (ctx.RequestAborted.IsCancellationRequested)
-                    {
-                        Console.WriteLine($"[Backup][server] CLIENT DISCONNECTED at file {processed}/{totalFiles} — stopping");
-                        break;
-                    }
-
-                    // Skip files that hung in a previous backup this session (EBS bad-block protection)
-                    lock (LPM.Services.BackupProgress.PermSkipFiles)
-                        if (LPM.Services.BackupProgress.PermSkipFiles.Contains(relPath))
-                        {
-                            Console.WriteLine($"[Backup][server][{processed + 1}/{totalFiles}] PERM-SKIP {relPath}");
-                            errorLog.Add($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] PERM-SKIP (timed out in earlier phase) — {relPath}");
-                            lock (LPM.Services.BackupProgress.TimedOutFiles) LPM.Services.BackupProgress.TimedOutFiles.Add(relPath);
-                            continue;
-                        }
-
-                    try
-                    {
-                        LPM.Services.BackupProgress.CurrentFile = relPath;
-                        Console.WriteLine($"[Backup][server][{processed + 1}/{totalFiles}] reading: {relPath}");
-
-                        long fileSize = 0;
-                        Exception? readEx = null;
-                        var readSw = System.Diagnostics.Stopwatch.StartNew();
-
-                        // Read raw bytes in a separate thread for reliable OS-level timeout
-                        byte[]? rawBytes = null;
-                        var readThread = new Thread(() =>
-                        {
-                            try
-                            {
-                                fileSize = new FileInfo(fullPath).Length;
-                                rawBytes = File.ReadAllBytes(fullPath);
-                            }
-                            catch (Exception ex) { readEx = ex; }
-                        }) { IsBackground = true };
-                        readThread.Start();
-
-                        if (!readThread.Join(TimeSpan.FromSeconds(30)))
-                        {
-                            Console.WriteLine($"[Backup][server][{processed + 1}/{totalFiles}] TIMEOUT 30s — skipping permanently: {relPath}");
-                            errorLog.Add($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] TIMEOUT (30s read timeout) — {relPath}");
-                            lock (LPM.Services.BackupProgress.PermSkipFiles) LPM.Services.BackupProgress.PermSkipFiles.Add(relPath);
-                            lock (LPM.Services.BackupProgress.TimedOutFiles) LPM.Services.BackupProgress.TimedOutFiles.Add(relPath);
-                            continue;
-                        }
-                        var readMs = readSw.ElapsedMilliseconds;
-
-                        if (readEx != null) { Console.WriteLine($"[Backup][server] read-thread ERROR {relPath}: {readEx.Message}"); errorLog.Add($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] READ ERROR ({readEx.Message}) — {relPath}"); continue; }
-                        if (rawBytes == null) { Console.WriteLine($"[Backup][server] NULL bytes: {relPath}"); errorLog.Add($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] NULL BYTES (read returned no data) — {relPath}"); continue; }
-
-                        var writeSw = System.Diagnostics.Stopwatch.StartNew();
-                        var entry = zip.CreateEntry(relPath, System.IO.Compression.CompressionLevel.Fastest);
-                        using var es = entry.Open(); es.Write(rawBytes);
-                        writeSw.Stop();
-
-                        Console.WriteLine($"[Backup][server][{processed + 1}/{totalFiles}] OK {relPath} | {fileSize:N0} bytes | read {readMs}ms | write {writeSw.ElapsedMilliseconds}ms | total {readMs + writeSw.ElapsedMilliseconds}ms");
-                        LPM.Services.BackupProgress.Current = ++processed;
-
-                        // Flush after every file to prevent nginx proxy_read_timeout during slow reads
-                        responseStream.Flush();
-
-                        // Release memory immediately; GC every 200 files or for large files
-                        rawBytes = null;
-                        if (processed % 200 == 0)
-                            GC.Collect(1, GCCollectionMode.Optimized);
-                        else if (fileSize > 50 * 1024 * 1024)
-                            GC.Collect(0, GCCollectionMode.Optimized);
-                    }
-                    catch (Exception ex) { Console.WriteLine($"[Backup][server] OUTER ERROR {relPath}: {ex.Message}"); errorLog.Add($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] ERROR ({ex.Message}) — {relPath}"); }
-                }
-
-                // Write error summary file if there were any problems
-                if (errorLog.Count > 0)
-                {
-                    var summary = new System.Text.StringBuilder();
-                    summary.AppendLine($"LPM Server Backup — Error Summary");
-                    summary.AppendLine($"Backup by: {user} from {dlIp}");
-                    summary.AppendLine($"Started:   {DateTime.Now.AddSeconds(-phaseSw.Elapsed.TotalSeconds):yyyy-MM-dd HH:mm:ss}");
-                    summary.AppendLine($"Finished:  {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-                    summary.AppendLine($"Duration:  {phaseSw.Elapsed.TotalSeconds:F1}s");
-                    summary.AppendLine($"Result:    {processed}/{totalFiles} files backed up, {errorLog.Count} error(s)");
-                    summary.AppendLine($"Integrity: {integrityTag}");
-                    summary.AppendLine();
-                    summary.AppendLine("─── Errors ───");
-                    foreach (var line in errorLog)
-                        summary.AppendLine(line);
-                    var summaryText = summary.ToString();
-                    Console.Write($"[Backup][server] {summaryText}");
-                    var errEntry = zip.CreateEntry("_backup_errors.txt", System.IO.Compression.CompressionLevel.Fastest);
-                    using var errStream = errEntry.Open();
-                    errStream.Write(System.Text.Encoding.UTF8.GetBytes(summaryText));
-                }
-            }
-
-            if (LPM.Services.BackupProgress.CancelRequested)
-                Console.WriteLine($"[Backup][server] CANCELLED by '{user}' from {dlIp} at {DateTime.Now:yyyy-MM-dd HH:mm:ss} — {processed}/{totalFiles} files in {phaseSw.Elapsed.TotalSeconds:F1}s");
-            else
-                Console.WriteLine($"[Backup][server] COMPLETE by '{user}' from {dlIp} at {DateTime.Now:yyyy-MM-dd HH:mm:ss} — {processed}/{totalFiles} files in {phaseSw.Elapsed.TotalSeconds:F1}s — {integrityTag}");
-        }
-        catch (Exception ex)
-        {
-            LPM.Services.BackupProgress.LastError = ex.Message;
-            LPM.Services.BackupProgress.ActiveUser = "";
-            Console.WriteLine($"[Backup][server] EXCEPTION by '{user}': {ex.Message}\n{ex.StackTrace}");
-        }
-        finally
-        {
-            LPM.Services.BackupProgress.Running = false;
-        }
-        return Task.CompletedTask;
-    }, "application/zip", fileName);
-});
-
-// ── Backup progress polling ──
-app.MapGet("/api/backup-progress", (HttpContext ctx) =>
-{
-    if (ctx.User?.IsInRole("Admin") != true) return Results.Forbid();
-    return Results.Ok(new {
-        current    = LPM.Services.BackupProgress.Current,
-        file       = LPM.Services.BackupProgress.CurrentFile,
-        running    = LPM.Services.BackupProgress.Running,
-        wasStarted = LPM.Services.BackupProgress.WasStarted,
-        error      = LPM.Services.BackupProgress.LastError,
-        phase      = LPM.Services.BackupProgress.Phase,
-        totalFiles = LPM.Services.BackupProgress.TotalFiles
-    });
-});
-
 // ── File-by-file backup: file list ──
 app.MapGet("/api/backup-file-list", (HttpContext ctx, LPM.Services.FolderService svc, IConfiguration cfg) =>
 {
@@ -2227,7 +1747,28 @@ app.MapGet("/api/backup-file-list", (HttpContext ctx, LPM.Services.FolderService
             pcName = slash > 0 ? tail.Substring(0, slash) : tail;
             if (pcName != null) pcDirNames.Add(pcName);
         }
-        files.Add(new { path = relPath, modified = File.GetLastWriteTimeUtc(pcFullPath).ToString("o"), alwaysDownload = isFolderSummary, fullPath = pcFullPath, pcName });
+        // User phase skips .ann.json sidecars — their content is baked into the parallel PDF
+        // when the file is fetched. Server phase passes them through raw so a restore reproduces
+        // the on-disk truth (PDF + sidecar, source of truth for text annotations).
+        if (phase == "user" && relPath.EndsWith(".ann.json", StringComparison.OrdinalIgnoreCase))
+            continue;
+
+        // Modified time used by the JS manifest to skip unchanged files. For PDFs in the
+        // User phase, fold in the sidecar mtime — otherwise a sidecar-only edit (text
+        // annotation added or removed) wouldn't change the PDF mtime and the manifest
+        // would skip the file, leaving the user-backup copy with stale baked text.
+        var pdfMtime = File.GetLastWriteTimeUtc(pcFullPath);
+        var modified = pdfMtime;
+        if (phase == "user" && relPath.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+        {
+            var sidecarFull = pcFullPath + ".ann.json";
+            if (File.Exists(sidecarFull))
+            {
+                var sidecarMtime = File.GetLastWriteTimeUtc(sidecarFull);
+                if (sidecarMtime > modified) modified = sidecarMtime;
+            }
+        }
+        files.Add(new { path = relPath, modified = modified.ToString("o"), alwaysDownload = isFolderSummary, fullPath = pcFullPath, pcName });
     }
 
     // User backup only: 3 synthetic Session-Data PDFs per PC folder (EvilPurposes / ServiceFacsimiles / PtsHandling).
@@ -2331,6 +1872,27 @@ app.MapGet("/api/backup-file", (HttpContext ctx, LPM.Services.FolderService svc,
                 decrypted = File.ReadAllBytes(match.FullPath);
             }
 
+            // Bake any .ann.json sidecar into the PDF before shipping. Text annotations live
+            // only in the sidecar on the server; the User backup directory needs them rendered
+            // into the bytes so the admin can open the PDF in any external viewer and see them.
+            // Done before the FolderSummary combine so page indices in the sidecar still align.
+            if (reqPath.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+            {
+                var sidecarPath = match.FullPath + ".ann.json";
+                if (File.Exists(sidecarPath))
+                {
+                    try
+                    {
+                        var annJson = File.ReadAllText(sidecarPath);
+                        decrypted = svc.BakeTextAnnotations(decrypted, annJson);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[BackupFile] Bake failed for '{reqPath}', shipping unbaked: {ex.Message}");
+                    }
+                }
+            }
+
             // Folder Summary: prepend session summaries
             var (isSummary, fspcId, isSolo) = LPM.Services.FolderService.ParseFolderSummaryBackupPath(reqPath);
             if (isSummary)
@@ -2375,10 +1937,6 @@ app.MapGet("/api/backup-file", (HttpContext ctx, LPM.Services.FolderService svc,
 // Enable WAL mode for crash-safe writes (runs once; setting persists in the DB file)
 app.Services.GetRequiredService<LPM.Services.FolderService>().InitializeDb();
 app.Services.GetRequiredService<LPM.Services.UserActivityService>().Initialize();
-
-// Clean up any leftover backup zips from previous runs (crash recovery)
-foreach (var stale in Directory.GetFiles(Path.GetTempPath(), "lpm-backup-*.zip"))
-    try { File.Delete(stale); } catch { }
 
 // Ensure dummy program insert PDFs exist
 LPM.Services.FolderService.EnsureDummyProgramInserts();

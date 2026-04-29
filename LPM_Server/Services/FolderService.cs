@@ -1040,6 +1040,20 @@ public class FolderService
         if (path != null && File.Exists(path)) File.Delete(path);
     }
 
+    /// <summary>
+    /// If a `.ann.json` sidecar exists next to <paramref name="srcPdfFullPath"/>, move it next
+    /// to <paramref name="dstPdfFullPath"/>. Used by file move/rename so annotations follow the PDF.
+    /// Overwrites any existing destination sidecar.
+    /// </summary>
+    private static void MoveSidecarIfPresent(string srcPdfFullPath, string dstPdfFullPath)
+    {
+        var srcSide = srcPdfFullPath + ".ann.json";
+        if (!File.Exists(srcSide)) return;
+        var dstSide = dstPdfFullPath + ".ann.json";
+        if (File.Exists(dstSide)) File.Delete(dstSide);
+        File.Move(srcSide, dstSide);
+    }
+
     // ── Text annotation baking ────────────────────────────────────────────────
 
     private record AnnSidecar(double Scale, List<AnnSidecarEntry> Annotations);
@@ -1454,124 +1468,6 @@ public class FolderService
         var fullPath = SafeResolvePath(folder, relativePath);
         if (fullPath == null || !File.Exists(fullPath)) return null;
         return ReadAndBake(fullPath);
-    }
-
-    /// <summary>
-    /// Fire-and-forget: bake all .ann.json sidecars in the entire PC folder tree into their PDFs
-    /// and delete the sidecar files. Skips files that fail to bake (keeps sidecar on error).
-    /// </summary>
-    public async Task BurnAllAnnotationSidecarsAsync(int pcId, bool solo)
-    {
-        await Task.Run(() =>
-        {
-            var folder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
-            if (folder == null) return;
-            BurnSidecarsInDirectory(folder, pcId, solo);
-        });
-    }
-
-    /// <summary>
-    /// Fire-and-forget: bake sidecars for the given session file + all its _att_ attachments.
-    /// </summary>
-    public async Task BurnAnnotationSidecarsForSessionAsync(int pcId, string sessionFileName, bool solo)
-    {
-        await Task.Run(() =>
-        {
-            var folder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
-            if (folder == null) return;
-            var wsPath = Path.Combine(folder, "WorkSheets");
-            if (!Directory.Exists(wsPath)) return;
-
-            var sessionNoExt = Path.GetFileNameWithoutExtension(sessionFileName);
-            var targets = Directory.GetFiles(wsPath, "*.pdf")
-                .Where(p =>
-                {
-                    var name = Path.GetFileName(p);
-                    return string.Equals(name, sessionFileName, StringComparison.OrdinalIgnoreCase)
-                        || name.StartsWith(sessionNoExt + "_att_", StringComparison.OrdinalIgnoreCase);
-                });
-
-            foreach (var pdfPath in targets)
-                BurnSidecarForFile(pdfPath, null, pcId, solo);
-        });
-    }
-
-    private void BurnSidecarsInDirectory(string directory, int? auditPcId = null, bool auditSolo = false)
-    {
-        foreach (var sidecar in Directory.GetFiles(directory, "*.ann.json", SearchOption.AllDirectories))
-        {
-            var pdfPath = sidecar[..^".ann.json".Length];
-            BurnSidecarForFile(pdfPath, sidecar, auditPcId, auditSolo);
-        }
-    }
-
-    // Per-file lock map to prevent concurrent bakes from doubling baked text.
-    // The CS-Done flow fires BurnAnnotationSidecarsForSessionAsync (fire-and-forget) and
-    // then DoCloseToHome fires BurnAllAnnotationSidecarsAsync — both can target the same
-    // sidecar. Without serialisation, both tasks can read the (clean) PDF + sidecar in parallel,
-    // bake separately, and write each other's output, producing visibly doubled text.
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, object> _bakeLocks = new();
-
-    /// <summary>
-    /// Pre-bake forensic backup: stash the (decrypted) PDF + sidecar JSON in _backups/
-    /// with a "pre-bake-{yyyyMMdd-HHmmss}" prefix. These two together are sufficient to
-    /// reproduce the bake offline — page dimensions, rotation, MediaBox and CropBox are
-    /// read from the PDF inside BakeTextAnnotations itself, so no separate diag file is
-    /// needed. Both files are subject to the existing 10-day retention sweep run by
-    /// BackupBytes at every backup write.
-    /// </summary>
-    private void BackupBakePair(int? pcId, string pdfFileName, byte[] pdfBytes, string annJson)
-    {
-        try
-        {
-            var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
-            var key   = pcId ?? 0;
-            BackupBytes(key, $"pre-bake-{stamp}-{pdfFileName}",           pdfBytes);
-            BackupBytes(key, $"pre-bake-{stamp}-{pdfFileName}.ann.json",  System.Text.Encoding.UTF8.GetBytes(annJson));
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[FolderService] BackupBakePair failed (non-fatal): {ex.Message}");
-        }
-    }
-
-    private void BurnSidecarForFile(string pdfPath, string? sidecarPath = null, int? auditPcId = null, bool auditSolo = false)
-    {
-        sidecarPath ??= pdfPath + ".ann.json";
-        if (!File.Exists(sidecarPath)) return;       // fast-path: nothing to bake
-
-        var lockKey = pdfPath.ToLowerInvariant();
-        var lockObj = _bakeLocks.GetOrAdd(lockKey, _ => new object());
-        lock (lockObj)
-        {
-            // Re-check inside the lock — a parallel bake task may have just deleted the sidecar
-            // and stored a baked PDF in the cache. If we proceed we'd bake on top of baked text.
-            if (!File.Exists(sidecarPath)) return;
-            if (!File.Exists(pdfPath)) { File.Delete(sidecarPath); return; }
-
-            try
-            {
-                var pdfBytes = ReadAndCache(pdfPath);
-                var annJson  = File.ReadAllText(sidecarPath);
-                // Forensic snapshot — keep the input to the bake so position bugs are reproducible
-                BackupBakePair(auditPcId, Path.GetFileName(pdfPath), pdfBytes, annJson);
-                var baked    = BakeTextAnnotations(pdfBytes, annJson);
-                File.WriteAllBytes(pdfPath, EncryptBytes(baked));
-                StoreInCache(pdfPath, baked);
-                File.Delete(sidecarPath);
-                if (auditPcId.HasValue)
-                {
-                    var relPath = ExtractRelativePath(pdfPath);
-                    _audit.Log(auditPcId.Value, auditSolo, relPath, "overwrite", baked.Length, null, null, "AnnotationBurn");
-                }
-                Console.WriteLine($"[FolderService] Burned annotation sidecar into '{Path.GetFileName(pdfPath)}'");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[FolderService] BurnSidecarForFile failed for '{Path.GetFileName(pdfPath)}': {ex.Message}");
-                // Keep sidecar on failure — do not delete
-            }
-        }
     }
 
     /// <summary>Save annotated PDF bytes back to disk (encrypted)</summary>
@@ -2432,6 +2328,47 @@ public class FolderService
         _audit.Log(pcId, solo, $"WorkSheets/{savedName}", "create", fileBytes.Length, null, null, "Upload");
         Console.WriteLine($"[FolderService] Saved attachment '{attFileName}' for session '{sessionFileName}', PC {pcId}");
         return savedName;
+    }
+
+    /// <summary>
+    /// Saves a shared PDF as an attachment of the given session, naming it according to the
+    /// chosen type so existing detection (PinkSheet/Instruct/Cramming) and auditing-status
+    /// rendering pick it up automatically. Collisions are auto-suffixed by SaveAttachment.
+    /// type: "Normal" | "PinkSheet" | "Instruct" | "Cramming".
+    /// </summary>
+    public string? SaveSharedPdfAsAttachment(int pcId, string sessionFileName, string type, byte[] pdfBytes, bool solo = false)
+    {
+        string fileName = type?.ToLowerInvariant() switch
+        {
+            "pinksheet" => "PinkSheet.pdf",
+            "instruct"  => "Instruct.pdf",
+            "cramming"  => "Cramming.pdf",
+            _           => ComputeNextSharedAttachmentName(pcId, sessionFileName, solo)
+        };
+        return SaveAttachment(pcId, sessionFileName, fileName, pdfBytes, solo);
+    }
+
+    string ComputeNextSharedAttachmentName(int pcId, string sessionFileName, bool solo)
+    {
+        var folder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
+        int maxN = 0;
+        if (folder != null)
+        {
+            var wsPath = Path.Combine(folder, "WorkSheets");
+            if (Directory.Exists(wsPath))
+            {
+                var sessionNoExt = Path.GetFileNameWithoutExtension(sessionFileName);
+                var rx = new System.Text.RegularExpressions.Regex(
+                    @"_att_attachment_(\d+)(?:\(\d+\))?\.pdf$",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                foreach (var f in Directory.EnumerateFiles(wsPath, $"{sessionNoExt}_att_attachment_*.pdf"))
+                {
+                    var m = rx.Match(Path.GetFileName(f));
+                    if (m.Success && int.TryParse(m.Groups[1].Value, out var n) && n > maxN) maxN = n;
+                }
+            }
+        }
+        return $"attachment_{maxN + 1}.pdf";
     }
 
     /// <summary>
@@ -3646,6 +3583,7 @@ public class FolderService
         var destPath = Path.Combine(destDir, fileName);
         if (File.Exists(destPath)) return false; // no silent overwrite
         File.Move(srcPath, destPath);
+        MoveSidecarIfPresent(srcPath, destPath);
         InvalidateCache(srcPath);
         var destRelPath = $"{destFolderRelativePath}/{fileName}";
         _textAnn.RenamePath(pcId, sourceRelativePath, destRelPath);
@@ -3668,6 +3606,7 @@ public class FolderService
         var destPath = Path.Combine(dir, sanitized);
         if (File.Exists(destPath)) return false;
         File.Move(fullPath, destPath);
+        MoveSidecarIfPresent(fullPath, destPath);
         InvalidateCache(fullPath);
         var parentRel = Path.GetDirectoryName(relativePath)?.Replace('\\', '/') ?? "";
         var newRelPath = string.IsNullOrEmpty(parentRel) ? sanitized : $"{parentRel}/{sanitized}";
@@ -3705,6 +3644,15 @@ public class FolderService
         BackupFile(pcId, relativePath, solo);
         File.Delete(fullPath);
         InvalidateCache(fullPath);
+
+        // Sidecar follows the PDF — backup + delete alongside so undelete restores annotations
+        var sidecarPath = fullPath + ".ann.json";
+        if (File.Exists(sidecarPath))
+        {
+            BackupFile(pcId, relativePath + ".ann.json", solo);
+            File.Delete(sidecarPath);
+        }
+
         _audit.Log(pcId, solo, relativePath, "delete", null, null, null, "ContextMenu");
         Console.WriteLine($"[FolderService] Deleted (backed up) '{relativePath}' for PC {pcId}");
         return true;

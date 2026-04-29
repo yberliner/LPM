@@ -2043,19 +2043,7 @@
                             </button>
                             <button class="btn btn-sm btn-outline-secondary" @onclick="CloseWizard">@LS.T("common.cancel")</button>
                             <div class="d-flex align-items-center gap-2 ms-auto wiz-admin-time-group">
-                                <span style="font-weight:600; color:#cbd5e1; font-size:.85rem; white-space:nowrap;">
-                                    Admin Time
-                                    @if (string.IsNullOrWhiteSpace(_arfAdminTime))
-                                    {
-                                        <span style="color:#ef4444;font-weight:700;margin-left:2px;">*</span>
-                                    }
-                                </span>
-                                <input type="text" inputmode="numeric" maxlength="5"
-                                       class="form-control form-control-sm arf-time-input"
-                                       style="width:72px; color:#e2e8f0; background:#1e293b; border-color:#475569; @(string.IsNullOrWhiteSpace(_arfAdminTime) ? "border:2px solid #ef4444 !important;background:rgba(239,68,68,.08) !important;" : "")"
-                                       placeholder="H:MM"
-                                       value="@_arfAdminTime"
-                                       @oninput="e => _arfAdminTime = e.Value?.ToString() ?? string.Empty" />
+                                <AdminTimeInput @bind-Value="_arfAdminTime" />
                                 <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
                                         disabled="@(string.IsNullOrWhiteSpace(_arfAdminTime))"
                                         @onclick="ExecuteImport">
@@ -2505,12 +2493,12 @@
             <div class="atc-subtitle">That's a long admin time</div>
             <div class="atc-time-display">
                 <span class="atc-time-label">You entered</span>
-                <span class="atc-time-value">@_arfAdminTime</span>
+                <span class="atc-time-value">@_pendingAdminTime</span>
                 <span class="atc-time-hint">(hours : minutes)</span>
             </div>
             <div class="atc-explain">
                 Admin time is usually under <strong>20 minutes</strong>.
-                Did you mean to type <code>0:@(_arfAdminTime?.Replace(":", "").PadLeft(2, '0').Substring(0, Math.Min(2, _arfAdminTime?.Replace(":", "").Length ?? 0)) ?? "00")</code>?
+                Did you mean to type <code>0:@(_pendingAdminTime?.Replace(":", "").PadLeft(2, '0').Substring(0, Math.Min(2, _pendingAdminTime?.Replace(":", "").Length ?? 0)) ?? "00")</code>?
             </div>
             <div class="atc-actions">
                 <button class="atc-btn atc-btn-cancel" @onclick="CancelAdminTimeConfirm">
@@ -2825,6 +2813,33 @@
                             }
                         }
 
+                        @* ── Bill the PC (custom-rendered toggle, mirrors the "Also write summary" toggle above) ── *@
+                        <button type="button"
+                                class="memo-also-summary-toggle d-flex align-items-center gap-2 mt-3"
+                                @onclick="ToggleMemoBillPc">
+                            <span class="memo-also-summary-box @(_memoBillPc ? "memo-also-summary-box-on" : "")">
+                                @if (_memoBillPc)
+                                {
+                                    <i class="ri-check-line"></i>
+                                }
+                            </span>
+                            <span class="memo-also-summary-text">
+                                <i class="ri-money-dollar-circle-line me-1" style="color:#10b981;"></i>Bill the PC
+                            </span>
+                        </button>
+                        @if (_memoBillPc)
+                        {
+                            <div class="d-flex align-items-center gap-2 mt-2">
+                                <AdminTimeInput @bind-Value="_memoBillAdminTime" />
+                            </div>
+                            @if (!string.IsNullOrEmpty(_memoBillError))
+                            {
+                                <div class="alert alert-warning d-flex align-items-center gap-2 mt-2 mb-0 py-2" style="font-size:.82rem;">
+                                    <i class="ri-error-warning-line"></i>@_memoBillError
+                                </div>
+                            }
+                        }
+
                         @if (!string.IsNullOrEmpty(_memoScanBoxError))
                         {
                             <div class="alert alert-warning d-flex align-items-center gap-2 mt-2 mb-0 py-2" style="font-size:.82rem;">
@@ -2849,6 +2864,7 @@
                         {
                             <button class="btn btn-sm d-flex align-items-center gap-1"
                                     style="background:linear-gradient(135deg,#0ea5e9,#6366f1); color:#fff; border:none;"
+                                    disabled="@(_memoBillPc && string.IsNullOrWhiteSpace(_memoBillAdminTime))"
                                     @onclick="ExecuteMemoFromScanBox">
                                 <i class="ri-inbox-archive-line me-1"></i>Import from ScanBox
                             </button>
@@ -2856,6 +2872,7 @@
                         <button class="btn btn-sm btn-outline-light" @onclick="() => _showMemoWizard = false">@LS.T("common.cancel")</button>
                         <button class="btn btn-sm d-flex align-items-center gap-1"
                                 style="background:linear-gradient(135deg,#be185d,#ec4899); color:#fff; border:none;"
+                                disabled="@(_memoBillPc && string.IsNullOrWhiteSpace(_memoBillAdminTime))"
                                 @onclick="ExecuteMemo">
                             <i class="ri-sticky-note-line"></i>Submit
                         </button>
@@ -7781,6 +7798,9 @@
     bool   _memoAlsoWriteSummary;
     string _memoSummaryError = "";
     string _memoEditorError  = "";
+    bool   _memoBillPc;                  // "Bill the PC" toggle — when true, the misc-report session is non-free with admin time
+    string _memoBillAdminTime = "";      // H:MM admin time captured when _memoBillPc is true
+    string _memoBillError     = "";      // inline error shown next to the admin time input
 
     // Big celebratory success-modal state (shown after Submit completes)
     string _memoSuccessPcName       = "";
@@ -7824,7 +7844,8 @@
     string _arfSessionLength = "";  // auto-calculated from TA rows; user may override
     string _arfAdminTime     = "";
     bool   _showAdminTimeConfirm;     // glowing "are you sure?" modal when admin time > 20 min
-    bool   _adminTimeConfirmed;       // set true once user confirms; reset on next ExecuteImport
+    bool   _adminTimeConfirmed;       // set true once user confirms; reset on next submit
+    string _pendingAdminTime = "";    // value displayed in the >20-min confirm modal — set fresh by each caller (ARF or Memo Bill-the-PC)
     string _arfTotalTa       = "";
     string _arfTaRangeFrom   = "";
     string _arfTaRangeTo     = "";
@@ -8213,17 +8234,24 @@
         return parts[0].Length == 2 && parts[1].Length == 2;
     }
 
+    // Continuation set by whichever submit path raised the >20-min confirm modal.
+    // Cleared when the modal is opened/closed/consumed so a stale continuation can't fire.
+    Func<Task>? _adminTimeConfirmContinuation;
+
     void CancelAdminTimeConfirm()
     {
         _showAdminTimeConfirm = false;
-        // _adminTimeConfirmed stays false; user is back on step 3 to fix the value.
+        _adminTimeConfirmContinuation = null;
+        // _adminTimeConfirmed stays false; user is back to fix the value.
     }
 
     async Task ConfirmAdminTimeAndProceed()
     {
         _showAdminTimeConfirm = false;
         _adminTimeConfirmed   = true;
-        await ExecuteImport();
+        var resume = _adminTimeConfirmContinuation ?? (Func<Task>)ExecuteImport;
+        _adminTimeConfirmContinuation = null;
+        await resume();
     }
 
     int ArfTimeToMinutes(string val)
@@ -8455,6 +8483,7 @@
         _importFreeSession = false;
         _importStep = 1;
         _arfDate = DateTime.Today.ToString("dd/MM/yy"); _arfGrade = ""; _arfSessionLength = ""; _arfAdminTime = ""; _arfTotalTa = ""; _arfTaRangeFrom = ""; _arfTaRangeTo = ""; _arfExamReport = "F/N"; _arfSummary = "";
+        _adminTimeConfirmed = false; // reset shared confirm flag — clear stale state from a prior cancelled-after-confirm flow
         _step3TopHtml = ""; _step3BottomHtml = "";
         _step3Visited = false;
         _arfTables = [new ArfTable()];
@@ -9302,11 +9331,14 @@
         var adminMins = ArfTimeToMinutes(_arfAdminTime.Trim());
         if (adminMins > 20 && !_adminTimeConfirmed)
         {
+            _pendingAdminTime = _arfAdminTime;
+            _adminTimeConfirmContinuation = ExecuteImport;
             _showAdminTimeConfirm = true;
             StateHasChanged();
             return;
         }
         _adminTimeConfirmed = false; // reset for the next import action
+        _adminTimeConfirmContinuation = null;
 
         var pcName = _approvedPcs.FirstOrDefault(p => p.PcId == _importPcId)?.FullName ?? $"PC {_importPcId}";
         ActivitySvc.RecordActivity(_logUsername, $"Clicked Go on Add Session for: {pcName}", "session");
@@ -11076,6 +11108,10 @@ string _actionPcSearch = "";
         _memoAlsoWriteSummary = false;
         _memoSummaryError     = "";
         _memoEditorError      = "";
+        _memoBillPc           = false;
+        _memoBillAdminTime    = "";
+        _memoBillError        = "";
+        _adminTimeConfirmed   = false; // shared confirm flag — clear stale state from any prior wizard
         _showMemoWizard      = true;
 
         // Solo users have a pre-set PC — skip step 1 and go directly to step 2
@@ -11302,8 +11338,71 @@ string _actionPcSearch = "";
         return $"{bytes / (1024.0 * 1024 * 1024):0.##} GB";
     }
 
+    void ToggleMemoBillPc()
+    {
+        _memoBillPc = !_memoBillPc;
+        _memoBillError = ""; // clear any stale validation error from a previous attempt
+    }
+
+    /// <summary>
+    /// Validate and consume the "Bill the PC" admin time. Loose validation matches the ARF
+    /// wizard: anything FormatArfTime can normalize ("130" → "01:30", "30" → "00:30") and
+    /// ArfTimeToMinutes can parse to >0 is acceptable. Raises the same >20-min confirm modal
+    /// as the ARF wizard, with <paramref name="onConfirmed"/> as the continuation so the
+    /// memo flow resumes (instead of the ARF flow) when the user clicks "Yes, save it".
+    /// Returns false if validation failed or the modal was raised — caller must abort.
+    /// </summary>
+    bool TryConsumeMemoBillAdminTime(Func<Task> onConfirmed, out int adminSec, out string formattedAdminTime)
+    {
+        adminSec = 0;
+        formattedAdminTime = "";
+        _memoBillError = "";
+        if (!_memoBillPc) return true;
+
+        if (string.IsNullOrWhiteSpace(_memoBillAdminTime))
+        {
+            _memoBillError = "Please enter an admin time (h:mm).";
+            return false;
+        }
+
+        var formatted = FormatArfTime(_memoBillAdminTime.Trim());
+        if (string.IsNullOrEmpty(formatted))
+        {
+            _memoBillError = "Please enter a valid admin time (h:mm).";
+            return false;
+        }
+        var mins = ArfTimeToMinutes(formatted);
+        if (mins <= 0)
+        {
+            _memoBillError = "Admin time must be greater than 0:00.";
+            return false;
+        }
+        if (mins > 20 && !_adminTimeConfirmed)
+        {
+            _pendingAdminTime = formatted;
+            _adminTimeConfirmContinuation = onConfirmed;
+            _showAdminTimeConfirm = true;
+            return false;
+        }
+        _adminTimeConfirmed = false;          // consumed — reset for the next submit action
+        _adminTimeConfirmContinuation = null;
+        formattedAdminTime = formatted;
+        adminSec = mins * 60;
+        return true;
+    }
+
     async Task ExecuteMemo()
     {
+        // Validate "Bill the PC" admin time first. If the time is >20 min and not yet confirmed,
+        // the helper raises the modal with ExecuteMemo as the continuation — the modal's
+        // "Yes, save it" button auto-resumes here.
+        if (!TryConsumeMemoBillAdminTime(ExecuteMemo, out var capturedBillAdminSec, out var capturedBillAdminTime))
+        {
+            StateHasChanged();
+            return;
+        }
+        var capturedBillPc = _memoBillPc;
+
         // If the user uploaded a finished PDF, skip Quill and use the bytes directly.
         var uploadedPdf = _memoUploadedPdfBytes;
 
@@ -11422,18 +11521,25 @@ string _actionPcSearch = "";
                 // Insert session row
                 sDb.Status = 1;
                 await InvokeAsync(StateHasChanged);
-                DashSvc.AddMemoSession(capturedAudId, capturedPcId, savedName, capturedDate, capturedSolo, createdByUserId: capturedCoreUserId);
+                var sessionId = DashSvc.AddMemoSession(capturedAudId, capturedPcId, savedName, capturedDate, capturedSolo,
+                    createdByUserId: capturedCoreUserId,
+                    adminSeconds: capturedBillAdminSec,
+                    isFreeSession: !capturedBillPc);
                 DashSvc.NotifyDataChanged();
                 sDb.Status = 2;
                 await InvokeAsync(StateHasChanged);
 
-                // Save folder summary (if requested)
+                // Save folder summary (if requested) — link to the session we just created so the
+                // folder-summary list display picks up s.AdminSeconds via JOIN, mirroring Add Session.
                 if (capturedAlsoSummary)
                 {
                     var sSummary = _memoSteps[^1];
                     sSummary.Status = 1;
                     await InvokeAsync(StateHasChanged);
-                    DashSvc.AddFolderSummary(null, capturedPcId, capturedSolo ? null : capturedAudId, capturedSummaryHtml);
+                    string? arfJson = capturedBillPc
+                        ? System.Text.Json.JsonSerializer.Serialize(new PdfService.ArfData { AdminTime = capturedBillAdminTime })
+                        : null;
+                    DashSvc.AddFolderSummary(sessionId, capturedPcId, capturedSolo ? null : capturedAudId, capturedSummaryHtml, arfJson: arfJson);
                     DashSvc.NotifyDataChanged();
                     sSummary.Status = 2;
                     await InvokeAsync(StateHasChanged);
@@ -11478,6 +11584,15 @@ string _actionPcSearch = "";
 
     async Task ExecuteMemoFromScanBox()
     {
+        // Same gating as ExecuteMemo — pass this method as the continuation so the
+        // confirm modal's "Yes, save it" resumes the ScanBox flow rather than the ARF flow.
+        if (!TryConsumeMemoBillAdminTime(ExecuteMemoFromScanBox, out var capturedBillAdminSec, out var capturedBillAdminTime))
+        {
+            StateHasChanged();
+            return;
+        }
+        var capturedBillPc = _memoBillPc;
+
         _memoScanBoxError = "";
         var inboxFiles = FolderSvc.GetScanInboxFiles(_logUsername);
         if (inboxFiles.Count == 0)
@@ -11559,7 +11674,10 @@ string _actionPcSearch = "";
                 // Step 2: Insert session row
                 sDb.Status = 1;
                 await InvokeAsync(StateHasChanged);
-                DashSvc.AddMemoSession(capturedAudId, capturedPcId, savedName, capturedDate, capturedSolo, createdByUserId: capturedCoreUserId);
+                var sessionId = DashSvc.AddMemoSession(capturedAudId, capturedPcId, savedName, capturedDate, capturedSolo,
+                    createdByUserId: capturedCoreUserId,
+                    adminSeconds: capturedBillAdminSec,
+                    isFreeSession: !capturedBillPc);
                 DashSvc.NotifyDataChanged();
                 sDb.Status = 2;
                 await InvokeAsync(StateHasChanged);
@@ -11571,13 +11689,17 @@ string _actionPcSearch = "";
                 sClr.Status = 2;
                 await InvokeAsync(StateHasChanged);
 
-                // Step 4: Save folder summary (if requested)
+                // Step 4: Save folder summary (if requested) — link to the new session so the
+                // folder-summary list display picks up s.AdminSeconds via JOIN.
                 if (capturedAlsoSummary)
                 {
                     var sSummary = _memoSteps[^1];
                     sSummary.Status = 1;
                     await InvokeAsync(StateHasChanged);
-                    DashSvc.AddFolderSummary(null, capturedPcId, capturedSolo ? null : capturedAudId, capturedSummaryHtml);
+                    string? arfJson = capturedBillPc
+                        ? System.Text.Json.JsonSerializer.Serialize(new PdfService.ArfData { AdminTime = capturedBillAdminTime })
+                        : null;
+                    DashSvc.AddFolderSummary(sessionId, capturedPcId, capturedSolo ? null : capturedAudId, capturedSummaryHtml, arfJson: arfJson);
                     DashSvc.NotifyDataChanged();
                     sSummary.Status = 2;
                     await InvokeAsync(StateHasChanged);

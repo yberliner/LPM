@@ -1572,7 +1572,8 @@ public class DashboardService
     }
 
     /// <summary>Insert a free-session memo row into sess_sessions. Returns the new SessionId.</summary>
-    public int AddMemoSession(int auditorId, int pcId, string name, DateOnly date, bool solo = false, int? createdByUserId = null)
+    public int AddMemoSession(int auditorId, int pcId, string name, DateOnly date, bool solo = false, int? createdByUserId = null,
+        int adminSeconds = 0, bool isFreeSession = true)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -1598,22 +1599,24 @@ public class DashboardService
                Name, CreatedByUserId, WalletId, CreatedAt)
             VALUES
               (@pcId, @audId, @date, @seq,
-               0, 0, 1,
+               0, @adminSec, @free,
                0, 0,
                @name, @creator, @wallet, datetime('now', 'localtime'))";
-        cmd.Parameters.AddWithValue("@pcId",    pcId);
-        cmd.Parameters.AddWithValue("@audId",   solo ? DBNull.Value : auditorId);
-        cmd.Parameters.AddWithValue("@date",    dateStr);
-        cmd.Parameters.AddWithValue("@seq",     seq);
-        cmd.Parameters.AddWithValue("@name",    name);
-        cmd.Parameters.AddWithValue("@creator", createdByUserId.HasValue ? (object)createdByUserId.Value : DBNull.Value);
-        cmd.Parameters.AddWithValue("@wallet",  walletId.HasValue ? (object)walletId.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("@pcId",     pcId);
+        cmd.Parameters.AddWithValue("@audId",    solo ? DBNull.Value : auditorId);
+        cmd.Parameters.AddWithValue("@date",     dateStr);
+        cmd.Parameters.AddWithValue("@seq",      seq);
+        cmd.Parameters.AddWithValue("@adminSec", adminSeconds);
+        cmd.Parameters.AddWithValue("@free",     isFreeSession ? 1 : 0);
+        cmd.Parameters.AddWithValue("@name",     name);
+        cmd.Parameters.AddWithValue("@creator",  createdByUserId.HasValue ? (object)createdByUserId.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("@wallet",   walletId.HasValue ? (object)walletId.Value : DBNull.Value);
         cmd.ExecuteNonQuery();
 
         using var rowIdCmd2 = conn.CreateCommand();
         rowIdCmd2.CommandText = "SELECT last_insert_rowid()";
         var newId = (int)(long)rowIdCmd2.ExecuteScalar()!;
-        Console.WriteLine($"[DashboardService] Added memo session {newId} for PC {pcId}, auditor {auditorId}, name='{name}', createdBy: {createdByUserId}");
+        Console.WriteLine($"[DashboardService] Added memo session {newId} for PC {pcId}, auditor {auditorId}, name='{name}', adminSec={adminSeconds}, isFree={isFreeSession}, createdBy: {createdByUserId}");
         return newId;
     }
 

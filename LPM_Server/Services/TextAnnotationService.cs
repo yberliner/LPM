@@ -23,7 +23,8 @@ public record TextAnnRow(
 /// <summary>
 /// Persistent audit log of text annotations added to PDF files.
 /// One row per annotation guid; edits update the row, deletes soft-flag it.
-/// Independent of the .ann.json sidecar / bake — the table survives bake-and-burn.
+/// The .ann.json sidecar is the runtime source of truth for rendering text annotations
+/// in the viewer; this DB log is an independent who/when/what audit trail.
 /// </summary>
 public class TextAnnotationService
 {
