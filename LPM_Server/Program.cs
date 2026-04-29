@@ -1884,7 +1884,7 @@ app.MapGet("/api/backup-file", (HttpContext ctx, LPM.Services.FolderService svc,
                     try
                     {
                         var annJson = File.ReadAllText(sidecarPath);
-                        decrypted = svc.BakeTextAnnotations(decrypted, annJson);
+                        decrypted = svc.BakeAnnotations(decrypted, annJson);
                     }
                     catch (Exception ex)
                     {

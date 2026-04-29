@@ -117,7 +117,7 @@
     <script src="/js/javaScriptInterop.js?v=4"></script>
 
     <!-- PC Folder viewer -->
-    <script src="/js/pcf-viewer.js?v=74"></script>
+    <script src="/js/pcf-viewer.js?v=75"></script>
 
     <script src="/_framework/blazor.server.js"></script>
     <script>
@@ -251,10 +251,11 @@
 
             if (saveResp.status === 422 && paneId) {
                 // Corrupt XRef — retry by rasterising ALL pages from the live canvases.
-                // The pg.overlay canvas contains BOTH draw strokes and text annotations,
-                // but text annotations live in the sidecar and must never be burned into
-                // the PDF. So we rebuild a draw-only overlay for each page from
-                // pane.annotations, skipping any 'text' entries.
+                // pg.canvas already has any bg-change applied by setPageBackground / _reapplySavedBg.
+                // pg.overlay contains text + draws; we filter to draws-only since text is sidecar truth
+                // and should never be burned. After the raster save succeeds, we drop draw and bg-change
+                // from pane.annotations so the upcoming sidecar save doesn't double-persist them
+                // (the next reload would otherwise re-apply them on top of the now-baked-in versions).
                 console.warn('[pcfSave] 422 corrupt XRef, retrying as full raster for pane:', paneId);
                 const pane = window.pcfViewer && window.pcfViewer.panes && window.pcfViewer.panes[paneId];
                 if (pane && pane.pages && pane.pages.length > 0) {
@@ -269,7 +270,7 @@
                         const ctx = off.getContext('2d');
                         ctx.drawImage(pg.canvas, 0, 0);
 
-                        // Draw-only overlay (text excluded — sidecar handles those)
+                        // Draw-only overlay (text excluded — sidecar truth, never burned)
                         const drawOverlay = document.createElement('canvas');
                         drawOverlay.width  = pg.overlay.width;
                         drawOverlay.height = pg.overlay.height;
@@ -296,8 +297,13 @@
                         throw err;
                     }
                     if (retryResp.ok) {
+                        // All pages rasterised → draws and bg-changes are now baked into the PDF.
+                        // Drop them from pane.annotations so the caller's sidecar save persists
+                        // text only. This makes draws/bg unrecoverable as edit-able layers
+                        // (acceptable tradeoff: 422 is a corrupt-PDF recovery path).
+                        pane.annotations = pane.annotations.filter(a => a.type === 'text');
                         try { localStorage.removeItem(recoveryKey); } catch (e) {}
-                        console.log('[pcfSave] Raster retry succeeded');
+                        console.log('[pcfSave] Raster retry succeeded — draw/bg cleared from sidecar state');
                         return;
                     }
                     throw new Error('Save failed (422 fallback returned ' + retryResp.status + ')');

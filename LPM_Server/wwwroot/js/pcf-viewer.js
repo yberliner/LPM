@@ -288,19 +288,47 @@ window.pcfViewer = {
                     const sidecarScale = sidecar.scale || 1;
                     const ratio = Math.abs(pane.baseScale - sidecarScale) > 0.001
                         ? pane.baseScale / sidecarScale : 1;
-                    const affectedPages = new Set();
+                    const affectedOverlayPages = new Set();
+                    const bgPages = []; // [{pageIdx, color}]
                     for (const ann of sidecar.annotations) {
                         if (pane.loadGen !== myGen) return;
                         const a = { ...ann };
-                        if (ratio !== 1) {
-                            a.x = Math.round(ann.x * ratio); a.y = Math.round(ann.y * ratio);
-                            if (ann.fontSize) a.fontSize = Math.round(ann.fontSize * ratio);
-                            if (ann.maxWidth) a.maxWidth = Math.round(ann.maxWidth * ratio);
+                        // Legacy sidecars (no type) are text-only.
+                        if (!a.type) a.type = 'text';
+                        // Skip orphans (annotation refers to a page that no longer exists).
+                        if (a.pageIdx >= pane.pages.length) continue;
+
+                        if (a.type === 'text') {
+                            if (ratio !== 1) {
+                                a.x = Math.round(ann.x * ratio); a.y = Math.round(ann.y * ratio);
+                                if (ann.fontSize) a.fontSize = Math.round(ann.fontSize * ratio);
+                                if (ann.maxWidth) a.maxWidth = Math.round(ann.maxWidth * ratio);
+                            }
+                            pane.annotations.push(a);
+                            affectedOverlayPages.add(a.pageIdx);
+                        } else if (a.type === 'draw' && a.stroke?.points) {
+                            if (ratio !== 1) {
+                                a.stroke = {
+                                    ...a.stroke,
+                                    points: a.stroke.points.map(p => ({ x: p.x * ratio, y: p.y * ratio })),
+                                    width: (a.stroke.width || 1) * ratio,
+                                };
+                            }
+                            pane.annotations.push(a);
+                            affectedOverlayPages.add(a.pageIdx);
+                        } else if (a.type === 'bg-change' && a.color) {
+                            // Push the annotation (without snapshot — undo across sessions isn't supported)
+                            // and queue a deferred bg apply on the live canvas.
+                            pane.annotations.push({ type: 'bg-change', pageIdx: a.pageIdx, color: a.color });
+                            bgPages.push({ pageIdx: a.pageIdx, color: a.color });
                         }
-                        pane.annotations.push(a);
-                        if (a.pageIdx < pane.pages.length) affectedPages.add(a.pageIdx);
                     }
-                    for (const pi of affectedPages) this._redrawOverlay(pi, paneId);
+                    // Re-paint per-page overlays (text + draws).
+                    for (const pi of affectedOverlayPages) this._redrawOverlay(pi, paneId);
+                    // Re-apply background colors to the live page canvases. This is async (re-renders
+                    // the page from PDF.js, then multiplies the color), but we don't await — overlays
+                    // already drew above and will re-blit on next render if needed.
+                    for (const bg of bgPages) this._reapplySavedBg(paneId, bg.pageIdx, bg.color);
                     sidecarLoaded = true;
                     console.log('[txt-dbg] sidecar loaded:', sidecar.annotations.length, 'annotations restored');
                 })
@@ -435,8 +463,15 @@ window.pcfViewer = {
 
             pane.pages.push({ canvas, overlay, vp, pageIdx: i, scale, srcDoc: pane.pdfDoc, srcPageNum: i + 1 });
             this._attachEvents(overlay, i, paneId);
-            // If sidecar already resolved while we were rendering, draw its annotations now
-            if (sidecarLoaded) this._redrawOverlay(i, paneId);
+            // If sidecar already resolved while we were rendering, apply its layers now.
+            // This catches the race where the sidecar fetch completes before this page finished
+            // rendering — overlays (text/draws) get drawn here, and any bg-change for this
+            // page is re-applied to the freshly rendered canvas.
+            if (sidecarLoaded) {
+                this._redrawOverlay(i, paneId);
+                const bgAnn = [...pane.annotations].reverse().find(a => a.type === 'bg-change' && a.pageIdx === i);
+                if (bgAnn) this._reapplySavedBg(paneId, i, bgAnn.color);
+            }
         }
 
         // Redraw annotations that survived same-file reload
@@ -446,6 +481,14 @@ window.pcfViewer = {
             for (const pi of pageIndices) {
                 console.log('[txt-dbg] redrawing overlay pageIdx=' + pi);
                 this._redrawOverlay(pi, paneId);
+            }
+            // Re-apply any saved bg-change to the freshly rendered page canvases (last-write-wins)
+            const bgByPage = new Map();
+            for (const a of savedAnnotations) {
+                if (a.type === 'bg-change') bgByPage.set(a.pageIdx, a.color);
+            }
+            for (const [pi, color] of bgByPage) {
+                this._reapplySavedBg(paneId, pi, color);
             }
         }
 
@@ -1777,85 +1820,41 @@ window.pcfViewer = {
         const pane = this.panes[paneId];
         if (!pane) return JSON.stringify({ totalPages: 0, pages: [] });
 
-        // Collect which page indices have each annotation type.
-        // Text annotations are NEVER burned into the PDF — they live only in the sidecar.
-        // Only 'draw' strokes trigger an overlay page in the PDF.
-        const bgChangePages = new Set(
-            pane.annotations.filter(a => a.type === 'bg-change').map(a => a.pageIdx)
-        );
-        const overlayPages = new Set(
-            pane.annotations.filter(a => a.type === 'draw').map(a => a.pageIdx)
-        );
-
+        // Original pages: text, draw, and bg-change all live in the .ann.json sidecar
+        // and are baked at download/backup time only. Save POST emits 'original' for these
+        // (and the server short-circuits when every page is 'original').
+        // Non-original pages (blank/inserted): bake the full canvas — including any draws
+        // and the bg-change-applied page surface — since we have no original to reference.
+        // Text is still excluded from the bake (sidecar truth).
         const pages = [];
         for (let i = 0; i < pane.pages.length; i++) {
             const pg = pane.pages[i];
-            // Original pages have srcDoc === pane.pdfDoc; blank/inserted pages have no srcDoc or a different one
             const isOriginal = pg.srcDoc != null && pg.srcDoc === pane.pdfDoc;
             const srcPageIdx = isOriginal ? (pg.srcPageNum - 1) : -1;
-            const hasBgChange = bgChangePages.has(i);
-            const hasOverlay  = overlayPages.has(i);
 
-            if (isOriginal && hasBgChange) {
-                // Original page with bg-color change: send color to server (vectors preserved)
-                const lastBg = [...pane.annotations].reverse().find(a => a.type === 'bg-change' && a.pageIdx === i);
-                const bgColor = lastBg?.color || '#ffffff';
-                if (hasOverlay) {
-                    // Also has draw strokes: send color + overlay PNG
-                    const oc = document.createElement('canvas');
-                    oc.width = pg.overlay.width; oc.height = pg.overlay.height;
-                    const octx = oc.getContext('2d');
-                    for (const ann of pane.annotations) {
-                        if (ann.pageIdx !== i || ann.type !== 'draw') continue;
-                        this._drawStroke(octx, ann.stroke);
-                    }
-                    pages.push({
-                        action: 'bg_color_overlay', srcPageIdx, color: bgColor,
-                        w: oc.width, h: oc.height, dataUrl: oc.toDataURL('image/png')
-                    });
-                } else {
-                    // bg-color only: no image needed at all
-                    pages.push({ action: 'bg_color', srcPageIdx, color: bgColor });
-                }
-            } else if (!isOriginal) {
-                // Blank/inserted page: send full composite (no original to reference)
-                const fc = document.createElement('canvas');
-                fc.width = pg.canvas.width; fc.height = pg.canvas.height;
-                const fctx = fc.getContext('2d');
-                fctx.drawImage(pg.canvas, 0, 0);
-                const strokeDpr = pg.canvas.width / pg.overlay.width;
-                if (Math.abs(strokeDpr - 1) > 0.01) fctx.setTransform(strokeDpr, 0, 0, strokeDpr, 0, 0);
-                for (const ann of pane.annotations) {
-                    if (ann.pageIdx !== i || ann.type !== 'draw') continue;
-                    this._drawStroke(fctx, ann.stroke);
-                }
-                if (Math.abs(strokeDpr - 1) > 0.01) fctx.setTransform(1, 0, 0, 1, 0, 0);
-                const entry = {
-                    action: 'full_new', srcPageIdx,
-                    w: fc.width, h: fc.height, dataUrl: fc.toDataURL('image/png')
-                };
-                if (pg.pdfPtW > 0 && pg.pdfPtH > 0) { entry.pdfPtW = pg.pdfPtW; entry.pdfPtH = pg.pdfPtH; }
-                pages.push(entry);
-            } else if (hasOverlay) {
-                // Original page with draw strokes: send transparent annotation overlay only.
-                // Text is excluded entirely — it lives in the sidecar and is never burned into the PDF.
-                const oc = document.createElement('canvas');
-                oc.width = pg.overlay.width; oc.height = pg.overlay.height;
-                const octx = oc.getContext('2d');
-                for (const ann of pane.annotations) {
-                    if (ann.pageIdx !== i || ann.type !== 'draw') continue;
-                    this._drawStroke(octx, ann.stroke);
-                }
-                pages.push({
-                    action: 'overlay',
-                    srcPageIdx,
-                    w: oc.width, h: oc.height,
-                    dataUrl: oc.toDataURL('image/png')
-                });
-            } else {
-                // Original page with no changes: server keeps as-is
+            if (isOriginal) {
                 pages.push({ action: 'original', srcPageIdx });
+                continue;
             }
+
+            // Blank/inserted page: send full composite (no original to reference).
+            const fc = document.createElement('canvas');
+            fc.width = pg.canvas.width; fc.height = pg.canvas.height;
+            const fctx = fc.getContext('2d');
+            fctx.drawImage(pg.canvas, 0, 0);
+            const strokeDpr = pg.canvas.width / pg.overlay.width;
+            if (Math.abs(strokeDpr - 1) > 0.01) fctx.setTransform(strokeDpr, 0, 0, strokeDpr, 0, 0);
+            for (const ann of pane.annotations) {
+                if (ann.pageIdx !== i || ann.type !== 'draw') continue;
+                this._drawStroke(fctx, ann.stroke);
+            }
+            if (Math.abs(strokeDpr - 1) > 0.01) fctx.setTransform(1, 0, 0, 1, 0, 0);
+            const entry = {
+                action: 'full_new', srcPageIdx,
+                w: fc.width, h: fc.height, dataUrl: fc.toDataURL('image/png')
+            };
+            if (pg.pdfPtW > 0 && pg.pdfPtH > 0) { entry.pdfPtW = pg.pdfPtW; entry.pdfPtH = pg.pdfPtH; }
+            pages.push(entry);
         }
         return JSON.stringify({ totalPages: pane.pages.length, pages });
     },
@@ -2146,10 +2145,22 @@ window.pcfViewer = {
         xhr.open('POST', '/api/pc-file-save-annotated?pcId=' + this._pcId + '&path=' + encodeURIComponent(pane.filePath) + soloParam, false);
         xhr.send(formData);
 
-        // Persist text annotations to sidecar (best-effort via beacon — sync context)
-        this._saveSidecarBeacon(paneId);
+        // Pages we just baked into the PDF — their draws/bg are now part of the file and
+        // must NOT be persisted to the sidecar (would double-render on next reload).
+        const bakedPages = new Set(
+            meta.pages.map((p, i) => (p.action === 'full_new' || p.action === 'full_replace') ? i : -1)
+                     .filter(i => i >= 0)
+        );
 
-        pane.annotations = [];
+        // Drop baked-page draws/bg from pane.annotations BEFORE the beacon reads them.
+        pane.annotations = pane.annotations.filter(a => {
+            if (a.type !== 'text' && a.type !== 'draw' && a.type !== 'bg-change') return false;
+            if (a.type !== 'text' && bakedPages.has(a.pageIdx)) return false;
+            return true;
+        });
+
+        // Persist sidecar (best-effort via beacon — sync context).
+        this._saveSidecarBeacon(paneId);
     },
 
     // Save all panes that have annotations (sync, for beforeunload)
@@ -2159,47 +2170,85 @@ window.pcfViewer = {
         }
     },
 
-    // Async save for a pane (used when switching files)
+    // Async save for a pane (used when switching files / manual Save / CS-Done).
     async savePane(paneId) {
         const pane = this.panes[paneId];
         if (!pane || pane.readOnly || pane.annotations.length === 0 || !pane.filePath || !this._pcId) return;
 
         const dataJson = this.getAnnotationData(paneId);
+        const metaObj = JSON.parse(dataJson);
+        // Pages whose action is full_new / full_replace get burned into the PDF in this save —
+        // their draws/bg are part of the bake and must be excluded from the sidecar to avoid
+        // double-rendering on the next reload.
+        const bakedPages = new Set(
+            metaObj.pages.map((p, i) => (p.action === 'full_new' || p.action === 'full_replace') ? i : -1)
+                         .filter(i => i >= 0)
+        );
         await window.pcfSaveAnnotatedPdf(this._pcId, pane.filePath, dataJson, pane.solo, paneId);
-        await this._saveSidecar(paneId);
-        pane.annotations = [];
+        await this._saveSidecar(paneId, bakedPages);
+        // Drop burned-into-PDF types AND any draw/bg on baked pages; keep the rest as live sidecar truth.
+        pane.annotations = pane.annotations.filter(a => {
+            if (a.type !== 'text' && a.type !== 'draw' && a.type !== 'bg-change') return false;
+            if (a.type !== 'text' && bakedPages.has(a.pageIdx)) return false;
+            return true;
+        });
     },
 
-    // Save text annotation sidecar (async)
-    async _saveSidecar(paneId) {
+    // Build the sidecar payload from pane.annotations.
+    //   - Persists text, draw, bg-change. Drops anything else (blank-page, full_replace, etc).
+    //   - bgPickFields strips ephemeral fields (snapshot canvas) before serializing.
+    //   - When `bakedPages` is supplied, skips draw/bg entries on those pages — those got baked
+    //     into the PDF on disk in the same save and shouldn't double-render via sidecar on reload.
+    //     (Text always goes through; text is fully sidecar-managed regardless of page status.)
+    _buildSidecarPayload(pane, bakedPages) {
+        const out = [];
+        for (const a of pane.annotations) {
+            if (a.type === 'text') { out.push(a); continue; }
+            if (bakedPages && bakedPages.has(a.pageIdx)) continue;
+            if (a.type === 'draw') { out.push(a); continue; }
+            if (a.type === 'bg-change') {
+                out.push({ type: 'bg-change', pageIdx: a.pageIdx, color: a.color });
+                continue;
+            }
+        }
+        return out;
+    },
+
+    // Save sidecar (async). bakedPagesSet (optional) is a Set<number> of page indices that
+    // were just baked into the PDF in the same save flow, so their draws/bg are omitted.
+    async _saveSidecar(paneId, bakedPagesSet) {
         const pane = this.panes[paneId];
         if (!pane || pane.readOnly || !pane.filePath || !this._pcId) return;
         // Clamp text annotations into page boundaries before persisting; redraw any pages
         // whose annotations actually moved so the user sees the snap.
         const clamped = this._clampTextAnnotationsToPage(pane);
         for (const pageIdx of clamped) this._redrawOverlay(pageIdx, paneId);
-        const textAnns = pane.annotations.filter(a => a.type === 'text');
+        const sidecarAnns = this._buildSidecarPayload(pane, bakedPagesSet);
         const soloParam = pane.solo ? '&solo=true' : '';
         const url = `/api/pc-file-save-annotations?pcId=${this._pcId}&path=${encodeURIComponent(pane.filePath)}${soloParam}`;
-        const body = textAnns.length > 0
-            ? JSON.stringify({ scale: pane.baseScale, annotations: textAnns })
+        const body = sidecarAnns.length > 0
+            ? JSON.stringify({ scale: pane.baseScale, annotations: sidecarAnns })
             : null;
         try {
             await fetch(url, { method: 'POST', credentials: 'include', body, headers: { 'Content-Type': 'application/json' } });
         } catch(e) { /* best-effort */ }
     },
 
-    // Save text annotation sidecar via sendBeacon (sync context / beforeunload)
+    // Save sidecar via sendBeacon (sync context / beforeunload).
     _saveSidecarBeacon(paneId) {
         const pane = this.panes[paneId];
         if (!pane || pane.readOnly || !pane.filePath || !this._pcId) return;
         // Clamp before serializing; no redraw here (sync close/unload context).
         this._clampTextAnnotationsToPage(pane);
-        const textAnns = pane.annotations.filter(a => a.type === 'text');
+        // Beforeunload runs without an accompanying save POST, so we don't have a bakedPages set.
+        // Persist everything that lives in the sidecar (text/draw/bg-change). Worst case, if the
+        // user had drawn on a non-original page that didn't get baked yet, the next session reload
+        // will see a sidecar entry for an out-of-range pageIdx and silently ignore it.
+        const sidecarAnns = this._buildSidecarPayload(pane, null);
         const soloParam = pane.solo ? '&solo=true' : '';
         const url = `/api/pc-file-save-annotations?pcId=${this._pcId}&path=${encodeURIComponent(pane.filePath)}${soloParam}`;
-        const body = textAnns.length > 0
-            ? JSON.stringify({ scale: pane.baseScale, annotations: textAnns })
+        const body = sidecarAnns.length > 0
+            ? JSON.stringify({ scale: pane.baseScale, annotations: sidecarAnns })
             : null;
         try { navigator.sendBeacon(url, body ? new Blob([body], { type: 'application/json' }) : new Blob()); } catch(e) { /* best-effort */ }
     },
@@ -2213,52 +2262,58 @@ window.pcfViewer = {
         const pg = pane.pages[pageIdx];
         if (!pg) return;
 
-        const w = pg.canvas.width;
-        const h = pg.canvas.height;
-        const ctx = pg.canvas.getContext('2d');
-
-        // Snapshot current canvas for undo
+        // Snapshot current canvas for in-session undo (not persisted to sidecar)
+        const w = pg.canvas.width, h = pg.canvas.height;
         const snapshot = document.createElement('canvas');
         snapshot.width = w;
         snapshot.height = h;
         snapshot.getContext('2d').drawImage(pg.canvas, 0, 0);
         pane.annotations.push({ type: 'bg-change', pageIdx, color, snapshot });
 
-        // Use per-page source doc/page tracking set at render time
+        await this._paintPageBg(pane, pg, color);
+        if (this.dotNetRef) this.dotNetRef.invokeMethodAsync('OnAnnotationChanged');
+    },
+
+    // Paint a saved bg-change color onto the live page canvas — no snapshot, no annotation
+    // push, no dirty notify. Used by the sidecar load path.
+    async _reapplySavedBg(paneId, pageIdx, color) {
+        const pane = this.panes[paneId];
+        if (!pane) return;
+        const pg = pane.pages[pageIdx];
+        if (!pg) return;
+        await this._paintPageBg(pane, pg, color);
+    },
+
+    // Render the bg color onto pg.canvas. If the page has a srcDoc/srcPageNum, re-render the
+    // source page first so previously-applied content shows through the multiply blend; else
+    // (blank inserted page) just fill solid.
+    async _paintPageBg(pane, pg, color) {
+        const w = pg.canvas.width, h = pg.canvas.height;
+        const ctx = pg.canvas.getContext('2d');
         const hasSrc = pg.srcDoc && pg.srcPageNum;
+        const isWhite = !color || color === '' || color === '#ffffff' || color === '#FFFFFF';
 
         if (hasSrc) {
-            // Render from the exact source doc/page (correct even after insertions)
             const dpr = _pdfDpr();
             const tmpCanvas = document.createElement('canvas');
             tmpCanvas.width = w;
             tmpCanvas.height = h;
             const tmpCtx = tmpCanvas.getContext('2d');
-            const page = await pg.srcDoc.getPage(pg.srcPageNum);
-            const hiResVp = page.getViewport({ scale: (pg.scale || pane.baseScale) * dpr });
-            await page.render({ canvasContext: tmpCtx, viewport: hiResVp }).promise;
+            const srcPage = await pg.srcDoc.getPage(pg.srcPageNum);
+            const hiResVp = srcPage.getViewport({ scale: (pg.scale || pane.baseScale) * dpr });
+            await srcPage.render({ canvasContext: tmpCtx, viewport: hiResVp }).promise;
 
             ctx.clearRect(0, 0, w, h);
-
-            // Fill background color
-            ctx.fillStyle = (color && color !== '' && color !== '#ffffff' && color !== '#FFFFFF') ? color : '#ffffff';
+            ctx.fillStyle = isWhite ? '#ffffff' : color;
             ctx.fillRect(0, 0, w, h);
-
-            // Draw PDF on top — use multiply blend so white areas take the background color
-            if (color && color !== '' && color !== '#ffffff' && color !== '#FFFFFF') {
-                ctx.globalCompositeOperation = 'multiply';
-            }
+            if (!isWhite) ctx.globalCompositeOperation = 'multiply';
             ctx.drawImage(tmpCanvas, 0, 0);
             ctx.globalCompositeOperation = 'source-over';
         } else {
-            // Blank page (no source doc) — just fill with the color directly
             ctx.clearRect(0, 0, w, h);
-            ctx.fillStyle = (color && color !== '' && color !== '#ffffff' && color !== '#FFFFFF') ? color : '#ffffff';
+            ctx.fillStyle = isWhite ? '#ffffff' : color;
             ctx.fillRect(0, 0, w, h);
         }
-
-        // Notify Blazor
-        if (this.dotNetRef) this.dotNetRef.invokeMethodAsync('OnAnnotationChanged');
     },
 
     // ── Dual-page (side-by-side) mode ──

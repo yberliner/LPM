@@ -1054,17 +1054,39 @@ public class FolderService
         File.Move(srcSide, dstSide);
     }
 
-    // ── Text annotation baking ────────────────────────────────────────────────
+    // ── Annotation baking ─────────────────────────────────────────────────────
+    // The .ann.json sidecar carries three annotation types:
+    //   "text"      — rendered onto the page via PdfSharp XGraphics (existing logic)
+    //   "draw"      — pen / brush strokes; rendered as raw PDF content streams
+    //                 (so we can use ExtGState for brush multiply-blend + alpha)
+    //   "bg-change" — full-page colored multiply rectangle (reuses PdfBgHelper)
+    // Existing sidecars (text-only, no Type field) deserialize as Type=null and
+    // are treated as text — backward-compatible.
 
     private record AnnSidecar(double Scale, List<AnnSidecarEntry> Annotations);
-    private record AnnSidecarEntry(int PageIdx, string Text, double X, double Y, double? FontSize, string? Color, double? MaxWidth, bool? Rtl, List<string>? Lines);
+    private record AnnSidecarEntry(
+        string? Type,
+        int PageIdx,
+        // Text fields
+        string? Text,
+        double X, double Y,
+        double? FontSize,
+        string? Color,
+        double? MaxWidth,
+        bool? Rtl,
+        List<string>? Lines,
+        // Draw field
+        StrokeData? Stroke);
+    private record StrokeData(List<StrokePoint>? Points, string? Color, double? Width, bool? Brush);
+    private record StrokePoint(double X, double Y);
 
     /// <summary>
-    /// Parse an .ann.json sidecar and render its text annotations onto the PDF using PdfSharp.
+    /// Parse an .ann.json sidecar and render its annotations onto the PDF using PdfSharp.
+    /// Renders three layers per page in this order: background colors → draw strokes → text.
     /// Uses Import + new-document approach (same as the save-annotated endpoint) for maximum compatibility.
     /// Returns the new PDF bytes, or the original bytes if there are no annotations or an error occurs.
     /// </summary>
-    public byte[] BakeTextAnnotations(byte[] pdfBytes, string annJson)
+    public byte[] BakeAnnotations(byte[] pdfBytes, string annJson)
     {
         try
         {
@@ -1074,13 +1096,23 @@ public class FolderService
 
             var scale = sidecar.Scale > 0 ? sidecar.Scale : 1.0;
 
-            // Group annotations by page index for fast lookup
-            var byPage = sidecar.Annotations
-                .Where(a => !string.IsNullOrEmpty(a.Text))
-                .GroupBy(a => a.PageIdx)
-                .ToDictionary(g => g.Key, g => g.ToList());
+            // Treat entries with no Type as legacy text annotations (sidecars from before
+            // draws/bg were sidecar-managed only carried text).
+            string TypeOf(AnnSidecarEntry a) =>
+                string.IsNullOrEmpty(a.Type) ? "text" : a.Type!;
 
-            if (byPage.Count == 0) return pdfBytes;
+            // Group ALL annotation types by page; for text we still gate on non-empty Text.
+            var bgByPage    = sidecar.Annotations.Where(a => TypeOf(a) == "bg-change" && !string.IsNullOrEmpty(a.Color))
+                                                  .GroupBy(a => a.PageIdx)
+                                                  .ToDictionary(g => g.Key, g => g.Last());                  // last write wins
+            var drawsByPage = sidecar.Annotations.Where(a => TypeOf(a) == "draw" && a.Stroke?.Points != null && a.Stroke.Points.Count >= 2)
+                                                  .GroupBy(a => a.PageIdx)
+                                                  .ToDictionary(g => g.Key, g => g.ToList());
+            var textByPage  = sidecar.Annotations.Where(a => TypeOf(a) == "text" && !string.IsNullOrEmpty(a.Text))
+                                                  .GroupBy(a => a.PageIdx)
+                                                  .ToDictionary(g => g.Key, g => g.ToList());
+
+            if (bgByPage.Count == 0 && drawsByPage.Count == 0 && textByPage.Count == 0) return pdfBytes;
 
             // Open source with Import mode (robust, proven compatible with all our PDFs)
             using var ms = new MemoryStream(pdfBytes);
@@ -1092,7 +1124,20 @@ public class FolderService
                 // Copy page from source into new document
                 var page = outDoc.AddPage(srcDoc.Pages[i]);
 
-                if (!byPage.TryGetValue(i, out var anns)) continue;
+                // ── Layer 1: page background color ──
+                if (bgByPage.TryGetValue(i, out var bgEntry))
+                {
+                    PdfBgHelper.AppendMultiplyBackground(outDoc, page, bgEntry.Color!);
+                }
+
+                // ── Layer 2: draw / brush strokes ──
+                if (drawsByPage.TryGetValue(i, out var strokes))
+                {
+                    foreach (var s in strokes)
+                        AppendStrokeOverlay(outDoc, page, s.Stroke!, scale);
+                }
+
+                if (!textByPage.TryGetValue(i, out var anns)) continue;
 
                 // ── Diagnostic: per-page metadata so position bugs are debuggable ──
                 Console.WriteLine($"[BakeText] page={i} W={page.Width.Point:F2} H={page.Height.Point:F2} " +
@@ -1302,8 +1347,99 @@ public class FolderService
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[FolderService] BakeTextAnnotations failed: {ex.Message}");
+            Console.WriteLine($"[FolderService] BakeAnnotations failed: {ex.Message}");
             return pdfBytes;
+        }
+    }
+
+    /// <summary>
+    /// Render a draw/brush stroke onto a PDF page as a raw content stream. Brush mode uses
+    /// a /Multiply blend mode + /CA alpha via ExtGState (same trick as PdfBgHelper). Pen mode
+    /// is plain stroked polylines. Coordinates are converted from canvas pixels (at the sidecar's
+    /// recorded scale) into PDF points; PDF origin is bottom-left so Y is flipped.
+    /// </summary>
+    private static void AppendStrokeOverlay(PdfSharpCore.Pdf.PdfDocument doc, PdfSharpCore.Pdf.PdfPage page,
+        StrokeData stroke, double sidecarScale)
+    {
+        if (stroke?.Points == null || stroke.Points.Count < 2) return;
+        double scale = sidecarScale > 0 ? sidecarScale : 1.0;
+
+        // Color (RGB 0..1 for PDF stroke color operator "RG")
+        var (sr, sg, sb) = PdfBgHelper.ParseHexColor(stroke.Color ?? "#000000");
+
+        double widthPts = Math.Max(0.1, (stroke.Width ?? 1.0) / scale);
+        double pageH = page.MediaBox.Height;
+
+        var sbuf = new System.Text.StringBuilder();
+        sbuf.Append("q ");
+
+        // Brush: semi-transparent multiply blend (matches canvas globalAlpha=.35 + multiply).
+        // Pen: plain stroke, no ExtGState.
+        if (stroke.Brush == true)
+        {
+            var gsName = AppendStrokeBrushGState(doc, page);
+            sbuf.Append($"{gsName} gs ");
+        }
+
+        sbuf.AppendFormat(System.Globalization.CultureInfo.InvariantCulture,
+            "{0:F3} {1:F3} {2:F3} RG {3:F2} w 1 J 1 j ", sr, sg, sb, widthPts);
+
+        var first = stroke.Points[0];
+        sbuf.AppendFormat(System.Globalization.CultureInfo.InvariantCulture,
+            "{0:F2} {1:F2} m ", first.X / scale, pageH - first.Y / scale);
+        for (int i = 1; i < stroke.Points.Count; i++)
+        {
+            var pt = stroke.Points[i];
+            sbuf.AppendFormat(System.Globalization.CultureInfo.InvariantCulture,
+                "{0:F2} {1:F2} l ", pt.X / scale, pageH - pt.Y / scale);
+        }
+        sbuf.Append("S Q\n");
+
+        AppendContentStream(doc, page, System.Text.Encoding.ASCII.GetBytes(sbuf.ToString()));
+    }
+
+    /// <summary>Register a unique ExtGState for brush strokes (Multiply + alpha 0.35) on this page.</summary>
+    private static string AppendStrokeBrushGState(PdfSharpCore.Pdf.PdfDocument doc, PdfSharpCore.Pdf.PdfPage page)
+    {
+        var gsDict = new PdfSharpCore.Pdf.PdfDictionary(doc);
+        gsDict.Elements.SetName("/Type", "/ExtGState");
+        gsDict.Elements.SetName("/BM", "/Multiply");
+        // PDF stroking + non-stroking alpha (matches canvas globalAlpha=0.35 for brush mode).
+        gsDict.Elements["/CA"] = new PdfSharpCore.Pdf.PdfReal(0.35);
+        gsDict.Elements["/ca"] = new PdfSharpCore.Pdf.PdfReal(0.35);
+        doc.Internals.AddObject(gsDict);
+
+        var resources = page.Resources;
+        var extGStates = resources.Elements.GetDictionary("/ExtGState");
+        if (extGStates == null)
+        {
+            extGStates = new PdfSharpCore.Pdf.PdfDictionary(doc);
+            resources.Elements["/ExtGState"] = extGStates;
+        }
+        // Unique name per call so multiple strokes on the same page don't collide.
+        var name = "/GSStrokeLPM" + Guid.NewGuid().ToString("N").Substring(0, 8);
+        extGStates.Elements[name] = gsDict.Reference;
+        return name;
+    }
+
+    /// <summary>Append a raw byte content-stream object to a page's /Contents array.</summary>
+    private static void AppendContentStream(PdfSharpCore.Pdf.PdfDocument doc, PdfSharpCore.Pdf.PdfPage page, byte[] ops)
+    {
+        var streamObj = new PdfSharpCore.Pdf.PdfDictionary(doc);
+        streamObj.CreateStream(ops);
+        doc.Internals.AddObject(streamObj);
+
+        var contentsItem = page.Elements["/Contents"];
+        if (contentsItem is PdfSharpCore.Pdf.PdfArray arr)
+        {
+            arr.Elements.Add(streamObj.Reference);
+        }
+        else
+        {
+            var newArr = new PdfSharpCore.Pdf.PdfArray(doc);
+            if (contentsItem != null) newArr.Elements.Add(contentsItem);
+            newArr.Elements.Add(streamObj.Reference);
+            page.Elements["/Contents"] = newArr;
         }
     }
 
@@ -1454,7 +1590,7 @@ public class FolderService
         var sidecarPath = fullPdfPath + ".ann.json";
         if (!File.Exists(sidecarPath)) return pdfBytes;
         var annJson = File.ReadAllText(sidecarPath);
-        return BakeTextAnnotations(pdfBytes, annJson);
+        return BakeAnnotations(pdfBytes, annJson);
     }
 
     /// <summary>
