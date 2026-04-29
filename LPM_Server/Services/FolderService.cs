@@ -1124,29 +1124,25 @@ public class FolderService
                 // Copy page from source into new document
                 var page = outDoc.AddPage(srcDoc.Pages[i]);
 
-                // ── Layer 1: page background color ──
+                // ── Layer 1: page background color (raw stream — covers full MediaBox) ──
                 if (bgByPage.TryGetValue(i, out var bgEntry))
                 {
                     PdfBgHelper.AppendMultiplyBackground(outDoc, page, bgEntry.Color!);
                 }
 
-                // ── Layer 2: draw / brush strokes ──
-                if (drawsByPage.TryGetValue(i, out var strokes))
-                {
-                    foreach (var s in strokes)
-                        AppendStrokeOverlay(outDoc, page, s.Stroke!, scale);
-                }
-
-                if (!textByPage.TryGetValue(i, out var anns)) continue;
+                bool hasDraws = drawsByPage.TryGetValue(i, out var strokes);
+                bool hasText  = textByPage.TryGetValue(i, out var anns);
+                if (!hasDraws && !hasText) continue;
 
                 // ── Diagnostic: per-page metadata so position bugs are debuggable ──
                 Console.WriteLine($"[BakeText] page={i} W={page.Width.Point:F2} H={page.Height.Point:F2} " +
                     $"Rotate={(int)page.Rotate} " +
                     $"MediaBox={(page.Elements.GetObject("/MediaBox") is PdfSharpCore.Pdf.PdfArray mbArr && mbArr.Elements.Count == 4 ? $"[{mbArr.Elements[0]},{mbArr.Elements[1]},{mbArr.Elements[2]},{mbArr.Elements[3]}]" : "(default)")} " +
                     $"CropBox={(page.Elements.GetObject("/CropBox") is PdfSharpCore.Pdf.PdfArray cbArr && cbArr.Elements.Count == 4 ? $"[{cbArr.Elements[0]},{cbArr.Elements[1]},{cbArr.Elements[2]},{cbArr.Elements[3]}]" : "(none)")} " +
-                    $"sidecarScale={scale:F4} annCount={anns.Count}");
+                    $"sidecarScale={scale:F4} drawCount={(hasDraws ? strokes!.Count : 0)} textCount={(hasText ? anns!.Count : 0)}");
 
-                // Append text annotations on top of this page
+                // Open XGraphics ONCE for both strokes and text so they share the same canvas-style
+                // coordinate transform (XGraphics handles the PDF user-space Y-flip + any /Rotate).
                 using var gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(page, PdfSharpCore.Drawing.XGraphicsPdfPageOptions.Append);
 
                 // ── C1: rotation handling ──
@@ -1177,7 +1173,16 @@ public class FolderService
                     }
                 }
 
-                foreach (var ann in anns)
+                // ── Layer 2: draw / brush strokes (canvas-style coords via XGraphics) ──
+                if (hasDraws)
+                {
+                    foreach (var s in strokes!)
+                        DrawStrokeWithGfx(gfx, s.Stroke!, scale);
+                }
+
+                if (!hasText) continue;
+
+                foreach (var ann in anns!)
                 {
                     // Convert canvas-pixel coords → PDF points.
                     // Canvas Y: origin top-left, Y increases downward, ann.Y is the text baseline.
@@ -1353,94 +1358,43 @@ public class FolderService
     }
 
     /// <summary>
-    /// Render a draw/brush stroke onto a PDF page as a raw content stream. Brush mode uses
-    /// a /Multiply blend mode + /CA alpha via ExtGState (same trick as PdfBgHelper). Pen mode
-    /// is plain stroked polylines. Coordinates are converted from canvas pixels (at the sidecar's
-    /// recorded scale) into PDF points; PDF origin is bottom-left so Y is flipped.
+    /// Render a draw/brush stroke onto a PDF page using XGraphics. Coordinates are in canvas
+    /// pixels at the sidecar's recorded scale; we divide by scale to get PDF points. XGraphics'
+    /// canvas-style convention (top-left origin, Y down) and any /Rotate transform handling
+    /// are inherited from the caller (the same gfx that draws text annotations).
+    ///
+    /// Brush mode is approximated with alpha-only (35% transparency) instead of the canvas's
+    /// multiply blend — XGraphics doesn't expose blend-mode plumbing without dropping to raw
+    /// PDF operators, and getting that to play nicely with XGraphics' CTM proved unreliable.
+    /// On a white page the alpha approximation looks identical; on a colored bg-change the
+    /// brush will appear translucent rather than multiply-tinted. Acceptable tradeoff.
     /// </summary>
-    private static void AppendStrokeOverlay(PdfSharpCore.Pdf.PdfDocument doc, PdfSharpCore.Pdf.PdfPage page,
-        StrokeData stroke, double sidecarScale)
+    private static void DrawStrokeWithGfx(PdfSharpCore.Drawing.XGraphics gfx, StrokeData stroke, double sidecarScale)
     {
         if (stroke?.Points == null || stroke.Points.Count < 2) return;
         double scale = sidecarScale > 0 ? sidecarScale : 1.0;
 
-        // Color (RGB 0..1 for PDF stroke color operator "RG")
         var (sr, sg, sb) = PdfBgHelper.ParseHexColor(stroke.Color ?? "#000000");
+        int r = (int)Math.Round(sr * 255);
+        int g = (int)Math.Round(sg * 255);
+        int b = (int)Math.Round(sb * 255);
+        int a = (stroke.Brush == true) ? 89 : 255;  // 0.35 * 255 ≈ 89
+        var color = PdfSharpCore.Drawing.XColor.FromArgb(a, r, g, b);
 
         double widthPts = Math.Max(0.1, (stroke.Width ?? 1.0) / scale);
-        double pageH = page.MediaBox.Height;
-
-        var sbuf = new System.Text.StringBuilder();
-        sbuf.Append("q ");
-
-        // Brush: semi-transparent multiply blend (matches canvas globalAlpha=.35 + multiply).
-        // Pen: plain stroke, no ExtGState.
-        if (stroke.Brush == true)
+        var pen = new PdfSharpCore.Drawing.XPen(color, widthPts)
         {
-            var gsName = AppendStrokeBrushGState(doc, page);
-            sbuf.Append($"{gsName} gs ");
-        }
+            LineCap  = PdfSharpCore.Drawing.XLineCap.Round,
+            LineJoin = PdfSharpCore.Drawing.XLineJoin.Round,
+        };
 
-        sbuf.AppendFormat(System.Globalization.CultureInfo.InvariantCulture,
-            "{0:F3} {1:F3} {2:F3} RG {3:F2} w 1 J 1 j ", sr, sg, sb, widthPts);
-
-        var first = stroke.Points[0];
-        sbuf.AppendFormat(System.Globalization.CultureInfo.InvariantCulture,
-            "{0:F2} {1:F2} m ", first.X / scale, pageH - first.Y / scale);
-        for (int i = 1; i < stroke.Points.Count; i++)
+        var pts = new PdfSharpCore.Drawing.XPoint[stroke.Points.Count];
+        for (int i = 0; i < stroke.Points.Count; i++)
         {
-            var pt = stroke.Points[i];
-            sbuf.AppendFormat(System.Globalization.CultureInfo.InvariantCulture,
-                "{0:F2} {1:F2} l ", pt.X / scale, pageH - pt.Y / scale);
+            var p = stroke.Points[i];
+            pts[i] = new PdfSharpCore.Drawing.XPoint(p.X / scale, p.Y / scale);
         }
-        sbuf.Append("S Q\n");
-
-        AppendContentStream(doc, page, System.Text.Encoding.ASCII.GetBytes(sbuf.ToString()));
-    }
-
-    /// <summary>Register a unique ExtGState for brush strokes (Multiply + alpha 0.35) on this page.</summary>
-    private static string AppendStrokeBrushGState(PdfSharpCore.Pdf.PdfDocument doc, PdfSharpCore.Pdf.PdfPage page)
-    {
-        var gsDict = new PdfSharpCore.Pdf.PdfDictionary(doc);
-        gsDict.Elements.SetName("/Type", "/ExtGState");
-        gsDict.Elements.SetName("/BM", "/Multiply");
-        // PDF stroking + non-stroking alpha (matches canvas globalAlpha=0.35 for brush mode).
-        gsDict.Elements["/CA"] = new PdfSharpCore.Pdf.PdfReal(0.35);
-        gsDict.Elements["/ca"] = new PdfSharpCore.Pdf.PdfReal(0.35);
-        doc.Internals.AddObject(gsDict);
-
-        var resources = page.Resources;
-        var extGStates = resources.Elements.GetDictionary("/ExtGState");
-        if (extGStates == null)
-        {
-            extGStates = new PdfSharpCore.Pdf.PdfDictionary(doc);
-            resources.Elements["/ExtGState"] = extGStates;
-        }
-        // Unique name per call so multiple strokes on the same page don't collide.
-        var name = "/GSStrokeLPM" + Guid.NewGuid().ToString("N").Substring(0, 8);
-        extGStates.Elements[name] = gsDict.Reference;
-        return name;
-    }
-
-    /// <summary>Append a raw byte content-stream object to a page's /Contents array.</summary>
-    private static void AppendContentStream(PdfSharpCore.Pdf.PdfDocument doc, PdfSharpCore.Pdf.PdfPage page, byte[] ops)
-    {
-        var streamObj = new PdfSharpCore.Pdf.PdfDictionary(doc);
-        streamObj.CreateStream(ops);
-        doc.Internals.AddObject(streamObj);
-
-        var contentsItem = page.Elements["/Contents"];
-        if (contentsItem is PdfSharpCore.Pdf.PdfArray arr)
-        {
-            arr.Elements.Add(streamObj.Reference);
-        }
-        else
-        {
-            var newArr = new PdfSharpCore.Pdf.PdfArray(doc);
-            if (contentsItem != null) newArr.Elements.Add(contentsItem);
-            newArr.Elements.Add(streamObj.Reference);
-            page.Elements["/Contents"] = newArr;
-        }
+        gfx.DrawLines(pen, pts);
     }
 
     private static int ParseHexColor(string hex)
