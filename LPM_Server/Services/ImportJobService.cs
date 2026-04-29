@@ -186,7 +186,7 @@ public class ImportJobService
 
     /// <summary>Start background processing after all files are uploaded.</summary>
     public void StartProcessing(string jobId, List<ImportPcManifest> manifest,
-        List<ImportCoverMapping> coverMappings, bool overrideCoverFolders = false)
+        List<ImportCoverMapping> coverMappings, bool overrideCoverFolders = false, bool bulkMode = true)
     {
         if (CurrentJob == null || CurrentJob.JobId != jobId) return;
 
@@ -194,7 +194,7 @@ public class ImportJobService
         CurrentJob.ProcessedFiles = 0;
         FireProgress();
 
-        Console.WriteLine($"[ImportJobService] Started processing job {jobId}, {manifest.Count} PCs");
+        Console.WriteLine($"[ImportJobService] Started processing job {jobId}, {manifest.Count} PCs (bulkMode={bulkMode})");
         var userId = CurrentJob.UserId;
         var coreUserId = CurrentJob.CoreUserId;
         var tempJobPath = Path.Combine(_tempBasePath, jobId);
@@ -203,7 +203,7 @@ public class ImportJobService
         _currentCts?.Dispose();
         _currentCts = new CancellationTokenSource();
         var ct = _currentCts.Token;
-        _ = Task.Run(() => ProcessInBackground(jobId, tempJobPath, manifest, coverMappings, userId, coreUserId, overrideCoverFolders, ct));
+        _ = Task.Run(() => ProcessInBackground(jobId, tempJobPath, manifest, coverMappings, userId, coreUserId, overrideCoverFolders, bulkMode, ct));
     }
 
     /// <summary>
@@ -256,6 +256,7 @@ public class ImportJobService
         List<ImportPcManifest> manifest, List<ImportCoverMapping> coverMappings, int userId,
         int? coreUserId = null,
         bool overrideCoverFolders = false,
+        bool bulkMode = true,
         CancellationToken ct = default)
     {
         try
@@ -265,8 +266,21 @@ public class ImportJobService
 
             if (overrideCoverFolders)
             {
-                Console.WriteLine("[ImportJobService] Override flag set — deleting all Front_Cover and Back_Cover dirs...");
-                _folderSvc.DeleteAllCoverDirectories();
+                if (bulkMode)
+                {
+                    Console.WriteLine("[ImportJobService] Override flag set (bulk) — deleting all Front_Cover and Back_Cover dirs...");
+                    _folderSvc.DeleteAllCoverDirectories();
+                }
+                else
+                {
+                    // Single PC mode: scope override-delete to manifest's PCs only
+                    var entries = manifest
+                        .Where(pc => pc.ExistingPcId.HasValue)
+                        .Select(pc => (PcId: pc.ExistingPcId!.Value, Solo: pc.IsSolo))
+                        .ToList();
+                    Console.WriteLine($"[ImportJobService] Override flag set (scoped) — deleting cover dirs for {entries.Count} PC(s)");
+                    _folderSvc.DeleteCoverDirectoriesForPcs(entries);
+                }
             }
 
             // Process non-solo first, then solo — preserving the table order within each group

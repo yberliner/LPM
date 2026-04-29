@@ -63,7 +63,14 @@ builder.Services.AddServerSideBlazor()
     })
     .AddCircuitOptions(options =>
     {
-        options.DisconnectedCircuitRetentionPeriod = TimeSpan.FromHours(12);
+        // How long Blazor keeps a disconnected circuit alive in memory waiting for
+        // the user to reconnect. Each circuit pins its full render tree + JS interop refs
+        // + captured services. With many users opening/closing tabs through a workday,
+        // the previous 12-hour retention caused the system-memory staircase visible in
+        // the Health tab history (32% → 87% over a workday).
+        // 5 minutes covers laptop-lid-close / network blip / quick tab restore without
+        // hoarding circuits. Microsoft's default is 3 minutes; we keep a little margin.
+        options.DisconnectedCircuitRetentionPeriod = TimeSpan.FromMinutes(5);
     });
 // 200 MB decrypted-file cache — shared across all users, keyed by absolute disk path.
 // PDF-CACHE TOGGLE: cache writes/reads are gated by _pdfCacheEnabled in FolderService.cs.
@@ -148,6 +155,7 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<LPM.Services.PdfSh
 builder.Services.AddSingleton<LPM.Services.CsNotificationService>();
 builder.Services.AddSingleton<LPM.Services.ShortcutService>();
 builder.Services.AddSingleton<LPM.Services.UserActivityService>();
+builder.Services.AddSingleton<LPM.Services.CircuitTrackingService>();
 builder.Services.AddScoped<LPM.Services.LpmCircuitHandler>();
 builder.Services.AddScoped<Microsoft.AspNetCore.Components.Server.Circuits.CircuitHandler, LPM.Services.LpmCircuitHandler>();
 builder.Services.AddHttpClient("sms");

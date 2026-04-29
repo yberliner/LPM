@@ -160,7 +160,7 @@
             <div class="form-check mb-3">
                 <input class="form-check-input" type="checkbox" id="namesOnlyCheck"
                        checked="@_namesOnly"
-                       @onchange="e => { _namesOnly = (bool)(e.Value ?? false); ResetState(); }" />
+                       @onchange="e => { ResetState(); _namesOnly = (bool)(e.Value ?? false); }" />
                 <label class="form-check-label" for="namesOnlyCheck" style="font-size:.85rem; color:#e2e8f0; cursor:pointer;">
                     Import PC Names Only
                     <span style="font-size:.75rem; color:#94a3b8; margin-left:6px;">(adds PCs to database without importing files)</span>
@@ -176,9 +176,11 @@
                        @onchange="e => OnOverrideCoverChanged((bool)(e.Value ?? false))" />
                 <label class="form-check-label fw-semibold" for="overrideCoverCheck"
                        style="font-size:.85rem; color:#f87171; cursor:pointer;">
-                    Override all front/back cover folders
+                    @(_bulkMode ? "Override all front/back cover folders" : "Override this PC's front/back cover folders")
                     <span style="font-weight:400; color:#94a3b8; margin-left:6px;">
-                        (deletes ALL existing Front/Back Cover files on the server before import)
+                        @(_bulkMode
+                            ? "(deletes ALL existing Front/Back Cover files on the server before import)"
+                            : "(deletes this PC's Front/Back Cover files before import)")
                     </span>
                 </label>
             </div>
@@ -611,12 +613,14 @@
                     @if (_coverFoldersDeleted)
                     {
                         <span style="font-size:.82rem; color:#22c55e;">
-                            <i class="ri-check-circle-line me-1"></i>All cover folders deleted — files will be imported as new
+                            <i class="ri-check-circle-line me-1"></i>@(_bulkMode ? "All cover folders deleted" : "Cover folders for this PC deleted") — files will be imported as new
                         </span>
                     }
                     else if (_deleteCoverConfirming)
                     {
-                        <span style="font-size:.82rem; color:#f87171;">Delete ALL Front/Back Cover folders on server?</span>
+                        <span style="font-size:.82rem; color:#f87171;">
+                            @(_bulkMode ? "Delete ALL Front/Back Cover folders on server?" : "Delete this PC's Front/Back Cover folders?")
+                        </span>
                         <button class="btn btn-sm btn-danger d-flex align-items-center gap-1"
                                 disabled="@_deleteCoverBusy" @onclick="DeleteAllCoverFoldersNow">
                             @if (_deleteCoverBusy) { <span class="spinner-border spinner-border-sm"></span> }
@@ -630,7 +634,7 @@
                     {
                         <button class="btn btn-sm btn-outline-danger d-flex align-items-center gap-1"
                                 @onclick="() => _deleteCoverConfirming = true">
-                            <i class="ri-delete-bin-line"></i>Delete all cover folders on server
+                            <i class="ri-delete-bin-line"></i>@(_bulkMode ? "Delete all cover folders on server" : "Delete this PC's cover folders")
                         </button>
                     }
                 </div>
@@ -642,8 +646,13 @@
            ════════════════════════════════════════════════════════════ *@
         @if (!_bulkMode && _manifest.Count > 0 && !_uploading)
         {
-            var coverFiles = _manifest.SelectMany(pc => pc.Files)
-                .Where(f => f.Section is "Front_Cover" or "Back_Cover").ToList();
+            // Bug 4: keep PC context (FolderName) alongside each cover file so the dropdown
+            // lookup can disambiguate same-named files across PCs / SubPaths.
+            var coverFiles = _manifest
+                .SelectMany(pc => pc.Files
+                    .Where(f => f.Section is "Front_Cover" or "Back_Cover")
+                    .Select(f => (PcFolderName: pc.FolderName, File: f)))
+                .ToList();
             if (coverFiles.Count > 0)
             {
             <div class="card mt-3" style="background:#1e293b; color:#e2e8f0; border-color:#334155;">
@@ -651,10 +660,10 @@
                     <i class="ri-file-settings-line me-1"></i>
                     <strong>Cover Files</strong>
                     <span class="ms-2" style="font-size:.72rem; opacity:.7;">
-                        @coverFiles.Count(f => f.Include) of @coverFiles.Count selected — uncheck to skip
+                        @coverFiles.Count(e => e.File.Include) of @coverFiles.Count selected — uncheck to skip
                     </span>
                     <button class="btn btn-sm ms-auto py-0 px-2" style="color:#fbbf24; font-size:.7rem;"
-                            @onclick="() => { var allOn = coverFiles.All(x => x.Include); foreach (var f in coverFiles) { f.Include = !allOn; if (f.AlreadyExists) f.OverrideExisting = !allOn; } }">
+                            @onclick="() => { var allOn = coverFiles.All(e => e.File.Include); foreach (var e in coverFiles) { e.File.Include = !allOn; if (e.File.AlreadyExists) e.File.OverrideExisting = !allOn; } }">
                         Toggle All
                     </button>
                 </div>
@@ -671,11 +680,15 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var file in coverFiles)
+                            @foreach (var entry in coverFiles)
                             {
-                                var f = file;
+                                var f = entry.File;
+                                var pcFolderName = entry.PcFolderName;
                                 var cm = _coverMappings.FirstOrDefault(
-                                    c => c.FileName == f.FileName && c.Section == f.Section);
+                                    c => c.FileName == f.FileName
+                                      && c.Section == f.Section
+                                      && c.PcFolderName == pcFolderName
+                                      && c.SubPath == (f.SubPath ?? ""));
                                 <tr style="border-bottom:1px solid rgba(255,255,255,.03); opacity:@(f.Include ? "1" : "0.4");">
                                     <td style="padding:4px 12px; text-align:center;">
                                         @if (f.AlreadyExists)
@@ -1109,6 +1122,7 @@
         public string Section { get; set; } = "";
         public string PcName { get; set; } = "";
         public string PcFolderName { get; set; } = "";
+        public string SubPath { get; set; } = "";   // Bug 4: disambiguate same-named files across SubPaths
         public int AssignedItemId { get; set; }
     }
     class ExcludeItem
@@ -1142,7 +1156,23 @@
     {
         _deleteCoverBusy = true;
         await InvokeAsync(StateHasChanged);
-        await Task.Run(() => FolderSvc.DeleteAllCoverDirectories());
+        if (_bulkMode)
+        {
+            // Bulk mode: explicit nuke of every PC's cover folders (existing behavior)
+            await Task.Run(() => FolderSvc.DeleteAllCoverDirectories());
+        }
+        else
+        {
+            // Bug 2: Single PC mode — scope to just the manifest's PC(s).
+            // For new PCs (no ExistingPcId/MatchedPcId yet), there are no covers on disk to delete.
+            var entries = _manifest
+                .Select(pc => (Id: pc.IsSolo ? pc.MatchedPcId : pc.ExistingPcId, Solo: pc.IsSolo))
+                .Where(e => e.Id.HasValue)
+                .Select(e => (PcId: e.Id!.Value, e.Solo))
+                .ToList();
+            if (entries.Count > 0)
+                await Task.Run(() => FolderSvc.DeleteCoverDirectoriesForPcs(entries));
+        }
         // Mark all cover files in manifest as new — counts and file list update immediately
         foreach (var pc in _manifest.Where(p => !p.IsExcluded))
             foreach (var f in pc.Files.Where(f => f.Section is "Front_Cover" or "Back_Cover"))
@@ -1173,8 +1203,10 @@
         _manifest.Clear();
         _coverMappings.Clear();
         _namesOnlyRows.Clear();
+        _namesOnly = false;                  // Bug 1: reset so it does not leak Bulk → Single mode
         _namesOnlyBusy = false;
         _namesOnlyDone = false;
+        _overrideCoverFolders = false;       // Bug 5: reset to avoid sticky override across imports
         _deleteCoverConfirming = false;
         _deleteCoverBusy = false;
         _coverFoldersDeleted = false;
@@ -1292,6 +1324,19 @@
         if (entries.Count == 0) { _errorMessage = "No supported files found (PDF, DOC, DOCX)."; return; }
 
         ParseManifest(entries);
+
+        // Bug 3: Single PC mode must receive exactly one PC folder. If the user picked a
+        // parent containing multiple PC subdirs, refuse instead of silently importing all.
+        if (!_bulkMode && _manifest.Count > 1)
+        {
+            var names = string.Join(", ", _manifest.Take(3).Select(p => p.FolderName));
+            if (_manifest.Count > 3) names += $" … (+{_manifest.Count - 3} more)";
+            _errorMessage = $"Single PC mode found {_manifest.Count} PC folders ({names}). " +
+                            "Pick one PC folder, or switch to All PC Folders mode.";
+            _manifest.Clear();
+            return;
+        }
+
         ResolveSoloMatches();
         MarkExistingFiles();
 
@@ -1832,6 +1877,7 @@
                     Section = f.Section,
                     PcName = pc.PcName,
                     PcFolderName = pc.FolderName,
+                    SubPath = f.SubPath ?? "",
                     AssignedItemId = AutoMatchItem(f.FileName, f.Section)
                 });
             }
@@ -1903,7 +1949,7 @@
                 new ImportCoverMapping(m.FileName, m.Section, m.PcFolderName, m.AssignedItemId)
             ).ToList();
 
-            ImportJob.StartProcessing(jobId, svcManifest, svcCoverMappings, _overrideCoverFolders);
+            ImportJob.StartProcessing(jobId, svcManifest, svcCoverMappings, _overrideCoverFolders, _bulkMode);
             _manifest.Clear();
             _coverMappings.Clear();
         }

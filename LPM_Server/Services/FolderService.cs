@@ -819,6 +819,29 @@ public class FolderService
         }
     }
 
+    /// <summary>
+    /// Deletes Front_Cover/Back_Cover dirs only for the given (pcId, solo) entries.
+    /// Use this when override should be scoped to a specific import (e.g. Single PC mode)
+    /// instead of nuking covers for every PC on the server.
+    /// </summary>
+    public void DeleteCoverDirectoriesForPcs(IEnumerable<(int PcId, bool Solo)> entries)
+    {
+        foreach (var (pcId, solo) in entries)
+        {
+            var pcDir = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
+            if (pcDir == null) continue;
+            foreach (var section in new[] { "Front_Cover", "Back_Cover" })
+            {
+                var sectionPath = Path.Combine(pcDir, section);
+                if (Directory.Exists(sectionPath))
+                {
+                    Directory.Delete(sectionPath, recursive: true);
+                    Console.WriteLine($"[FolderService] Deleted {sectionPath}");
+                }
+            }
+        }
+    }
+
     public void DeleteAllCoverDirectories()
     {
         if (!Directory.Exists(_basePath)) return;

@@ -4,6 +4,7 @@
 @using System.Runtime.InteropServices
 @using LPM.Services
 @inject MemoryWatchdogService MemSvc
+@inject CircuitTrackingService Circuits
 
 <div class="shg-row">
     @* CPU *@
@@ -97,6 +98,132 @@
             <div class="shg-up-value">@FormatUptime(_uptime)</div>
         </div>
     </div>
+</div>
+
+@* ── Memory Detail panel ──────────────────────────────────────── *@
+<div class="shg-mdetail">
+    <div class="shg-mdetail-head">
+        <div class="shg-chart-title"><i class="ri-search-eye-line"></i> Memory Detail</div>
+        <div class="shg-mdetail-meta">
+            <span class="shg-chip shg-chip-info">refresh 5s · click "Snapshot" for object-level</span>
+        </div>
+    </div>
+
+    <div class="shg-mdetail-grid">
+        @* Process *@
+        <div class="shg-mdetail-col">
+            <div class="shg-mdetail-h">Process</div>
+            <table class="shg-mdetail-tbl">
+                <tr><td>RSS</td><td>@FormatMB(_dm.RssBytes)</td></tr>
+                <tr><td>Private</td><td>@FormatMB(_dm.PrivateBytes)</td></tr>
+                <tr><td>Virtual</td><td>@FormatGB(_dm.VirtualBytes)</td></tr>
+                <tr><td>Paged</td><td>@FormatMB(_dm.PagedBytes)</td></tr>
+                <tr><td>GC heap</td><td>@FormatMB(_dm.GcHeapBytes)</td></tr>
+            </table>
+        </div>
+
+        @* GC Heap *@
+        <div class="shg-mdetail-col">
+            <div class="shg-mdetail-h">GC Heap</div>
+            <table class="shg-mdetail-tbl">
+                @foreach (var g in _dm.Generations)
+                {
+                    <tr>
+                        <td>@g.Name</td>
+                        <td title="size / fragmentation">
+                            @FormatMB(g.Size)<span class="shg-mdetail-frag">@(" /" + FormatMB(g.Fragmentation) + " frag")</span>
+                        </td>
+                    </tr>
+                }
+                <tr><td>Committed</td><td>@FormatMB(_dm.TotalCommittedBytes)</td></tr>
+                <tr><td>Memory load</td><td>@FormatMB(_dm.MemoryLoadBytes) / @FormatMB(_dm.HighMemoryLoadThreshold)</td></tr>
+            </table>
+        </div>
+
+        @* GC counts + threads *@
+        <div class="shg-mdetail-col">
+            <div class="shg-mdetail-h">GC / Threads</div>
+            <table class="shg-mdetail-tbl">
+                <tr><td>GC Gen 0</td><td>@_dm.GcCountGen0 collections</td></tr>
+                <tr><td>GC Gen 1</td><td>@_dm.GcCountGen1 collections</td></tr>
+                <tr><td>GC Gen 2</td><td>@_dm.GcCountGen2 collections</td></tr>
+                <tr><td>Process threads</td><td>@_dm.ThreadCount</td></tr>
+                <tr><td>ThreadPool</td><td>@_dm.ThreadPoolThreadCount busy · @_dm.ThreadPoolPendingWorkItems queued</td></tr>
+                <tr><td>File handles</td><td>@(_dm.FileHandleCount < 0 ? "n/a" : _dm.FileHandleCount.ToString())</td></tr>
+            </table>
+        </div>
+
+        @* Blazor circuits *@
+        <div class="shg-mdetail-col">
+            <div class="shg-mdetail-h">Blazor Circuits</div>
+            <table class="shg-mdetail-tbl">
+                <tr><td>Active</td><td>@_circActive</td></tr>
+                <tr>
+                    <td>Disconnected</td>
+                    <td style="color:@(_circDisconn > 0 ? "#f59e0b" : "#94a3b8");">@_circDisconn</td>
+                </tr>
+                <tr><td>Total tracked</td><td>@_circTotal</td></tr>
+                <tr><td>Oldest</td><td>@(_circOldestAge ?? "—")</td></tr>
+                @if (_circTopUsers.Count > 0)
+                {
+                    <tr><td colspan="2" class="shg-mdetail-h2">Top users</td></tr>
+                    @foreach (var u in _circTopUsers)
+                    {
+                        <tr><td>@(string.IsNullOrEmpty(u.User) ? "(anon)" : u.User)</td><td>@u.Count</td></tr>
+                    }
+                }
+            </table>
+        </div>
+    </div>
+
+    @* Action row *@
+    <div class="shg-mdetail-actions">
+        <button class="btn btn-sm btn-outline-warning" disabled="@(_actBusy)" @onclick="DoForceGc">
+            <i class="ri-recycle-line me-1"></i>Force GC
+            @if (_actBusy && _actLabel == "gc") { <span class="spinner-border spinner-border-sm ms-2"></span> }
+        </button>
+        <button class="btn btn-sm btn-outline-primary" disabled="@(_actBusy)" @onclick="DoSnapshot">
+            <i class="ri-microscope-line me-1"></i>Snapshot top types
+            @if (_actBusy && _actLabel == "snap") { <span class="spinner-border spinner-border-sm ms-2"></span> }
+        </button>
+        @if (!string.IsNullOrEmpty(_gcResult))
+        {
+            <span class="shg-mdetail-result">@_gcResult</span>
+        }
+    </div>
+
+    @if (_snapResult != null)
+    {
+        <div class="shg-mdetail-snap">
+            @if (!_snapResult.Ok)
+            {
+                <div class="alert alert-warning py-2 px-3 mb-0" style="font-size:.82rem;">
+                    <i class="ri-error-warning-line me-1"></i>Snapshot failed: <code>@_snapResult.Error</code>
+                </div>
+            }
+            else
+            {
+                <div class="shg-mdetail-snap-meta">
+                    @_snapResult.TotalObjectsScanned.ToString("N0") objects · @FormatMB(_snapResult.TotalSizeBytes) total · @_snapResult.DurationMs ms
+                </div>
+                <table class="shg-mdetail-tbl shg-mdetail-snap-tbl">
+                    <thead>
+                        <tr><th>Type</th><th class="shg-num">Bytes</th><th class="shg-num">Count</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var t in _snapResult.TopTypes)
+                        {
+                            <tr>
+                                <td style="font-family:ui-monospace,monospace;font-size:.72rem;">@t.TypeName</td>
+                                <td class="shg-num">@FormatMB(t.TotalSize)</td>
+                                <td class="shg-num">@t.ObjectCount.ToString("N0")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    }
 </div>
 
 @* ── History: System memory % over time ──────────────────────── *@
@@ -344,6 +471,72 @@
     }
     .shg-chart-empty i { font-size: 1.6rem; opacity: .4; }
     :root[data-theme-mode="light"] .shg-chart-empty { color: #64748b; }
+
+    /* ── Memory Detail panel ───────────────────────────────────── */
+    .shg-mdetail {
+        background: #1e293b; border: 1px solid #334155; border-radius: 14px;
+        padding: 14px 16px; margin-bottom: 16px;
+    }
+    :root[data-theme-mode="light"] .shg-mdetail { background: #f8fafc; border-color: #e2e8f0; }
+    .shg-mdetail-head {
+        display: flex; align-items: center; justify-content: space-between;
+        flex-wrap: wrap; gap: 8px; margin-bottom: 10px;
+    }
+    .shg-mdetail-meta { display: flex; gap: 6px; flex-wrap: wrap; }
+    .shg-mdetail-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 12px;
+    }
+    .shg-mdetail-col {
+        background: rgba(15, 23, 42, .35); border: 1px solid rgba(51, 65, 85, .6);
+        border-radius: 10px; padding: 10px 12px;
+    }
+    :root[data-theme-mode="light"] .shg-mdetail-col {
+        background: rgba(255, 255, 255, .55); border-color: rgba(226, 232, 240, .9);
+    }
+    .shg-mdetail-h {
+        font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+        color: #93c5fd; margin-bottom: 6px;
+    }
+    .shg-mdetail-h2 {
+        font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+        color: #94a3b8; padding-top: 6px !important;
+    }
+    .shg-mdetail-tbl {
+        width: 100%; border-collapse: collapse;
+        font-variant-numeric: tabular-nums;
+    }
+    .shg-mdetail-tbl td, .shg-mdetail-tbl th {
+        padding: 3px 4px; font-size: .76rem; color: #cbd5e1; vertical-align: top;
+    }
+    .shg-mdetail-tbl td:first-child {
+        color: #94a3b8; white-space: nowrap;
+    }
+    .shg-mdetail-tbl td:last-child {
+        text-align: right; font-weight: 600;
+    }
+    .shg-mdetail-tbl th {
+        font-size: .66rem; text-transform: uppercase; letter-spacing: .06em;
+        color: #64748b; font-weight: 700;
+        border-bottom: 1px solid rgba(71, 85, 105, .6);
+    }
+    .shg-mdetail-tbl .shg-num { text-align: right; }
+    .shg-mdetail-frag { color: #64748b; font-weight: 400; font-size: .68rem; margin-left: 4px; }
+    :root[data-theme-mode="light"] .shg-mdetail-tbl td      { color: #334155; }
+    :root[data-theme-mode="light"] .shg-mdetail-tbl td:first-child { color: #64748b; }
+
+    .shg-mdetail-actions {
+        display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px;
+    }
+    .shg-mdetail-result {
+        font-size: .78rem; color: #94a3b8; font-variant-numeric: tabular-nums;
+    }
+    .shg-mdetail-snap { margin-top: 12px; }
+    .shg-mdetail-snap-meta { font-size: .72rem; color: #94a3b8; margin-bottom: 6px; }
+    .shg-mdetail-snap-tbl {
+        background: rgba(15, 23, 42, .35); border-radius: 8px; padding: 4px;
+    }
 </style>
 
 @code {
@@ -396,6 +589,19 @@
     DateTime _cacheMinAt, _cacheMaxAt;
     double _cacheMinX, _cacheMinY, _cacheMaxX, _cacheMaxY;
 
+    // ── Memory Detail panel ─────────────────────────────────────────
+    MemoryWatchdogService.DeepMemoryReport _dm = new(
+        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, [], 0, 0, 0, 0, 0, 0, 0, -1);
+    int _circActive, _circDisconn, _circTotal;
+    string? _circOldestAge;
+    List<(string User, int Count)> _circTopUsers = new();
+
+    // Action buttons (Force GC / Snapshot top types)
+    bool   _actBusy;
+    string _actLabel = "";          // "gc" while ForceGC running, "snap" while Snapshot running
+    string _gcResult = "";          // last Force-GC result string ("Reclaimed 230 MB · LOH 80→12 MB · 1.4s")
+    MemoryWatchdogService.HeapSnapshotResult? _snapResult;
+
     protected override void OnInitialized()
     {
         _serverStarted = MemSvc.ProcessStartedAt;
@@ -431,9 +637,95 @@
         ReadDisk();
         ReadCacheStats();
         ReadHistory();
+        ReadDeepMemoryAndCircuits();
         _serverStarted = MemSvc.ProcessStartedAt;
         _uptime        = DateTime.Now - _serverStarted;
         if (_uptime < TimeSpan.Zero) _uptime = TimeSpan.Zero;
+    }
+
+    void ReadDeepMemoryAndCircuits()
+    {
+        try { _dm = MemSvc.GetDeepStats(); }
+        catch { /* surface as zeroes */ }
+
+        try
+        {
+            _circActive  = Circuits.ActiveCount;
+            _circDisconn = Circuits.DisconnectedCount;
+            _circTotal   = Circuits.Total;
+            var oldest   = Circuits.Oldest();
+            _circOldestAge = oldest == null ? null : FormatAge(DateTime.UtcNow - oldest.OpenedAtUtc);
+
+            var snap = Circuits.Snapshot();
+            _circTopUsers = snap
+                .GroupBy(c => c.Username ?? "")
+                .Select(g => (User: g.Key, Count: g.Count()))
+                .OrderByDescending(t => t.Count)
+                .Take(5)
+                .ToList();
+        }
+        catch { /* circuit registry unavailable — leave defaults */ }
+    }
+
+    static string FormatAge(TimeSpan ts)
+    {
+        if (ts.TotalDays   >= 1) return $"{(int)ts.TotalDays}d {ts.Hours}h";
+        if (ts.TotalHours  >= 1) return $"{(int)ts.TotalHours}h {ts.Minutes}m";
+        if (ts.TotalMinutes >= 1) return $"{(int)ts.TotalMinutes}m";
+        return $"{(int)ts.TotalSeconds}s";
+    }
+
+    async Task DoForceGc()
+    {
+        if (_actBusy) return;
+        _actBusy  = true;
+        _actLabel = "gc";
+        StateHasChanged();
+        try
+        {
+            // Run on a background thread so the UI keeps painting (the GC blocks the worker, not us).
+            var r = await Task.Run(() => MemSvc.ForceCompactingGc());
+            long deltaRss  = r.BeforeRss  - r.AfterRss;
+            long deltaLoh  = r.BeforeLoh  - r.AfterLoh;
+            long deltaFrag = r.BeforeFragmented - r.AfterFragmented;
+            _gcResult = $"Freed {deltaRss / 1024 / 1024} MB RSS · LOH {r.BeforeLoh / 1024 / 1024}→{r.AfterLoh / 1024 / 1024} MB · frag {r.BeforeFragmented / 1024 / 1024}→{r.AfterFragmented / 1024 / 1024} MB · {r.DurationMs} ms";
+        }
+        catch (Exception ex)
+        {
+            _gcResult = $"Force GC failed: {ex.Message}";
+        }
+        finally
+        {
+            _actBusy = false;
+            _actLabel = "";
+            ReadDeepMemoryAndCircuits();
+            StateHasChanged();
+        }
+    }
+
+    async Task DoSnapshot()
+    {
+        if (_actBusy) return;
+        _actBusy  = true;
+        _actLabel = "snap";
+        _snapResult = null;
+        StateHasChanged();
+        try
+        {
+            // Heap-walk runs on a background thread inside the service (Task.Run there).
+            _snapResult = await MemSvc.GetTopTypesAsync(topN: 25);
+        }
+        catch (Exception ex)
+        {
+            _snapResult = new MemoryWatchdogService.HeapSnapshotResult(false, $"{ex.GetType().Name}: {ex.Message}", 0, 0, [], 0);
+        }
+        finally
+        {
+            _actBusy = false;
+            _actLabel = "";
+            ReadDeepMemoryAndCircuits();
+            StateHasChanged();
+        }
     }
 
     void ReadCacheStats()

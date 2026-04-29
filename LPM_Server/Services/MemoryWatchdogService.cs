@@ -267,4 +267,187 @@ public sealed class MemoryWatchdogService : BackgroundService
         }
         catch { return false; }
     }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Deep memory diagnostics — for the System Health "Memory Detail" card.
+    // The watchdog isn't strictly the right home for these (they're not periodic
+    // samples) but it's the existing memory-related singleton so callers find it.
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    public sealed record GenInfo(string Name, long Size, long Fragmentation);
+    public sealed record DeepMemoryReport(
+        // Process
+        long RssBytes, long PrivateBytes, long VirtualBytes, long PagedBytes,
+        long GcHeapBytes,
+        // GC heap detail
+        long TotalCommittedBytes, long FragmentedBytes, long HeapSizeBytes,
+        long HighMemoryLoadThreshold, long MemoryLoadBytes,
+        IReadOnlyList<GenInfo> Generations,
+        int GcCountGen0, int GcCountGen1, int GcCountGen2,
+        // Threads
+        int ThreadCount, int ThreadPoolThreadCount, long ThreadPoolPendingWorkItems, long ThreadPoolCompletedWorkItems,
+        // File handles (Linux only; -1 if unavailable)
+        int FileHandleCount);
+
+    /// <summary>Snapshot of detailed process / GC / thread state. Cheap; safe to call every few seconds.</summary>
+    public DeepMemoryReport GetDeepStats()
+    {
+        var proc = Process.GetCurrentProcess();
+        var info = GC.GetGCMemoryInfo();
+
+        var gens = new List<GenInfo>();
+        for (int g = 0; g < info.GenerationInfo.Length; g++)
+        {
+            var gi = info.GenerationInfo[g];
+            string name = g switch
+            {
+                0 => "Gen 0",
+                1 => "Gen 1",
+                2 => "Gen 2",
+                3 => "LOH",   // Large Object Heap
+                4 => "POH",   // Pinned Object Heap
+                _ => $"Gen {g}",
+            };
+            gens.Add(new GenInfo(name, gi.SizeAfterBytes, gi.FragmentationAfterBytes));
+        }
+
+        int fileHandles = -1;
+        try
+        {
+            if (Directory.Exists("/proc/self/fd"))
+                fileHandles = Directory.GetFileSystemEntries("/proc/self/fd").Length;
+        }
+        catch { /* best-effort */ }
+
+        return new DeepMemoryReport(
+            RssBytes:                     proc.WorkingSet64,
+            PrivateBytes:                 proc.PrivateMemorySize64,
+            VirtualBytes:                 proc.VirtualMemorySize64,
+            PagedBytes:                   proc.PagedMemorySize64,
+            GcHeapBytes:                  GC.GetTotalMemory(false),
+            TotalCommittedBytes:          info.TotalCommittedBytes,
+            FragmentedBytes:              info.FragmentedBytes,
+            HeapSizeBytes:                info.HeapSizeBytes,
+            HighMemoryLoadThreshold:      info.HighMemoryLoadThresholdBytes,
+            MemoryLoadBytes:              info.MemoryLoadBytes,
+            Generations:                  gens,
+            GcCountGen0:                  GC.CollectionCount(0),
+            GcCountGen1:                  GC.CollectionCount(1),
+            GcCountGen2:                  GC.CollectionCount(2),
+            ThreadCount:                  proc.Threads.Count,
+            ThreadPoolThreadCount:        ThreadPool.ThreadCount,
+            ThreadPoolPendingWorkItems:   ThreadPool.PendingWorkItemCount,
+            ThreadPoolCompletedWorkItems: ThreadPool.CompletedWorkItemCount,
+            FileHandleCount:              fileHandles);
+    }
+
+    public sealed record ForceGcResult(
+        long BeforeRss, long AfterRss,
+        long BeforeHeap, long AfterHeap,
+        long BeforeLoh, long AfterLoh,
+        long BeforeFragmented, long AfterFragmented,
+        long DurationMs);
+
+    /// <summary>
+    /// Run a blocking, compacting Gen-2 GC with one-time LOH compaction. Logs and returns
+    /// before/after RSS + heap sizes so the caller can show the delta. On a 1.2 GB heap this
+    /// blocks the calling thread for ~1–3 seconds.
+    /// </summary>
+    public ForceGcResult ForceCompactingGc()
+    {
+        var sw       = System.Diagnostics.Stopwatch.StartNew();
+        var proc     = Process.GetCurrentProcess();
+        long beforeRss   = proc.WorkingSet64;
+        long beforeHeap  = GC.GetTotalMemory(false);
+        var beforeInfo   = GC.GetGCMemoryInfo();
+        long beforeLoh   = beforeInfo.GenerationInfo.Length > 3 ? beforeInfo.GenerationInfo[3].SizeAfterBytes : 0;
+        long beforeFrag  = beforeInfo.FragmentedBytes;
+
+        Console.WriteLine($"[MemDebug] ForceGC: starting (RSS={beforeRss/1024/1024}MB heap={beforeHeap/1024/1024}MB LOH={beforeLoh/1024/1024}MB frag={beforeFrag/1024/1024}MB)");
+
+        System.Runtime.GCSettings.LargeObjectHeapCompactionMode = System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
+        GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+        GC.WaitForPendingFinalizers();
+        GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+
+        proc.Refresh();
+        long afterRss  = proc.WorkingSet64;
+        long afterHeap = GC.GetTotalMemory(false);
+        var afterInfo  = GC.GetGCMemoryInfo();
+        long afterLoh  = afterInfo.GenerationInfo.Length > 3 ? afterInfo.GenerationInfo[3].SizeAfterBytes : 0;
+        long afterFrag = afterInfo.FragmentedBytes;
+
+        sw.Stop();
+        Console.WriteLine($"[MemDebug] ForceGC: done in {sw.ElapsedMilliseconds}ms — " +
+            $"RSS {beforeRss/1024/1024}→{afterRss/1024/1024}MB " +
+            $"heap {beforeHeap/1024/1024}→{afterHeap/1024/1024}MB " +
+            $"LOH {beforeLoh/1024/1024}→{afterLoh/1024/1024}MB " +
+            $"frag {beforeFrag/1024/1024}→{afterFrag/1024/1024}MB");
+
+        return new ForceGcResult(beforeRss, afterRss, beforeHeap, afterHeap, beforeLoh, afterLoh, beforeFrag, afterFrag, sw.ElapsedMilliseconds);
+    }
+
+    public sealed record TypeRow(string TypeName, long TotalSize, long ObjectCount);
+    public sealed record HeapSnapshotResult(
+        bool Ok, string? Error,
+        long TotalObjectsScanned, long TotalSizeBytes,
+        IReadOnlyList<TypeRow> TopTypes,
+        long DurationMs);
+
+    /// <summary>
+    /// Walk the live managed heap with ClrMD and return the top <paramref name="topN"/> types
+    /// by total retained bytes. Uses CreateSnapshotAndAttach for a consistent view.
+    /// Expensive: takes 5–30s on a multi-GB heap and itself uses memory (~50–200 MB) to run.
+    /// </summary>
+    public Task<HeapSnapshotResult> GetTopTypesAsync(int topN = 25)
+    {
+        return Task.Run(() =>
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            try
+            {
+                int pid = Environment.ProcessId;
+                using var dataTarget = Microsoft.Diagnostics.Runtime.DataTarget.CreateSnapshotAndAttach(pid);
+                var clrInfo = dataTarget.ClrVersions.FirstOrDefault();
+                if (clrInfo == null)
+                    return new HeapSnapshotResult(false, "No CLR found in process snapshot.", 0, 0, [], sw.ElapsedMilliseconds);
+
+                using var runtime = clrInfo.CreateRuntime();
+                var heap = runtime.Heap;
+                if (!heap.CanWalkHeap)
+                    return new HeapSnapshotResult(false, "Heap is not walkable (GC may be in progress).", 0, 0, [], sw.ElapsedMilliseconds);
+
+                var byType = new Dictionary<string, (long size, long count)>(StringComparer.Ordinal);
+                long total = 0, totalObjs = 0;
+                foreach (var obj in heap.EnumerateObjects())
+                {
+                    if (!obj.IsValid) continue;
+                    var name = obj.Type?.Name ?? "(unknown)";
+                    long sz   = (long)obj.Size;
+                    if (byType.TryGetValue(name, out var t))
+                        byType[name] = (t.size + sz, t.count + 1);
+                    else
+                        byType[name] = (sz, 1);
+                    total     += sz;
+                    totalObjs++;
+                }
+
+                var top = byType
+                    .OrderByDescending(kv => kv.Value.size)
+                    .Take(topN)
+                    .Select(kv => new TypeRow(kv.Key, kv.Value.size, kv.Value.count))
+                    .ToList();
+
+                sw.Stop();
+                Console.WriteLine($"[MemDebug] HeapSnapshot: {totalObjs:N0} objects, {total / 1024 / 1024} MB total, top type: {top.FirstOrDefault()?.TypeName} ({top.FirstOrDefault()?.TotalSize / 1024 / 1024} MB) in {sw.ElapsedMilliseconds}ms");
+                return new HeapSnapshotResult(true, null, totalObjs, total, top, sw.ElapsedMilliseconds);
+            }
+            catch (Exception ex)
+            {
+                sw.Stop();
+                Console.WriteLine($"[MemDebug] HeapSnapshot FAILED: {ex.GetType().Name}: {ex.Message}");
+                return new HeapSnapshotResult(false, $"{ex.GetType().Name}: {ex.Message}", 0, 0, [], sw.ElapsedMilliseconds);
+            }
+        });
+    }
 }
