@@ -49,6 +49,14 @@ public sealed class CircuitTrackingService
             return;
 
         var lifetime = DateTime.UtcNow - info.OpenedAtUtc;
+        // disconnectedFor: how long the circuit was in the disconnected-but-not-yet-closed state.
+        // Should be ≈ DisconnectedCircuitRetentionPeriod (5 min). If it's wildly longer, Blazor
+        // isn't honoring the retention setting and we have a config bug.
+        // If never disconnected (close happens directly without OnConnectionDownAsync), this is null.
+        TimeSpan? disconnectedFor = info.DisconnectedAtUtc.HasValue
+            ? DateTime.UtcNow - info.DisconnectedAtUtc.Value
+            : null;
+        var disconnectedStr = disconnectedFor.HasValue ? $" disc-for={FormatLifetime(disconnectedFor.Value)}" : " disc-for=(never)";
         var userTag  = string.IsNullOrEmpty(info.Username) ? "(anon)" : info.Username;
 
         if (LogCloseHeapDelta)
@@ -62,13 +70,13 @@ public sealed class CircuitTrackingService
             long afterBytes  = GC.GetTotalMemory(forceFullCollection: true);
             long deltaBytes  = beforeBytes - afterBytes;
             Console.WriteLine(
-                $"[Circuits] close {ShortId(circuitId)} user='{userTag}' lifetime={FormatLifetime(lifetime)} " +
+                $"[Circuits] close {ShortId(circuitId)} user='{userTag}' lifetime={FormatLifetime(lifetime)}{disconnectedStr} " +
                 $"heap={beforeBytes / 1024 / 1024}→{afterBytes / 1024 / 1024} MB delta={deltaBytes / 1024 / 1024} MB " +
                 $"(active={_circuits.Count})");
         }
         else
         {
-            Console.WriteLine($"[Circuits] close {ShortId(circuitId)} user='{userTag}' lifetime={FormatLifetime(lifetime)} (active={_circuits.Count})");
+            Console.WriteLine($"[Circuits] close {ShortId(circuitId)} user='{userTag}' lifetime={FormatLifetime(lifetime)}{disconnectedStr} (active={_circuits.Count})");
         }
     }
 

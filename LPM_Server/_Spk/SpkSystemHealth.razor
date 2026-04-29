@@ -230,11 +230,10 @@
     }
 </div>
 
-@* ── History: System memory % + Blazor circuits over time ──── *@
-@* Memory uses LEFT Y axis (0..100%); circuits use RIGHT Y axis (0..max scale, integer count). *@
+@* ── History: System memory % over time ──────────────────────── *@
 <div class="shg-chart-card">
     <div class="shg-chart-head">
-        <div class="shg-chart-title"><i class="ri-pulse-line"></i> System memory + Blazor circuits · history</div>
+        <div class="shg-chart-title"><i class="ri-pulse-line"></i> System memory · history</div>
         <div class="shg-chart-meta">
             @if (_memHistory.Count == 0)
             {
@@ -242,61 +241,78 @@
             }
             else
             {
-                <span class="shg-chip shg-chip-mem"     title="Memory % (left axis, indigo line)">Mem now @FormatPct(_memNowPct) · max @FormatPct(_memMaxPct)</span>
-                <span class="shg-chip shg-chip-circuit" title="Active Blazor circuits (right axis, amber line)">Circuits now @_circuitsNow · max @_circuitsMax</span>
+                <span class="shg-chip shg-chip-min" title="Minimum recorded">Min @FormatPct(_memMinPct) <small>@_memMinAt.ToLocalTime().ToString("HH:mm")</small></span>
+                <span class="shg-chip shg-chip-now" title="Latest sample">Now @FormatPct(_memNowPct)</span>
+                <span class="shg-chip shg-chip-max" title="Maximum recorded">Max @FormatPct(_memMaxPct) <small>@_memMaxAt.ToLocalTime().ToString("HH:mm")</small></span>
             }
         </div>
     </div>
     @if (_memHistory.Count > 0)
     {
-        <svg class="shg-chart" viewBox="0 0 800 200" preserveAspectRatio="none">
-            @* Left Y gridlines + memory labels (0..100%) *@
-            @foreach (var pct in new[] { 0, 25, 50, 75, 100 })
-            {
-                var y = 190 - (pct / 100.0) * 170;
-                <g>
-                    <line class="shg-grid" x1="40" x2="760" y1="@(y.ToString("F1"))" y2="@(y.ToString("F1"))" />
-                    <text class="shg-grid-lbl shg-grid-lbl-mem" x="34" y="@((y + 4).ToString("F1"))" text-anchor="end">@pct%</text>
-                </g>
-            }
-            @* Right Y labels for circuit count (mirrors the same gridlines, mapped to circuit scale) *@
-            @{
-                int circScale = _circuitsAxisMax;
-            }
-            @foreach (var frac in new[] { 0.0, 0.25, 0.5, 0.75, 1.0 })
-            {
-                var y    = 190 - frac * 170;
-                int lbl  = (int)Math.Round(circScale * frac);
-                <g>
-                    <text class="shg-grid-lbl shg-grid-lbl-circ" x="766" y="@((y + 4).ToString("F1"))" text-anchor="start">@lbl</text>
-                </g>
-            }
-            @* X-axis time labels *@
-            @{
-                var firstT = _memHistory[0].Utc.ToLocalTime();
-                var lastT  = _memHistory[^1].Utc.ToLocalTime();
-            }
-            <g>
-                <text class="shg-grid-lbl" x="40"  y="198" text-anchor="start">@firstT.ToString("MM-dd HH:mm")</text>
-                <text class="shg-grid-lbl" x="760" y="198" text-anchor="end">@lastT.ToString("MM-dd HH:mm")</text>
-            </g>
-            @* Memory polyline (left axis) *@
-            <polyline class="shg-line shg-line-mem" points="@_memPolyline" />
-            @* Circuits polyline (right axis) *@
-            @if (!string.IsNullOrEmpty(_circuitsPolyline))
-            {
-                <polyline class="shg-line shg-line-circuits" points="@_circuitsPolyline" />
-            }
-            @* Memory min / max dots *@
-            <circle class="shg-dot shg-dot-max" cx="@(_memMaxX.ToString("F1"))" cy="@(_memMaxY.ToString("F1"))" r="4" />
-            <circle class="shg-dot shg-dot-min" cx="@(_memMinX.ToString("F1"))" cy="@(_memMinY.ToString("F1"))" r="4" />
-        </svg>
+        <ApexChart TItem="MemorySample"
+                   Options="@_memChartOptions"
+                   Height="220"
+                   @key="@($"mem-{_memHistory.Count}")">
+            <ApexPointSeries TItem="MemorySample"
+                             Items="@_memHistory"
+                             Name="Memory"
+                             SeriesType="SeriesType.Area"
+                             XValue="@(s => s.Utc.ToLocalTime())"
+                             YValue="@(s => (decimal)Math.Round(s.UsedPct, 1))" />
+        </ApexChart>
     }
     else
     {
         <div class="shg-chart-empty">
             <i class="ri-line-chart-line"></i>
             <div>Waiting for the first 15-minute sample. The watchdog ignores the first 2 minutes after startup to avoid JIT-inflated readings.</div>
+        </div>
+    }
+</div>
+
+@* ── History: Blazor circuits over time ──────────────────────── *@
+@* Same x-axis range as the memory chart above, so glancing at the same time-position *@
+@* in both reveals the correlation visually. Y axis is integer count, auto-scaled. *@
+<div class="shg-chart-card">
+    <div class="shg-chart-head">
+        <div class="shg-chart-title"><i class="ri-links-line"></i> Blazor circuits · history</div>
+        <div class="shg-chart-meta">
+            @if (_memHistory.Count == 0)
+            {
+                <span class="shg-chip shg-chip-info">Collecting first sample…</span>
+            }
+            else
+            {
+                <span class="shg-chip shg-chip-now"     title="Active circuits at latest sample">Now @_circuitsNow</span>
+                <span class="shg-chip shg-chip-circuit" title="Maximum active circuits seen">Max @_circuitsMax</span>
+            }
+        </div>
+    </div>
+    @if (_memHistory.Count > 0)
+    {
+        <ApexChart TItem="MemorySample"
+                   Options="@_circuitsChartOptions"
+                   Height="220"
+                   @key="@($"circ-{_memHistory.Count}")">
+            <ApexPointSeries TItem="MemorySample"
+                             Items="@_memHistory"
+                             Name="Active circuits"
+                             SeriesType="SeriesType.Line"
+                             XValue="@(s => s.Utc.ToLocalTime())"
+                             YValue="@(s => (decimal)s.ActiveCircuits)" />
+            <ApexPointSeries TItem="MemorySample"
+                             Items="@_memHistory"
+                             Name="Disconnected"
+                             SeriesType="SeriesType.Line"
+                             XValue="@(s => s.Utc.ToLocalTime())"
+                             YValue="@(s => (decimal)s.DisconnectedCircuits)" />
+        </ApexChart>
+    }
+    else
+    {
+        <div class="shg-chart-empty">
+            <i class="ri-line-chart-line"></i>
+            <div>Waiting for the first 15-minute sample.</div>
         </div>
     }
 </div>
@@ -320,32 +336,17 @@
     </div>
     @if (_cacheHistory.Count > 0)
     {
-        <svg class="shg-chart" viewBox="0 0 800 200" preserveAspectRatio="none">
-            @{
-                // Y scale = cache limit (200 MB) so users can see headroom.
-                var yMax = Math.Max(_cacheLimitBytes, 1L);
-            }
-            @foreach (var frac in new[] { 0.0, 0.25, 0.5, 0.75, 1.0 })
-            {
-                var y     = 190 - frac * 170;
-                var label = FormatMB((long)(yMax * frac));
-                <g>
-                    <line class="shg-grid" x1="60" x2="780" y1="@(y.ToString("F1"))" y2="@(y.ToString("F1"))" />
-                    <text class="shg-grid-lbl" x="54" y="@((y + 4).ToString("F1"))" text-anchor="end">@label</text>
-                </g>
-            }
-            @{
-                var firstT = _cacheHistory[0].Utc.ToLocalTime();
-                var lastT  = _cacheHistory[^1].Utc.ToLocalTime();
-            }
-            <g>
-                <text class="shg-grid-lbl" x="60"  y="198" text-anchor="start">@firstT.ToString("MM-dd HH:mm")</text>
-                <text class="shg-grid-lbl" x="780" y="198" text-anchor="end">@lastT.ToString("MM-dd HH:mm")</text>
-            </g>
-            <polyline class="shg-line shg-line-cache" points="@_cachePolyline" />
-            <circle class="shg-dot shg-dot-max" cx="@(_cacheMaxX.ToString("F1"))" cy="@(_cacheMaxY.ToString("F1"))" r="4" />
-            <circle class="shg-dot shg-dot-min" cx="@(_cacheMinX.ToString("F1"))" cy="@(_cacheMinY.ToString("F1"))" r="4" />
-        </svg>
+        <ApexChart TItem="MemorySample"
+                   Options="@_cacheChartOptions"
+                   Height="220"
+                   @key="@($"cache-{_cacheHistory.Count}")">
+            <ApexPointSeries TItem="MemorySample"
+                             Items="@_cacheHistory"
+                             Name="PDF cache"
+                             SeriesType="SeriesType.Area"
+                             XValue="@(s => s.Utc.ToLocalTime())"
+                             YValue="@(s => (decimal)Math.Round(s.CacheBytes / 1024.0 / 1024.0, 1))" />
+        </ApexChart>
     }
     else
     {
@@ -481,7 +482,7 @@
     }
     .shg-line-mem      { stroke: #6366f1; }
     .shg-line-cache    { stroke: #06b6d4; }
-    .shg-line-circuits { stroke: #f59e0b; stroke-dasharray: 4 3; }
+    .shg-line-circuits { stroke: #f59e0b; }
     .shg-grid-lbl-mem  { fill: #818cf8; }
     .shg-grid-lbl-circ { fill: #f59e0b; }
     :root[data-theme-mode="light"] .shg-grid-lbl-mem  { fill: #4338ca; }
@@ -607,22 +608,101 @@
 
     // ── History (system memory %) ────────────────────────────────────
     List<MemorySample> _memHistory = new();
-    string _memPolyline = "";
     double _memMinPct, _memMaxPct, _memNowPct;
     DateTime _memMinAt, _memMaxAt;
-    double _memMinX, _memMinY, _memMaxX, _memMaxY;
 
-    // ── History (Blazor circuits, overlaid on the memory chart) ─────
-    string _circuitsPolyline = "";
+    // ── History (Blazor circuits) ────────────────────────────────────
     int _circuitsNow, _circuitsMax;
-    int _circuitsAxisMax = 10;  // auto-grown to historical max; floor at 10 so axis labels are sensible
 
     // ── History (PDF cache bytes) ────────────────────────────────────
     List<MemorySample> _cacheHistory = new();
-    string _cachePolyline = "";
     long _cacheMinBytes, _cacheMaxBytes, _cacheNowBytes;
     DateTime _cacheMinAt, _cacheMaxAt;
-    double _cacheMinX, _cacheMinY, _cacheMaxX, _cacheMaxY;
+
+    // ── ApexChart options (one per chart, reused across re-renders) ──
+    // All three share dark-theme styling, hidden toolbar, datetime X axis,
+    // smooth animations + native hover tooltip with formatted value.
+    static ApexChartOptions<MemorySample> MakeBaseOptions(string colorHex) => new()
+    {
+        Chart = new Chart
+        {
+            Toolbar    = new Toolbar { Show = false },
+            Zoom       = new Zoom    { Enabled = false },
+            Background = "transparent",
+            Animations = new Animations { Enabled = true, Speed = 600 },
+            Sparkline  = new ChartSparkline { Enabled = false },
+        },
+        Stroke = new Stroke { Curve = Curve.Smooth, Width = 2 },
+        Colors = new List<string> { colorHex },
+        DataLabels = new DataLabels { Enabled = false },
+        Markers = new Markers { Size = 0 },
+        Xaxis  = new XAxis
+        {
+            Type   = XAxisType.Datetime,
+            Labels = new XAxisLabels
+            {
+                DatetimeUTC = false,
+                Style       = new AxisLabelStyle { Colors = "#94a3b8", FontSize = "10px" }
+            },
+            AxisBorder = new AxisBorder { Show = false },
+            AxisTicks  = new AxisTicks  { Show = false },
+        },
+        Yaxis = new List<YAxis>
+        {
+            new YAxis
+            {
+                Labels = new YAxisLabels { Style = new AxisLabelStyle { Colors = "#94a3b8", FontSize = "10px" } }
+            }
+        },
+        Tooltip = new Tooltip
+        {
+            Theme     = Mode.Dark,
+            Shared    = true,
+            Intersect = false,
+            X = new TooltipX { Format = "MMM dd HH:mm" },
+        },
+        Legend = new Legend { Show = false },
+        Grid   = new Grid   { BorderColor = "#1e293b", StrokeDashArray = 3 },
+        Fill   = new Fill   { Type = new List<FillType> { FillType.Gradient }, Gradient = new FillGradient { OpacityFrom = 0.45, OpacityTo = 0.05 } },
+    };
+
+    private readonly ApexChartOptions<MemorySample> _memChartOptions      = BuildMemChartOptions();
+    private readonly ApexChartOptions<MemorySample> _circuitsChartOptions = BuildCircuitsChartOptions();
+    private readonly ApexChartOptions<MemorySample> _cacheChartOptions    = BuildCacheChartOptions();
+
+    static ApexChartOptions<MemorySample> BuildMemChartOptions()
+    {
+        var o = MakeBaseOptions("#6366f1");
+        o.Yaxis![0].Min = 0;
+        o.Yaxis![0].Max = 100;
+        o.Yaxis![0].Labels!.Formatter = "function(v){ return Math.round(v) + '%'; }";
+        o.Tooltip!.Y = new TooltipY { Formatter = "function(v){ return v.toFixed(1) + '%'; }" };
+        return o;
+    }
+
+    static ApexChartOptions<MemorySample> BuildCircuitsChartOptions()
+    {
+        var o = MakeBaseOptions("#f59e0b");
+        // Two series for circuits: active (amber) + disconnected (slate).
+        o.Colors = new List<string> { "#f59e0b", "#64748b" };
+        o.Stroke!.Width = 2;
+        o.Yaxis![0].Min = 0;
+        o.Yaxis![0].DecimalsInFloat = 0;
+        o.Legend = new Legend { Show = true, Position = LegendPosition.Top, Labels = new LegendLabels { Colors = "#94a3b8" } };
+        // Plain lines (no gradient fill) so the two series stay visually distinct.
+        o.Fill = new Fill { Type = new List<FillType> { FillType.Solid }, Opacity = new Opacity(0d) };
+        o.Tooltip!.Y = new TooltipY { Formatter = "function(v){ return v + ' circuits'; }" };
+        return o;
+    }
+
+    static ApexChartOptions<MemorySample> BuildCacheChartOptions()
+    {
+        var o = MakeBaseOptions("#06b6d4");
+        o.Yaxis![0].Min = 0;
+        o.Yaxis![0].Labels!.Formatter = "function(v){ return v + ' MB'; }";
+        o.Tooltip!.Y = new TooltipY { Formatter = "function(v){ return v.toFixed(1) + ' MB'; }" };
+        return o;
+    }
 
     // ── Memory Detail panel ─────────────────────────────────────────
     MemoryWatchdogService.DeepMemoryReport _dm = new(
@@ -787,140 +867,58 @@
     void ReadHistory()
     {
         var snap = MemSvc.GetSnapshot();
-        // Only rebuild when sample count changed — avoids redundant string-builds on every 1s tick.
+        // Only rebuild when sample count changed — avoids redundant work on every 1s tick.
         if (snap.Samples.Count == _memHistory.Count && snap.Samples.Count == _cacheHistory.Count)
-        {
-            // Still pull "Now" for live cache card even if no new sample yet.
             return;
-        }
 
         _memHistory   = snap.Samples.ToList();
-        _cacheHistory = snap.Samples.ToList(); // same list, two charts derive their own polyline
+        _cacheHistory = snap.Samples.ToList();
+        if (_memHistory.Count == 0) return;
 
-        if (_memHistory.Count == 0)
-        {
-            _memPolyline = ""; _cachePolyline = "";
-            return;
-        }
-
-        // Plot area: x [40..780] for mem (label gutter 40), [60..780] for cache (label gutter 60).
-        // y [20..190]  → 0..100 mapped to 190..20.
-        BuildMemPolyline();
-        BuildCircuitsPolyline();
-        BuildCachePolyline(snap.CacheLimitBytes);
+        // Compute chip values (Min / Now / Max) for the three chart headers.
+        // Chart rendering itself is handled by ApexCharts; we just need these summary stats.
+        ComputeMemoryChipStats();
+        ComputeCircuitChipStats();
+        ComputeCacheChipStats();
     }
 
-    void BuildCircuitsPolyline()
+    void ComputeMemoryChipStats()
     {
-        // Same plot area as the memory chart so they overlay perfectly.
-        // Memory uses 40..780; we trim the right edge to 760 so circuit labels can sit at 766+.
-        const double x0 = 40, x1 = 760, yTop = 20, yBot = 190;
-        var n = _memHistory.Count;
-        if (n == 0) { _circuitsPolyline = ""; _circuitsNow = 0; _circuitsMax = 0; return; }
-
-        int maxSeen = 0;
-        for (int i = 0; i < n; i++)
-        {
-            int active = _memHistory[i].ActiveCircuits;
-            if (active > maxSeen) maxSeen = active;
-        }
-        _circuitsMax = maxSeen;
-        _circuitsNow = _memHistory[^1].ActiveCircuits;
-        // Round axis up to a sensible bucket so the line doesn't crawl along the top edge.
-        _circuitsAxisMax = maxSeen <= 10 ? 10
-                         : maxSeen <= 25 ? 25
-                         : maxSeen <= 50 ? 50
-                         : ((maxSeen + 9) / 10) * 10; // round up to nearest 10
-
-        var sb = new System.Text.StringBuilder(n * 12);
-        for (int i = 0; i < n; i++)
-        {
-            int active = _memHistory[i].ActiveCircuits;
-            double frac = _circuitsAxisMax > 0 ? (double)active / _circuitsAxisMax : 0;
-            if (frac < 0) frac = 0; if (frac > 1) frac = 1;
-            double x = n == 1 ? x0 : x0 + (x1 - x0) * i / (double)(n - 1);
-            double y = yBot - frac * (yBot - yTop);
-            if (i > 0) sb.Append(' ');
-            sb.Append(x.ToString("F1", System.Globalization.CultureInfo.InvariantCulture));
-            sb.Append(',');
-            sb.Append(y.ToString("F1", System.Globalization.CultureInfo.InvariantCulture));
-        }
-        _circuitsPolyline = sb.ToString();
-    }
-
-    void BuildMemPolyline()
-    {
-        // x1 must match BuildCircuitsPolyline so the two lines share an x-axis.
-        const double x0 = 40, x1 = 760, yTop = 20, yBot = 190;
-        var n = _memHistory.Count;
-        if (n == 0) { _memPolyline = ""; return; }
-
-        // Min / Max
         _memMinPct = double.MaxValue; _memMaxPct = double.MinValue;
         int minIdx = 0, maxIdx = 0;
-        for (int i = 0; i < n; i++)
+        for (int i = 0; i < _memHistory.Count; i++)
         {
             var s = _memHistory[i];
             if (s.UsedPct < _memMinPct) { _memMinPct = s.UsedPct; minIdx = i; }
             if (s.UsedPct > _memMaxPct) { _memMaxPct = s.UsedPct; maxIdx = i; }
         }
-        _memMinAt = _memHistory[minIdx].Utc;
-        _memMaxAt = _memHistory[maxIdx].Utc;
+        _memMinAt  = _memHistory[minIdx].Utc;
+        _memMaxAt  = _memHistory[maxIdx].Utc;
         _memNowPct = _memHistory[^1].UsedPct;
-
-        var sb = new System.Text.StringBuilder(n * 12);
-        for (int i = 0; i < n; i++)
-        {
-            var s = _memHistory[i];
-            // x progresses linearly across samples; for n=1 anchor to x0.
-            double x = n == 1 ? x0 : x0 + (x1 - x0) * i / (double)(n - 1);
-            double y = yBot - (s.UsedPct / 100.0) * (yBot - yTop);
-            if (i > 0) sb.Append(' ');
-            sb.Append(x.ToString("F1", System.Globalization.CultureInfo.InvariantCulture));
-            sb.Append(',');
-            sb.Append(y.ToString("F1", System.Globalization.CultureInfo.InvariantCulture));
-
-            if (i == minIdx) { _memMinX = x; _memMinY = y; }
-            if (i == maxIdx) { _memMaxX = x; _memMaxY = y; }
-        }
-        _memPolyline = sb.ToString();
     }
 
-    void BuildCachePolyline(long yMaxBytes)
+    void ComputeCircuitChipStats()
     {
-        const double x0 = 60, x1 = 780, yTop = 20, yBot = 190;
-        var n = _cacheHistory.Count;
-        if (n == 0) { _cachePolyline = ""; return; }
-        if (yMaxBytes <= 0) yMaxBytes = 1;
+        int maxSeen = 0;
+        for (int i = 0; i < _memHistory.Count; i++)
+            if (_memHistory[i].ActiveCircuits > maxSeen) maxSeen = _memHistory[i].ActiveCircuits;
+        _circuitsMax = maxSeen;
+        _circuitsNow = _memHistory[^1].ActiveCircuits;
+    }
 
+    void ComputeCacheChipStats()
+    {
         _cacheMinBytes = long.MaxValue; _cacheMaxBytes = long.MinValue;
         int minIdx = 0, maxIdx = 0;
-        for (int i = 0; i < n; i++)
+        for (int i = 0; i < _cacheHistory.Count; i++)
         {
             var s = _cacheHistory[i];
             if (s.CacheBytes < _cacheMinBytes) { _cacheMinBytes = s.CacheBytes; minIdx = i; }
             if (s.CacheBytes > _cacheMaxBytes) { _cacheMaxBytes = s.CacheBytes; maxIdx = i; }
         }
-        _cacheMinAt = _cacheHistory[minIdx].Utc;
-        _cacheMaxAt = _cacheHistory[maxIdx].Utc;
+        _cacheMinAt    = _cacheHistory[minIdx].Utc;
+        _cacheMaxAt    = _cacheHistory[maxIdx].Utc;
         _cacheNowBytes = _cacheHistory[^1].CacheBytes;
-
-        var sb = new System.Text.StringBuilder(n * 12);
-        for (int i = 0; i < n; i++)
-        {
-            var s = _cacheHistory[i];
-            double x = n == 1 ? x0 : x0 + (x1 - x0) * i / (double)(n - 1);
-            double frac = (double)s.CacheBytes / yMaxBytes;
-            if (frac < 0) frac = 0; if (frac > 1) frac = 1;
-            double y = yBot - frac * (yBot - yTop);
-            if (i > 0) sb.Append(' ');
-            sb.Append(x.ToString("F1", System.Globalization.CultureInfo.InvariantCulture));
-            sb.Append(',');
-            sb.Append(y.ToString("F1", System.Globalization.CultureInfo.InvariantCulture));
-            if (i == minIdx) { _cacheMinX = x; _cacheMinY = y; }
-            if (i == maxIdx) { _cacheMaxX = x; _cacheMaxY = y; }
-        }
-        _cachePolyline = sb.ToString();
     }
 
     // ── CPU ──────────────────────────────────────────────────────────
