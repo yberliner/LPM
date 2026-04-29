@@ -8,6 +8,9 @@ namespace LPM.Services;
 /// One sample of memory state captured every ~15 minutes. UsedPct is system memory
 /// pressure (Linux: from /proc/meminfo; Windows dev: process working set / GC total).
 /// CacheBytes is the IMemoryCache (PDF cache) current estimated size in bytes.
+/// ActiveCircuits / DisconnectedCircuits are the Blazor circuit counts at sample time —
+/// overlaid on the memory history chart so the user can correlate "more circuits → more
+/// memory used".
 /// </summary>
 public sealed record MemorySample(
     DateTime Utc,
@@ -15,7 +18,9 @@ public sealed record MemorySample(
     long UsedMB,
     long TotalMB,
     long CacheBytes,
-    int CacheEntries);
+    int CacheEntries,
+    int ActiveCircuits,
+    int DisconnectedCircuits);
 
 /// <summary>Snapshot returned to the UI — copy-on-read, safe to enumerate.</summary>
 public sealed record MemorySnapshot(
@@ -45,6 +50,7 @@ public sealed class MemoryWatchdogService : BackgroundService
     private static readonly TimeSpan _initialDelay = TimeSpan.FromMinutes(2);
 
     private readonly IMemoryCache _cache;
+    private readonly CircuitTrackingService _circuits;
     private readonly long _cacheLimitBytes;
 
     // Tracked across wake-ups so we can compute LPM process CPU% as a delta.
@@ -57,9 +63,10 @@ public sealed class MemoryWatchdogService : BackgroundService
     private const int MaxSamples = 672;
     private readonly ConcurrentQueue<MemorySample> _samples = new();
 
-    public MemoryWatchdogService(IMemoryCache cache)
+    public MemoryWatchdogService(IMemoryCache cache, CircuitTrackingService circuits)
     {
-        _cache = cache;
+        _cache    = cache;
+        _circuits = circuits;
         // Mirror the configured SizeLimit so the UI can show "X / Y MB".
         // SizeLimit isn't surfaced via IMemoryCache, so we hardcode the same
         // value as Program.cs's AddMemoryCache(o => o.SizeLimit = ...).
@@ -92,7 +99,9 @@ public sealed class MemoryWatchdogService : BackgroundService
     private void RecordSample(double usedPct, long usedMB, long totalMB)
     {
         var (cacheBytes, _, cacheEntries, _, _) = GetCacheStats();
-        _samples.Enqueue(new MemorySample(DateTime.UtcNow, usedPct, usedMB, totalMB, cacheBytes, cacheEntries));
+        int active   = _circuits.ActiveCount;
+        int disconn  = _circuits.DisconnectedCount;
+        _samples.Enqueue(new MemorySample(DateTime.UtcNow, usedPct, usedMB, totalMB, cacheBytes, cacheEntries, active, disconn));
         // Trim oldest if over cap. Lock-free; one producer (Check) so the loop terminates fast.
         while (_samples.Count > MaxSamples) _samples.TryDequeue(out _);
     }

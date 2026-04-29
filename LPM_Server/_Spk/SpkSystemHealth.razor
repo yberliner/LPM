@@ -164,6 +164,10 @@
                 </tr>
                 <tr><td>Total tracked</td><td>@_circTotal</td></tr>
                 <tr><td>Oldest</td><td>@(_circOldestAge ?? "—")</td></tr>
+                <tr title="GC heap ÷ tracked circuits — crude average. The journalctl close-delta log gives the actual per-circuit number when each circuit closes.">
+                    <td>Avg / circuit</td>
+                    <td>@(_circTotal > 0 ? FormatMB(_circAvgBytesEach) : "—")</td>
+                </tr>
                 @if (_circTopUsers.Count > 0)
                 {
                     <tr><td colspan="2" class="shg-mdetail-h2">Top users</td></tr>
@@ -226,10 +230,11 @@
     }
 </div>
 
-@* ── History: System memory % over time ──────────────────────── *@
+@* ── History: System memory % + Blazor circuits over time ──── *@
+@* Memory uses LEFT Y axis (0..100%); circuits use RIGHT Y axis (0..max scale, integer count). *@
 <div class="shg-chart-card">
     <div class="shg-chart-head">
-        <div class="shg-chart-title"><i class="ri-pulse-line"></i> System memory · history</div>
+        <div class="shg-chart-title"><i class="ri-pulse-line"></i> System memory + Blazor circuits · history</div>
         <div class="shg-chart-meta">
             @if (_memHistory.Count == 0)
             {
@@ -237,22 +242,33 @@
             }
             else
             {
-                <span class="shg-chip shg-chip-min" title="Minimum recorded">Min @FormatPct(_memMinPct) <small>@_memMinAt.ToLocalTime().ToString("HH:mm")</small></span>
-                <span class="shg-chip shg-chip-now" title="Latest sample">Now @FormatPct(_memNowPct)</span>
-                <span class="shg-chip shg-chip-max" title="Maximum recorded">Max @FormatPct(_memMaxPct) <small>@_memMaxAt.ToLocalTime().ToString("HH:mm")</small></span>
+                <span class="shg-chip shg-chip-mem"     title="Memory % (left axis, indigo line)">Mem now @FormatPct(_memNowPct) · max @FormatPct(_memMaxPct)</span>
+                <span class="shg-chip shg-chip-circuit" title="Active Blazor circuits (right axis, amber line)">Circuits now @_circuitsNow · max @_circuitsMax</span>
             }
         </div>
     </div>
     @if (_memHistory.Count > 0)
     {
         <svg class="shg-chart" viewBox="0 0 800 200" preserveAspectRatio="none">
-            @* gridlines + Y labels *@
+            @* Left Y gridlines + memory labels (0..100%) *@
             @foreach (var pct in new[] { 0, 25, 50, 75, 100 })
             {
                 var y = 190 - (pct / 100.0) * 170;
                 <g>
-                    <line class="shg-grid" x1="40" x2="780" y1="@(y.ToString("F1"))" y2="@(y.ToString("F1"))" />
-                    <text class="shg-grid-lbl" x="34" y="@((y + 4).ToString("F1"))" text-anchor="end">@pct%</text>
+                    <line class="shg-grid" x1="40" x2="760" y1="@(y.ToString("F1"))" y2="@(y.ToString("F1"))" />
+                    <text class="shg-grid-lbl shg-grid-lbl-mem" x="34" y="@((y + 4).ToString("F1"))" text-anchor="end">@pct%</text>
+                </g>
+            }
+            @* Right Y labels for circuit count (mirrors the same gridlines, mapped to circuit scale) *@
+            @{
+                int circScale = _circuitsAxisMax;
+            }
+            @foreach (var frac in new[] { 0.0, 0.25, 0.5, 0.75, 1.0 })
+            {
+                var y    = 190 - frac * 170;
+                int lbl  = (int)Math.Round(circScale * frac);
+                <g>
+                    <text class="shg-grid-lbl shg-grid-lbl-circ" x="766" y="@((y + 4).ToString("F1"))" text-anchor="start">@lbl</text>
                 </g>
             }
             @* X-axis time labels *@
@@ -262,11 +278,16 @@
             }
             <g>
                 <text class="shg-grid-lbl" x="40"  y="198" text-anchor="start">@firstT.ToString("MM-dd HH:mm")</text>
-                <text class="shg-grid-lbl" x="780" y="198" text-anchor="end">@lastT.ToString("MM-dd HH:mm")</text>
+                <text class="shg-grid-lbl" x="760" y="198" text-anchor="end">@lastT.ToString("MM-dd HH:mm")</text>
             </g>
-            @* Polyline of samples *@
+            @* Memory polyline (left axis) *@
             <polyline class="shg-line shg-line-mem" points="@_memPolyline" />
-            @* Min / Max dots *@
+            @* Circuits polyline (right axis) *@
+            @if (!string.IsNullOrEmpty(_circuitsPolyline))
+            {
+                <polyline class="shg-line shg-line-circuits" points="@_circuitsPolyline" />
+            }
+            @* Memory min / max dots *@
             <circle class="shg-dot shg-dot-max" cx="@(_memMaxX.ToString("F1"))" cy="@(_memMaxY.ToString("F1"))" r="4" />
             <circle class="shg-dot shg-dot-min" cx="@(_memMinX.ToString("F1"))" cy="@(_memMinY.ToString("F1"))" r="4" />
         </svg>
@@ -458,8 +479,17 @@
         fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
         vector-effect: non-scaling-stroke;
     }
-    .shg-line-mem   { stroke: #6366f1; }
-    .shg-line-cache { stroke: #06b6d4; }
+    .shg-line-mem      { stroke: #6366f1; }
+    .shg-line-cache    { stroke: #06b6d4; }
+    .shg-line-circuits { stroke: #f59e0b; stroke-dasharray: 4 3; }
+    .shg-grid-lbl-mem  { fill: #818cf8; }
+    .shg-grid-lbl-circ { fill: #f59e0b; }
+    :root[data-theme-mode="light"] .shg-grid-lbl-mem  { fill: #4338ca; }
+    :root[data-theme-mode="light"] .shg-grid-lbl-circ { fill: #b45309; }
+    .shg-chip-mem      { background: rgba(99,102,241,.22); color: #a5b4fc; }
+    .shg-chip-circuit  { background: rgba(245,158,11,.22); color: #fcd34d; }
+    :root[data-theme-mode="light"] .shg-chip-mem     { background: #e0e7ff; color: #3730a3; }
+    :root[data-theme-mode="light"] .shg-chip-circuit { background: #fef3c7; color: #92400e; }
     .shg-dot         { stroke: #fff; stroke-width: 2; }
     .shg-dot-max     { fill: #ef4444; }
     .shg-dot-min     { fill: #22c55e; }
@@ -582,6 +612,11 @@
     DateTime _memMinAt, _memMaxAt;
     double _memMinX, _memMinY, _memMaxX, _memMaxY;
 
+    // ── History (Blazor circuits, overlaid on the memory chart) ─────
+    string _circuitsPolyline = "";
+    int _circuitsNow, _circuitsMax;
+    int _circuitsAxisMax = 10;  // auto-grown to historical max; floor at 10 so axis labels are sensible
+
     // ── History (PDF cache bytes) ────────────────────────────────────
     List<MemorySample> _cacheHistory = new();
     string _cachePolyline = "";
@@ -594,6 +629,7 @@
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, [], 0, 0, 0, 0, 0, 0, 0, -1);
     int _circActive, _circDisconn, _circTotal;
     string? _circOldestAge;
+    long _circAvgBytesEach;          // GC heap ÷ active circuits — rough but free signal
     List<(string User, int Count)> _circTopUsers = new();
 
     // Action buttons (Force GC / Snapshot top types)
@@ -655,6 +691,9 @@
             _circTotal   = Circuits.Total;
             var oldest   = Circuits.Oldest();
             _circOldestAge = oldest == null ? null : FormatAge(DateTime.UtcNow - oldest.OpenedAtUtc);
+            // Crude average: managed heap divided by all tracked circuits (active + disconnected,
+            // since disconnected ones still pin their state until the retention period expires).
+            _circAvgBytesEach = _circTotal > 0 ? _dm.GcHeapBytes / _circTotal : 0;
 
             var snap = Circuits.Snapshot();
             _circTopUsers = snap
@@ -767,12 +806,52 @@
         // Plot area: x [40..780] for mem (label gutter 40), [60..780] for cache (label gutter 60).
         // y [20..190]  → 0..100 mapped to 190..20.
         BuildMemPolyline();
+        BuildCircuitsPolyline();
         BuildCachePolyline(snap.CacheLimitBytes);
+    }
+
+    void BuildCircuitsPolyline()
+    {
+        // Same plot area as the memory chart so they overlay perfectly.
+        // Memory uses 40..780; we trim the right edge to 760 so circuit labels can sit at 766+.
+        const double x0 = 40, x1 = 760, yTop = 20, yBot = 190;
+        var n = _memHistory.Count;
+        if (n == 0) { _circuitsPolyline = ""; _circuitsNow = 0; _circuitsMax = 0; return; }
+
+        int maxSeen = 0;
+        for (int i = 0; i < n; i++)
+        {
+            int active = _memHistory[i].ActiveCircuits;
+            if (active > maxSeen) maxSeen = active;
+        }
+        _circuitsMax = maxSeen;
+        _circuitsNow = _memHistory[^1].ActiveCircuits;
+        // Round axis up to a sensible bucket so the line doesn't crawl along the top edge.
+        _circuitsAxisMax = maxSeen <= 10 ? 10
+                         : maxSeen <= 25 ? 25
+                         : maxSeen <= 50 ? 50
+                         : ((maxSeen + 9) / 10) * 10; // round up to nearest 10
+
+        var sb = new System.Text.StringBuilder(n * 12);
+        for (int i = 0; i < n; i++)
+        {
+            int active = _memHistory[i].ActiveCircuits;
+            double frac = _circuitsAxisMax > 0 ? (double)active / _circuitsAxisMax : 0;
+            if (frac < 0) frac = 0; if (frac > 1) frac = 1;
+            double x = n == 1 ? x0 : x0 + (x1 - x0) * i / (double)(n - 1);
+            double y = yBot - frac * (yBot - yTop);
+            if (i > 0) sb.Append(' ');
+            sb.Append(x.ToString("F1", System.Globalization.CultureInfo.InvariantCulture));
+            sb.Append(',');
+            sb.Append(y.ToString("F1", System.Globalization.CultureInfo.InvariantCulture));
+        }
+        _circuitsPolyline = sb.ToString();
     }
 
     void BuildMemPolyline()
     {
-        const double x0 = 40, x1 = 780, yTop = 20, yBot = 190;
+        // x1 must match BuildCircuitsPolyline so the two lines share an x-axis.
+        const double x0 = 40, x1 = 760, yTop = 20, yBot = 190;
         var n = _memHistory.Count;
         if (n == 0) { _memPolyline = ""; return; }
 
