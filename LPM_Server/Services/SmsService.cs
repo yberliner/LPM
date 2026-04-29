@@ -60,6 +60,55 @@ public class SmsService(IHttpClientFactory httpClientFactory, IConfiguration con
         }
     }
 
+    /// <summary>
+    /// Fetches the remaining SMS balance from the GlobalSms / itnewsletter account.
+    /// Returns (ok, balance, httpStatus). On success, <c>balance</c> is the inner
+    /// <c>&lt;getBalanceResult&gt;</c> text from the SOAP response (usually a numeric
+    /// string). On failure, <c>balance</c> contains the raw response body so the caller
+    /// can surface it for diagnostics.
+    /// </summary>
+    public async Task<(bool Ok, string Balance, int HttpStatus)> GetBalanceAsync()
+    {
+        var soapBody = $"""
+            <?xml version="1.0" encoding="utf-8"?>
+            <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
+                           xmlns:tns="apiGlobalSms">
+              <soap:Body>
+                <tns:getBalance>
+                  <tns:ApiKey>{Escape(ApiKey)}</tns:ApiKey>
+                </tns:getBalance>
+              </soap:Body>
+            </soap:Envelope>
+            """;
+
+        try
+        {
+            var client  = httpClientFactory.CreateClient("sms");
+            var content = new StringContent(soapBody, System.Text.Encoding.UTF8, "text/xml");
+            content.Headers.Add("SOAPAction", "apiGlobalSms/getBalance");
+
+            var response = await client.PostAsync(EndpointUrl, content);
+            var body     = await response.Content.ReadAsStringAsync();
+
+            Console.WriteLine($"[SmsService] getBalance: HTTP {(int)response.StatusCode} | {body}");
+
+            if (!response.IsSuccessStatusCode)
+                return (false, body, (int)response.StatusCode);
+
+            // Extract <getBalanceResult>...</getBalanceResult>; fall back to raw body if absent.
+            var match = System.Text.RegularExpressions.Regex.Match(
+                body, "<(?:[^:>]+:)?getBalanceResult[^>]*>(.*?)</(?:[^:>]+:)?getBalanceResult>",
+                System.Text.RegularExpressions.RegexOptions.Singleline);
+            var balance = match.Success ? match.Groups[1].Value.Trim() : body;
+            return (true, balance, (int)response.StatusCode);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SmsService] Error fetching balance: {ex.Message}");
+            return (false, ex.Message, 0);
+        }
+    }
+
     private static string Escape(string s) =>
         s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
 }

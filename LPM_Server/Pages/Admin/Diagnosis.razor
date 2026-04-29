@@ -12,6 +12,7 @@
 @inject LPM.Services.DashboardService DashSvc
 @inject LPM.Services.UserActivityService ActivitySvc
 @inject LPM.Services.PcService PcSvc
+@inject LPM.Services.SmsService SmsSvc
 @inject IJSRuntime JS
 
 <PageTitle>Diagnosis — LPM</PageTitle>
@@ -482,6 +483,55 @@
                             </div>
                         </div>
                     }
+                </div>
+            }
+        </div>
+    </div>
+
+    @* ── SMS Balance ──────────────────────────────────────────────────────── *@
+    <div class="diag-editor-card mb-4">
+        <div class="diag-editor-header">
+            <i class="ri-message-2-line me-2"></i>SMS Balance
+            <span class="diag-editor-sub">GlobalSms / itnewsletter</span>
+        </div>
+        <div class="diag-editor-body">
+            <div class="d-flex align-items-center gap-3 flex-wrap mb-3">
+                <button class="btn btn-outline-primary d-flex align-items-center gap-2"
+                        disabled="@_smsBalanceLoading"
+                        @onclick="CheckSmsBalance">
+                    <i class="ri-refresh-line"></i>Check Balance
+                </button>
+                @if (_smsBalanceLoading)
+                {
+                    <span class="spinner-border spinner-border-sm text-primary"></span>
+                    <span class="text-muted" style="font-size:.85rem;">Querying SMS provider…</span>
+                }
+            </div>
+
+            @if (_smsBalanceCheckedAt != null)
+            {
+                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;">
+                    <div class="diag-stat-box">
+                        <div class="diag-stat-label">Remaining</div>
+                        <div class="diag-stat-value" style="color:@(_smsBalanceOk ? "#22c55e" : "#ef4444");">
+                            @if (string.IsNullOrEmpty(_smsBalanceResult))
+                            {
+                                <span style="color:#94a3b8;">(empty)</span>
+                            }
+                            else
+                            {
+                                @_smsBalanceResult
+                            }
+                        </div>
+                    </div>
+                    <div class="diag-stat-box">
+                        <div class="diag-stat-label">HTTP</div>
+                        <div class="diag-stat-value">@_smsBalanceHttpStatus</div>
+                    </div>
+                    <div class="diag-stat-box">
+                        <div class="diag-stat-label">Checked at</div>
+                        <div class="diag-stat-value">@_smsBalanceCheckedAt.Value.ToString("HH:mm:ss")</div>
+                    </div>
                 </div>
             }
         </div>
@@ -2328,6 +2378,13 @@
     string _pdfDiagFileName = "";
     long   _pdfDiagFileSize;
     LPM.Services.FolderService.PdfDiagResult? _pdfDiagResult;
+
+    // SMS Balance
+    bool      _smsBalanceLoading;
+    bool      _smsBalanceOk;
+    string    _smsBalanceResult     = "";
+    int       _smsBalanceHttpStatus;
+    DateTime? _smsBalanceCheckedAt;
     List<TableData> _coreTables = [];
     List<TableData> _sysTables  = [];
     List<TableData> _lkpTables  = [];
@@ -3707,6 +3764,33 @@
                 GhostscriptNeeded: true);
         }
         finally { _pdfDiagBusy = false; }
+    }
+
+    // ── SMS Balance ────────────────────────────────────────────────────────
+    async Task CheckSmsBalance()
+    {
+        _smsBalanceLoading = true;
+        StateHasChanged();
+        try
+        {
+            var (ok, balance, http) = await SmsSvc.GetBalanceAsync();
+            _smsBalanceOk         = ok;
+            _smsBalanceResult     = balance ?? "";
+            _smsBalanceHttpStatus = http;
+            _smsBalanceCheckedAt  = DateTime.Now;
+        }
+        catch (Exception ex)
+        {
+            _smsBalanceOk         = false;
+            _smsBalanceResult     = ex.Message;
+            _smsBalanceHttpStatus = 0;
+            _smsBalanceCheckedAt  = DateTime.Now;
+        }
+        finally
+        {
+            _smsBalanceLoading = false;
+            StateHasChanged();
+        }
     }
 
     // ── Create Empty DB ────────────────────────────────────────────────────
