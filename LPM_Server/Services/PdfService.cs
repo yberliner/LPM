@@ -2061,11 +2061,16 @@ public class PdfService
         {
             double half = cw / 2;
             double lw1 = gfx.MeasureString(lbl1, fLabel).Width;
-            gfx.DrawString(lbl1, fLabel, bGray, R(x0,          y, lw1,         fieldH), fmtCL);
-            DrawMixed(val1, 16, true, bDark, R(x0 + lw1,    y, half - lw1,  fieldH), fmtCL);
+            gfx.DrawString(lbl1, fLabel, bGray, R(x0, y, lw1, fieldH), fmtCL);
+            // Route values through VisualReorder so pure-Hebrew names (and any Hebrew/digit
+            // mix without Latin letters) get correct visual order — DrawMixed's pure-Hebrew
+            // fast path draws as-is and would otherwise leave Hebrew chars in logical order.
+            var (vis1, _) = VisualReorder(val1 ?? "");
+            DrawMixed(vis1, 16, true, bDark, R(x0 + lw1, y, half - lw1, fieldH), fmtCL, alreadyVisualOrdered: true);
             double lw2 = gfx.MeasureString(lbl2, fLabel).Width;
-            gfx.DrawString(lbl2, fLabel, bGray, R(x0 + half,       y, lw2,          fieldH), fmtCL);
-            DrawMixed(val2, 16, true, bDark, R(x0 + half + lw2, y, half - lw2,   fieldH), fmtCL);
+            gfx.DrawString(lbl2, fLabel, bGray, R(x0 + half, y, lw2, fieldH), fmtCL);
+            var (vis2, _) = VisualReorder(val2 ?? "");
+            DrawMixed(vis2, 16, true, bDark, R(x0 + half + lw2, y, half - lw2, fieldH), fmtCL, alreadyVisualOrdered: true);
         }
 
         FieldPair("PC's Name:  ",  pcName,       "Date:  ",           date);          y += fieldH + 6 * scale;
@@ -2136,95 +2141,108 @@ public class PdfService
             (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
             (c >= '\u00C0' && c <= '\u024F');     // Latin Extended
 
-        // Simplified Unicode BiDi for Hebrew+Latin mixed text.
-        // Returns (visual string, isRtl base direction).
-        // Hebrew chars are ALWAYS pre-reversed (PdfSharp draws glyphs LTR with no BiDi support,
-        // so each Hebrew run must be in reverse-logical order to display correctly).
-        // Run-order is reversed only when the paragraph is RTL-base.
-        static (string Visual, bool IsRtl) VisualReorder(string logical)
+        // Char-level Unicode BiDi (UAX #9 simplified to two levels: LTR=0, RTL=1).
+        // PdfSharp draws glyphs LTR with no BiDi support, so this method produces a string
+        // where the chars are placed in the order PdfSharp should write them, left-to-right,
+        // such that natural BiDi reading reproduces the logical input.
+        //
+        //  - Each char is classified: RTL (Hebrew/Arabic), LTR (Latin letters + digits), or
+        //    neutral (space/punct).
+        //  - Neutrals resolve per UAX rule N1/N2: take direction of nearest same-direction
+        //    strong neighbors; if neighbors disagree or one is missing, take paragraph
+        //    direction. This is the step the previous run-level approach was missing —
+        //    it's what makes ":" stay attached to the Hebrew word it followed in mixed
+        //    sentences like "זמן: שלום".
+        //  - RTL paragraph: reverse the entire string, then un-reverse contiguous level-0
+        //    chunks so LTR words read LTR.
+        //  - LTR paragraph: reverse contiguous level-1 chunks so embedded Hebrew islands
+        //    read RTL within an LTR flow.
+        //
+        // overrideRtl: when set, forces the base direction (used by WrapText so all wrapped
+        // lines of the same paragraph share one direction even if the wrap-break falls at a
+        // script boundary — matches Unicode UAX #9 P2/P3 paragraph-level direction).
+        static (string Visual, bool IsRtl) VisualReorder(string logical, bool? overrideRtl = null)
         {
-            if (string.IsNullOrEmpty(logical)) return ("", false);
+            if (string.IsNullOrEmpty(logical)) return ("", overrideRtl ?? false);
 
-            // Determine base direction from first strong character
-            bool rtlBase = false;
-            foreach (var c in logical)
+            // Determine base direction from first strong character (or use override)
+            bool rtlBase;
+            if (overrideRtl.HasValue) rtlBase = overrideRtl.Value;
+            else
             {
-                if (IsRtlChar(c)) { rtlBase = true; break; }
-                if (IsLtrChar(c)) { rtlBase = false; break; }
-            }
-
-            // Split into directional runs: RTL, LTR, Neutral
-            // Run type: 0 = neutral (space/digits/punct), 1 = LTR, 2 = RTL
-            var runs = new List<(int Type, string Text)>();
-            int pos = 0;
-            while (pos < logical.Length)
-            {
-                char c = logical[pos];
-                int type = IsRtlChar(c) ? 2 : IsLtrChar(c) ? 1 : 0;
-                int start = pos++;
-                while (pos < logical.Length)
+                rtlBase = false;
+                foreach (var c in logical)
                 {
-                    char nc = logical[pos];
-                    int nt = IsRtlChar(nc) ? 2 : IsLtrChar(nc) ? 1 : 0;
-                    if (nt != type) break;
-                    pos++;
+                    if (IsRtlChar(c)) { rtlBase = true; break; }
+                    if (IsLtrChar(c)) { rtlBase = false; break; }
                 }
-                runs.Add((type, logical[start..pos]));
             }
 
+            int n = logical.Length;
+            var chars = logical.ToCharArray();
+
+            // Step 1 — classify each char's direction. Digits classify as LTR (level 0)
+            // because they read LTR within any paragraph (UAX EN/AN essentially).
+            var dir = new int[n];
+            for (int i = 0; i < n; i++)
+            {
+                if (IsRtlChar(chars[i]))                            dir[i] = 1;
+                else if (IsLtrChar(chars[i]) || IsDigitChar(chars[i])) dir[i] = 0;
+                else                                                dir[i] = -1;
+            }
+
+            // Step 2 — resolve neutrals (UAX rules N1/N2 simplified).
+            // Search for nearest non-neutral on each side; if both agree, take that
+            // direction; if they disagree or one is missing, take the paragraph direction.
+            for (int i = 0; i < n; i++)
+            {
+                if (dir[i] != -1) continue;
+                int leftDir = -1;
+                for (int j = i - 1; j >= 0; j--)
+                    if (dir[j] != -1) { leftDir = dir[j]; break; }
+                int rightDir = -1;
+                for (int j = i + 1; j < n; j++)
+                    if (dir[j] != -1) { rightDir = dir[j]; break; }
+
+                if (leftDir != -1 && leftDir == rightDir)         dir[i] = leftDir;
+                else if (leftDir == -1 && rightDir != -1)         dir[i] = rightDir;
+                else if (leftDir != -1 && rightDir == -1)         dir[i] = leftDir;
+                else                                              dir[i] = rtlBase ? 1 : 0;
+            }
+
+            // Step 3 — apply L2 reordering (two-level).
             if (rtlBase)
             {
-                // RTL-base paragraph: flip the run order so logically-first runs land at the right.
-                runs.Reverse();
+                // Reverse the whole line, then un-reverse contiguous LTR chunks so
+                // English/digit clusters read LTR within the RTL flow.
+                Array.Reverse(chars);
+                Array.Reverse(dir);
+                for (int i = 0; i < n; )
+                {
+                    if (dir[i] != 0) { i++; continue; }
+                    int start = i;
+                    while (i < n && dir[i] == 0) i++;
+                    for (int a = start, b = i - 1; a < b; a++, b--)
+                        (chars[a], chars[b]) = (chars[b], chars[a]);
+                }
             }
             else
             {
-                // LTR-base paragraph: each embedded RTL island still needs its internal run order
-                // reversed so the first logical Hebrew word lands at the right edge of the island.
-                // An island = a maximal cluster of RTL runs joined by neutral runs.
-                for (int i = 0; i < runs.Count; )
+                // Reverse only the contiguous RTL chunks (Hebrew islands inside LTR flow).
+                for (int i = 0; i < n; )
                 {
-                    if (runs[i].Type != 2) { i++; continue; }
-                    int clusterStart = i;
-                    int clusterEnd   = i;
-                    int j = i + 1;
-                    while (j < runs.Count)
-                    {
-                        if (runs[j].Type == 2) { clusterEnd = j; j++; continue; }
-                        if (runs[j].Type == 0)
-                        {
-                            int k = j + 1;
-                            while (k < runs.Count && runs[k].Type == 0) k++;
-                            if (k < runs.Count && runs[k].Type == 2)
-                            {
-                                clusterEnd = k; j = k + 1; continue;
-                            }
-                        }
-                        break;
-                    }
-                    if (clusterEnd > clusterStart)
-                        runs.Reverse(clusterStart, clusterEnd - clusterStart + 1);
-                    i = clusterEnd + 1;
+                    if (dir[i] != 1) { i++; continue; }
+                    int start = i;
+                    while (i < n && dir[i] == 1) i++;
+                    for (int a = start, b = i - 1; a < b; a++, b--)
+                        (chars[a], chars[b]) = (chars[b], chars[a]);
                 }
             }
 
-            // Within each RTL run, reverse the characters (always — needed for correct glyph
-            // placement under any base direction, since PdfSharp lacks BiDi-aware drawing).
-            var sb = new System.Text.StringBuilder(logical.Length);
-            foreach (var (type, text) in runs)
-            {
-                if (type == 2)
-                {
-                    for (int i = text.Length - 1; i >= 0; i--)
-                        sb.Append(text[i]);
-                }
-                else
-                {
-                    sb.Append(text);
-                }
-            }
-            return (sb.ToString(), rtlBase);
+            return (new string(chars), rtlBase);
         }
+
+        static bool IsDigitChar(char c) => c >= '0' && c <= '9';
 
         // ── Word-wrap helper (handles \n, applies BiDi reordering per line) ──
         List<(string Visual, bool IsRtl)> WrapText(string text, double maxW)
@@ -2233,6 +2251,17 @@ public class PdfService
             foreach (var para in text.Split('\n'))
             {
                 if (string.IsNullOrEmpty(para)) { result.Add(("", false)); continue; }
+
+                // Paragraph direction = first strong char in the WHOLE paragraph (UAX #9 P2/P3).
+                // Forced onto every wrapped line so a wrap-break at a script boundary doesn't
+                // cause some lines to align right and others left within the same paragraph.
+                bool paraRtl = false;
+                foreach (var c in para)
+                {
+                    if (IsRtlChar(c)) { paraRtl = true; break; }
+                    if (IsLtrChar(c)) { paraRtl = false; break; }
+                }
+
                 var words = para.Split(' ');
                 var cur = new System.Text.StringBuilder();
                 foreach (var w in words)
@@ -2246,12 +2275,12 @@ public class PdfService
                     }
                     else
                     {
-                        if (cur.Length > 0) result.Add(VisualReorder(cur.ToString()));
+                        if (cur.Length > 0) result.Add(VisualReorder(cur.ToString(), paraRtl));
                         cur.Clear();
                         cur.Append(w);
                     }
                 }
-                if (cur.Length > 0) result.Add(VisualReorder(cur.ToString()));
+                if (cur.Length > 0) result.Add(VisualReorder(cur.ToString(), paraRtl));
             }
             if (result.Count == 0) result.Add(("", false));
             return result;
@@ -2323,8 +2352,12 @@ public class PdfService
                     // vis is already visual-ordered by WrapText/VisualReorder — skip DrawMixed's BiDi.
                     DrawMixed(vis, 15, false, bDark, R(rx, y + pad + li * lineH, rw, lineH), fmt, alreadyVisualOrdered: true);
                 }
-                gfx.DrawString(r.Time    ?? "", fCell, bDark, R(x1, y, timeW, rowH), fmtCC);
-                gfx.DrawString(r.ToneArm ?? "", fCell, bDark, R(x2, y, toneW, rowH), fmtCC);
+                // Same BiDi pipeline as Process/Results so any Hebrew in Time/ToneArm
+                // (rare but possible) renders correctly instead of as backwards glyphs.
+                var (timeVis, _) = VisualReorder(r.Time    ?? "");
+                var (toneVis, _) = VisualReorder(r.ToneArm ?? "");
+                DrawMixed(timeVis, 15, false, bDark, R(x1, y, timeW, rowH), fmtCC, alreadyVisualOrdered: true);
+                DrawMixed(toneVis, 15, false, bDark, R(x2, y, toneW, rowH), fmtCC, alreadyVisualOrdered: true);
                 for (int li = 0; li < resLines.Count; li++)
                 {
                     var (vis, rtl2) = resLines[li];
