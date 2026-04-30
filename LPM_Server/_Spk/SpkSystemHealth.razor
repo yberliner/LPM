@@ -267,7 +267,7 @@
     {
         <div class="shg-chart-empty">
             <i class="ri-line-chart-line"></i>
-            <div>Waiting for the first 15-minute sample. The watchdog ignores the first 2 minutes after startup to avoid JIT-inflated readings.</div>
+            <div>Waiting for the first 5-minute sample. The watchdog ignores the first 2 minutes after startup to avoid JIT-inflated readings.</div>
         </div>
     }
 </div>
@@ -314,7 +314,7 @@
     {
         <div class="shg-chart-empty">
             <i class="ri-line-chart-line"></i>
-            <div>Waiting for the first 15-minute sample.</div>
+            <div>Waiting for the first 5-minute sample.</div>
         </div>
     }
 </div>
@@ -354,7 +354,7 @@
     {
         <div class="shg-chart-empty">
             <i class="ri-line-chart-line"></i>
-            <div>Waiting for the first 15-minute sample.</div>
+            <div>Waiting for the first 5-minute sample.</div>
         </div>
     }
 </div>
@@ -697,21 +697,25 @@
         var o = MakeBaseOptions("#f59e0b");
         // Two series for circuits: active (amber) + disconnected (slate).
         o.Colors = new List<string> { "#f59e0b", "#64748b" };
-        o.Stroke!.Width = 2.5;
+        // Stepline: integer counts step between values; smoother than Straight, clearer than Smooth.
+        // Thick stroke + no markers so the LINE is the primary visual (was dots-on-thin-line before,
+        // which looked like a scatter plot when both series sat near 0).
+        o.Stroke = new Stroke { Curve = Curve.Stepline, Width = 4 };
         o.Yaxis![0].Min = 0;
         o.Yaxis![0].DecimalsInFloat = 0;
+        // Force at least 1 unit of headroom so a flat zero series isn't drawn ON the x-axis
+        // baseline (which made it look like an empty chart).
+        o.Yaxis![0].ForceNiceScale = true;
         o.Legend = new Legend { Show = true, Position = LegendPosition.Top, Labels = new LegendLabels { Colors = "#94a3b8" } };
-        // Hide the under-line fill (so two overlapping series stay readable) without
-        // nuking the stroke. Using a gradient with zero opacities — Solid + Opacity(0)
-        // was making the whole series invisible until hover.
+        // No under-line fill — two line series, each as a clean stroke.
         o.Fill = new Fill
         {
-            Type     = new List<FillType> { FillType.Gradient },
-            Gradient = new FillGradient { OpacityFrom = 0, OpacityTo = 0 }
+            Type     = new List<FillType> { FillType.Solid },
+            Opacity  = new Opacity(0d)
         };
-        // Small markers so data points are visible even when there are only a few samples
-        // (history fills slowly — one sample per cycle). Hover marker stays larger.
-        o.Markers = new Markers { Size = 3, StrokeWidth = 0, Hover = new MarkersHover { Size = 6 } };
+        // Hide markers — the user wants a LINE graph, not dots. Hover still grows a marker
+        // on the focused point so the tooltip has something to anchor to.
+        o.Markers = new Markers { Size = 0, StrokeWidth = 0, Hover = new MarkersHover { Size = 6 } };
         // Rich custom tooltip — also explains what "Disconnected" means.
         o.Tooltip!.Custom = CircuitsTooltipJs;
         return o;

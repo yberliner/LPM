@@ -68,8 +68,10 @@ window.lpmFileBackup = (function () {
                 continue;
             }
 
-            // Download with retry
+            // Download with retry. `success` differs from `ok`: ok terminates the retry
+            // loop (on success OR 404), success is true ONLY when bytes hit the disk.
             let ok = false;
+            let success = false;
             let lastErrorDetail = '';
             for (let attempt = 0; attempt < 3 && !ok && !_cancel; attempt++) {
                 try {
@@ -104,6 +106,7 @@ window.lpmFileBackup = (function () {
                     manifest[key] = entry.modified;
                     manifestDirty++;
                     ok = true;
+                    success = true;
                 } catch (err) {
                     console.error(`[Backup] ${phase}/${key} attempt ${attempt + 1} failed:`, err);
                     lastErrorDetail = (err && (err.message || err.toString())) || 'Unknown error';
@@ -118,6 +121,13 @@ window.lpmFileBackup = (function () {
             if (manifestDirty >= 50) {
                 await writeManifest(phaseDir, manifest);
                 manifestDirty = 0;
+            }
+
+            // NEW: notify the C# side ONLY for files actually written to disk this run
+            // (not skipped via manifest, not 404, not download_failed). The Backup page
+            // filters self-generated synthetic PDFs out of the resulting display table.
+            if (success) {
+                try { dotNetRef.invokeMethodAsync('OnFileDownloaded', phase, key, fullPath, pcName, new Date().toISOString()); } catch {}
             }
 
             try { dotNetRef.invokeMethodAsync('OnFileProgress', current, total, key, skipped, errors, false); } catch {}

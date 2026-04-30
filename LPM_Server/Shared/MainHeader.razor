@@ -7069,7 +7069,7 @@
                 }
             </div>
             <div class="d-flex align-items-center gap-3">
-                @if (_statPdfBase64 != null && !_statBusy)
+                @if (_statPdfUrl != null && !_statBusy)
                 {
                     <button class="stat-today-btn" @onclick="DownloadStatPdf" title="Download this PDF">
                         <i class="ri-download-2-line me-1"></i>Download
@@ -7447,8 +7447,12 @@
     DateOnly _statWeekStart;
     bool _statBusy;          // true while selected user's PDF is loading
     string? _statPdfUrl;
-    string? _statPdfBase64;
-    Dictionary<int, (string Url, string Base64)> _statCache = new();
+    // _statCache: personId → URL of the PDF on disk under /temp/. The PDF bytes already
+    // live in wwwroot/temp/stat_*.pdf — we used to also keep a base64 copy in this dict
+    // AND in window._pdfDataCache (browser side). That cost ~50 MB per circuit per cached
+    // staff member and was redundant: the iframe / pdf.js can fetch directly from the URL,
+    // and the browser caches the HTTP response. The base64 has been removed end-to-end.
+    Dictionary<int, string> _statCache = new();   // personId → "/temp/stat_<sid>_<yyyymmdd>.pdf"
     int _statCacheProgress;
     int _statCacheTotal;
     bool _statCaching;       // background generation running
@@ -8455,12 +8459,18 @@
         _ufcBusy    = true;
         _ufcError   = "";
         _ufcSuccess = false;
+        // Stream the upload to a temp file on disk (no full byte[] buffered in server RAM).
+        // For a 50 MB scan that's the difference between 100 MB peak (MemoryStream + ToArray)
+        // and ~80 KB chunked through CopyToAsync.
+        var tempPath = Path.Combine(Path.GetTempPath(), "lpm-ufc-" + Guid.NewGuid().ToString("N") + ".bin");
         try
         {
-            await using var stream = _ufcFile.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024);
-            using var ms = new MemoryStream();
-            await stream.CopyToAsync(ms);
-            FolderSvc.SaveSectionFile(_ufcPcId, "Front_Cover", _ufcFile.Name, ms.ToArray());
+            await using (var stream = _ufcFile.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024))
+            await using (var fs = File.Create(tempPath))
+            {
+                await stream.CopyToAsync(fs);
+            }
+            FolderSvc.SaveSectionFileFromTempPath(_ufcPcId, "Front_Cover", _ufcFile.Name, tempPath, overwrite: false, solo: false, enforcePdf: false);
             DashSvc.NotifyDataChanged();
             _ufcSuccessFileName = _ufcFile.Name;
             _ufcSuccessPcName   = _ufcAllPcs.FirstOrDefault(p => p.PcId == _ufcPcId)?.FullName ?? "";
@@ -8483,6 +8493,10 @@
         finally
         {
             _ufcBusy = false;
+            // Always clean up — SaveSectionFileFromTempPath consumes (moves) the file on
+            // success, but if that returned false or threw before reaching it, the temp
+            // is still on disk and would leak %TEMP% over time.
+            try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { /* best-effort */ }
         }
     }
 
@@ -12163,7 +12177,6 @@ string _actionPcSearch = "";
         _statStaffList.AddRange(ordered);
         _statWeekStart = DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today)).AddDays(-7);
         _statSelectedId = _statStaffList.FirstOrDefault()?.PersonId ?? 0;
-        _statPdfBase64 = null;
         _statPdfUrl = null;
         _statSidebarOpen = true;
         _statCache = new();
@@ -12216,7 +12229,6 @@ string _actionPcSearch = "";
     {
         _showStat = false;
         _statPdfUrl = null;
-        _statPdfBase64 = null;
         _statCache = new();
         try { await JSRuntime.InvokeVoidAsync("clearPdfCache"); } catch { }
     }
@@ -12225,13 +12237,12 @@ string _actionPcSearch = "";
     {
         if (personId == _statSelectedId) return;
         _statSelectedId = personId;
-        if (_statCache.TryGetValue(personId, out var cached))
+        if (_statCache.TryGetValue(personId, out var url))
         {
-            _statPdfUrl = cached.Url;
-            _statPdfBase64 = cached.Base64;
+            _statPdfUrl = url;
             _statBusy = false;
             StateHasChanged();
-            await JSRuntime.InvokeVoidAsync("showStatPdf", "stat-pdf-viewer", cached.Url);
+            await JSRuntime.InvokeVoidAsync("showStatPdf", "stat-pdf-viewer", url);
         }
     }
 
@@ -12266,7 +12277,6 @@ string _actionPcSearch = "";
         while (_statCaching) await Task.Delay(50);
         _statCache = new();
         _statPdfUrl = null;
-        _statPdfBase64 = null;
         await JSRuntime.InvokeVoidAsync("clearPdfCache");
         StateHasChanged();
         await GenerateAllStatPdfs();
@@ -12287,9 +12297,16 @@ string _actionPcSearch = "";
         Directory.CreateDirectory(tempDir);
         foreach (var old in Directory.GetFiles(tempDir, "stat_*.pdf"))
             try { File.Delete(old); } catch { }
+        // Cache-buster appended to every URL we hand the browser — new value per
+        // generation forces a fresh /api/stat-pdf fetch even when the filename matches
+        // a previous week's URL still in the browser HTTP cache.
+        var bustToken = DateTime.UtcNow.Ticks.ToString();
 
-        // Phase 1: Generate ALL PDFs in parallel on server
-        var results = new List<(int Sid, string Key, string B64)>();
+        // Phase 1: Generate ALL PDFs in parallel on server. Each one is written to
+        // wwwroot/temp/stat_<sid>_<yyyymmdd>.pdf — that file IS the source of truth for
+        // the browser viewer. We deliberately do NOT base64-encode the bytes any more
+        // (used to push 50–150 MB through SignalR per user as `cacheAllPdfData`).
+        var results = new List<(int Sid, string Url)>();
         var tasks = _statStaffList.Select(staff => Task.Run(() =>
         {
             var sid = staff.PersonId;
@@ -12332,10 +12349,17 @@ string _actionPcSearch = "";
             }
             var fileName = $"stat_{sid}_{weekStart:yyyyMMdd}.pdf";
             File.WriteAllBytes(Path.Combine(tempDir, fileName), pdfBytes);
-            return (Sid: sid, Key: $"stat_{sid}", B64: Convert.ToBase64String(pdfBytes));
+            // pdfBytes goes out of scope here → eligible for GC. Browser fetches via
+            // /api/stat-pdf (auth-required) instead of the public /temp/ static path,
+            // so guessing the filename doesn't leak another user's stats.
+            //
+            // The &v=<bustToken> query param is unused server-side but forces a fresh
+            // fetch when RestartStatCache regenerates the same week (same filename, new
+            // bytes) — without it the browser HTTP cache can serve the stale old file.
+            return (Sid: sid, Url: $"/api/stat-pdf?file={Uri.EscapeDataString(fileName)}&v={bustToken}");
         })).ToList();
 
-        // Update sidebar as each completes (no JS calls yet)
+        // Update sidebar as each completes
         while (tasks.Count > 0)
         {
             var completed = await Task.WhenAny(tasks);
@@ -12343,32 +12367,27 @@ string _actionPcSearch = "";
             if (_statCacheCancelled || !_showStat || _isDisposed) break;
             var r = await completed;
             results.Add(r);
-            _statCache[r.Sid] = (r.Key, r.B64);
+            _statCache[r.Sid] = r.Url;
             _statCacheProgress++;
             await InvokeAsync(StateHasChanged);
         }
 
         if (_statCacheCancelled || !_showStat || _isDisposed) { _statCaching = false; return; }
 
-        // Phase 2: Push ALL data to browser in ONE call
-        var dataMap = results.ToDictionary(r => r.Key, r => r.B64);
-        await JSRuntime.InvokeVoidAsync("cacheAllPdfData", (object)dataMap);
-
-        // Phase 3: Show selected user immediately
-        var selKey = $"stat_{_statSelectedId}";
-        if (_statCache.TryGetValue(_statSelectedId, out var sel))
+        // Show selected user. PDF.js fetches directly from the URL — the browser caches
+        // it in its HTTP cache, so re-selecting is fast without us holding bytes anywhere.
+        if (_statCache.TryGetValue(_statSelectedId, out var selUrl))
         {
-            _statPdfUrl = sel.Url;
-            _statPdfBase64 = sel.Base64;
+            _statPdfUrl = selUrl;
             _statBusy = false;
             await InvokeAsync(StateHasChanged);
-            await JSRuntime.InvokeVoidAsync("showStatPdf", "stat-pdf-viewer", selKey);
+            await JSRuntime.InvokeVoidAsync("showStatPdf", "stat-pdf-viewer", selUrl);
         }
 
-        // Phase 4: Pre-render all other canvases (sequential, data already in browser)
-        var otherKeys = results.Where(r => r.Sid != _statSelectedId).Select(r => r.Key).ToArray();
-        if (otherKeys.Length > 0 && !_statCacheCancelled && _showStat && !_isDisposed)
-            await JSRuntime.InvokeVoidAsync("preRenderAllStatPdfs", (object)otherKeys);
+        // Pre-render all other canvases (sequential — pdf.js fetches each URL on demand).
+        var otherUrls = results.Where(r => r.Sid != _statSelectedId).Select(r => r.Url).ToArray();
+        if (otherUrls.Length > 0 && !_statCacheCancelled && _showStat && !_isDisposed)
+            await JSRuntime.InvokeVoidAsync("preRenderAllStatPdfs", (object)otherUrls);
 
         _statCaching = false;
         _statBusy = false;
@@ -12480,11 +12499,12 @@ string _actionPcSearch = "";
 
     async Task DownloadStatPdf()
     {
-        if (_statPdfBase64 == null) return;
+        if (_statPdfUrl == null) return;
         var staff = _statStaffList.FirstOrDefault(s => s.PersonId == _statSelectedId);
         var name = staff?.FullName ?? "Report";
         var fileName = $"{name}_{_statWeekStart:yyyy_MM_dd}.pdf";
-        await JSRuntime.InvokeVoidAsync("downloadFile", fileName, _statPdfBase64);
+        // Trigger download from the static-file URL — no base64 round-trip through SignalR.
+        await JSRuntime.InvokeVoidAsync("downloadFromUrl", fileName, _statPdfUrl);
     }
 
     // ── Print All Staff ──────────────────────────────────────────────────────

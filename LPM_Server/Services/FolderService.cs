@@ -4219,6 +4219,48 @@ public class FolderService
         return true;
     }
 
+    /// <summary>
+    /// Like <see cref="SaveSectionFileToPath"/>, but the source bytes already live in a file
+    /// on disk (typically a per-upload temp file staged by the caller). The temp file is
+    /// MOVED into place — no full byte[] is materialised in server RAM.
+    ///
+    /// Use this when the caller streamed an upload to disk to avoid buffering large files
+    /// (e.g. front-cover uploads, multi-file pending-overwrite queues). On success the temp
+    /// file is consumed; on failure (target conflict without overwrite, missing folder) the
+    /// caller is responsible for deleting the temp.
+    ///
+    /// File size for audit is read from the source file's length BEFORE the move.
+    /// </summary>
+    public bool SaveSectionFileFromTempPath(int pcId, string relativeFolder, string fileName, string sourceTempPath, bool overwrite = false, bool solo = false, bool enforcePdf = true)
+    {
+        if (!File.Exists(sourceTempPath)) return false;
+        var folder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
+        if (folder == null) return false;
+        var targetDir = SafeResolvePath(folder, relativeFolder);
+        if (targetDir == null) return false;
+        Directory.CreateDirectory(targetDir);
+        var safeName = SanitizeName(fileName);
+        if (enforcePdf && !safeName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+            safeName += ".pdf";
+        var fullPath = Path.Combine(targetDir, safeName);
+        if (File.Exists(fullPath))
+        {
+            if (!overwrite) return false;
+            var relPath = Path.GetRelativePath(folder, fullPath).Replace('\\', '/');
+            BackupFile(pcId, relPath, solo);
+            File.Delete(fullPath);
+        }
+        long sourceLen = 0;
+        try { sourceLen = new FileInfo(sourceTempPath).Length; } catch { /* best-effort for audit */ }
+        File.Move(sourceTempPath, fullPath, overwrite: false);   // target was just deleted above
+        EncryptFileInPlace(fullPath);
+        InvalidateCache(fullPath);
+        var auditRelPath = $"{relativeFolder}/{safeName}".Replace('\\', '/');
+        _audit.Log(pcId, solo, auditRelPath, overwrite ? "overwrite" : "create", sourceLen, null, null, "Upload");
+        Console.WriteLine($"[FolderService] Saved '{safeName}' (from temp) to {relativeFolder} for PC {pcId}{(overwrite ? " (overwrite)" : "")}");
+        return true;
+    }
+
     // ── Program Insert Templates ──────────────────────────────
 
     private static readonly string ProgramInsertsDir = Path.Combine(Directory.GetCurrentDirectory(), "Templates", "ProgramInserts");

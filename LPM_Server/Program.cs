@@ -176,6 +176,7 @@ builder.Services.AddSingleton<LPM.Services.QuestionService>();
 builder.Services.AddSingleton<LPM.Services.EffortService>();
 builder.Services.AddSingleton<LPM.Services.WalletService>();
 builder.Services.AddScoped<LPM.Services.SessionManagerLauncher>();
+builder.Services.AddSingleton<LPM.Services.MemoryReportService>();
 builder.Services.AddHostedService<LPM.Services.MaintenanceService>();
 
 // Add session services
@@ -1255,6 +1256,38 @@ app.MapGet("/api/admin/deleted-file", (string name, LPM.Services.FolderService f
     return Results.File(data.Value.Bytes, data.Value.ContentType, name);
 }).RequireAuthorization("DiagnosisAccess");
 
+// Per-circuit memory inventory PDFs (admin-only). Two variants:
+//   curated   — hand-vetted notes ("WHY this field grows"). Stale if not updated.
+//   reflected — walks the live compiled assembly. Always current.
+app.MapGet("/api/admin/memory-report-curated.pdf", (LPM.Services.MemoryReportService svc) =>
+{
+    var bytes = svc.GenerateCuratedReport();
+    return Results.File(bytes, "application/pdf", "PerCircuitMemoryReport-Curated.pdf");
+}).RequireAuthorization("DiagnosisAccess");
+
+// Authenticated read of generated statistics PDFs. The files live in wwwroot/temp/
+// (so the existing MainHeader.razor cleanup loops still find them), but the public
+// /temp/ static path is NOT used — instead the browser fetches via this endpoint,
+// which enforces auth. Filename pattern is strictly validated to prevent any path
+// escape. (Before this endpoint, switching the stat viewer from base64 to URL would
+// have leaked all stat PDFs to anyone who could guess the filename.)
+app.MapGet("/api/stat-pdf", (string file) =>
+{
+    if (string.IsNullOrEmpty(file)) return Results.BadRequest();
+    // Allow ONLY filenames that match the generated pattern: stat_<digits|->_<8 digits>.pdf
+    if (!System.Text.RegularExpressions.Regex.IsMatch(file, @"^stat_-?\d+_\d{8}\.pdf$"))
+        return Results.BadRequest();
+    var path = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "temp", file);
+    if (!File.Exists(path)) return Results.NotFound();
+    return Results.File(path, "application/pdf");
+}).RequireAuthorization();
+
+app.MapGet("/api/admin/memory-report-reflected.pdf", (LPM.Services.MemoryReportService svc) =>
+{
+    var bytes = svc.GenerateReflectedReport();
+    return Results.File(bytes, "application/pdf", "PerCircuitMemoryReport-Reflected.pdf");
+}).RequireAuthorization("DiagnosisAccess");
+
 app.MapGet("/api/stats-cell-detail", (string metric, int staffId, string start, string end,
     LPM.Services.StatisticsService svc) =>
 {
@@ -1484,6 +1517,62 @@ app.MapPost("/api/backup-errors/pdf", async (HttpContext ctx, PdfService pdfSvc)
     }
 
     var fileName = $"LPM-BackupErrors-{DateTime.Now:yyyyMMdd-HHmm}.pdf";
+    return Results.File(bytes, "application/pdf", fileName);
+}).RequireAuthorization();
+
+app.MapPost("/api/backup-downloaded/pdf", async (HttpContext ctx, PdfService pdfSvc) =>
+{
+    if (ctx.User?.IsInRole("Admin") != true) return Results.Forbid();
+
+    using var reader = new System.IO.StreamReader(ctx.Request.Body);
+    var json = await reader.ReadToEndAsync();
+    BackupDownloadedPdfRequest? req;
+    try
+    {
+        req = System.Text.Json.JsonSerializer.Deserialize<BackupDownloadedPdfRequest>(json,
+            new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+    }
+    catch { return Results.BadRequest("Invalid JSON."); }
+    if (req is null) return Results.BadRequest("Missing body.");
+
+    DateTime? ParseUtc(string? iso)
+    {
+        if (string.IsNullOrEmpty(iso)) return null;
+        return DateTime.TryParse(iso, System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.RoundtripKind, out var dt) ? dt.ToLocalTime() : null;
+    }
+
+    var rows = (req.Files ?? new()).Select(f =>
+    {
+        DateTime when;
+        if (!DateTime.TryParse(f.When, System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.RoundtripKind, out when))
+            when = DateTime.Now;
+        return new PdfService.BackupDownloadedPdfRow(
+            f.Phase ?? "",
+            f.RelPath ?? "",
+            f.FullPath ?? "",
+            string.IsNullOrWhiteSpace(f.PcName) ? null : f.PcName,
+            when.ToLocalTime());
+    }).ToList();
+
+    byte[] bytes;
+    try
+    {
+        bytes = pdfSvc.GenerateBackupDownloadedPdf(
+            rows,
+            req.UserName ?? (ctx.User.Identity?.Name ?? ""),
+            ParseUtc(req.StartTime),
+            ParseUtc(req.EndTime),
+            req.SyntheticSkipped);
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[BackupDownloadedPdf] PDF generation failed: {ex.Message}");
+        return Results.Problem("Failed to generate PDF.");
+    }
+
+    var fileName = $"LPM-BackupDownloaded-{DateTime.Now:yyyyMMdd-HHmm}.pdf";
     return Results.File(bytes, "application/pdf", fileName);
 }).RequireAuthorization();
 
@@ -1786,7 +1875,7 @@ app.MapGet("/api/backup-file-list", (HttpContext ctx, LPM.Services.FolderService
         var nowIso = DateTime.UtcNow.ToString("o");
         foreach (var dirName in pcDirNames)
         {
-            foreach (var leaf in new[] { "EvilPurposes.pdf", "ServiceFacsimiles.pdf", "PtsHandling.pdf" })
+            foreach (var leaf in new[] { "EvilPurposes.pdf", "ServiceFacsimiles.pdf", "PtsHandling.pdf", "CaseData.pdf" })
             {
                 var synthPath = $"PC-Folders/{dirName}/Back_Cover/{leaf}";
                 files.Add(new { path = synthPath, modified = nowIso, alwaysDownload = true, fullPath = (string?)null, pcName = dirName });
@@ -1973,6 +2062,7 @@ static partial class SessionDataBackupHelper
             "EvilPurposes.pdf"       => "Evil",
             "ServiceFacsimiles.pdf"  => "Serfac",
             "PtsHandling.pdf"        => "Pts",
+            "CaseData.pdf"           => "Case",
             _ => ""
         };
         if (kind == "") return false;
@@ -2031,7 +2121,7 @@ static partial class SessionDataBackupHelper
                         r.OriginalWording ?? "", r.Translation ?? "",
                         r.Brackets ?? "", r.R3RA ?? "", r.CreatedByName });
                 break;
-            default: // "Pts"
+            case "Pts":
                 title = "PTS Handling";
                 headers = new[] { "Id", "Session", "Created", "Action", "Item", "Quad Ruds", "PU", "PTS RD", "Ls", "Created By" };
                 weights = new float[] { 0.6f, 2.0f, 1.6f, 1.4f, 1.8f, 1.4f, 1.4f, 1.4f, 1.2f, 1.6f };
@@ -2040,6 +2130,15 @@ static partial class SessionDataBackupHelper
                         r.Id.ToString(), SessLabel(r.SessionId), DateOnly(r.CreatedAt),
                         r.Action ?? "", r.Item ?? "", r.QuadRuds ?? "", r.PU ?? "",
                         r.PtsRd ?? "", r.Ls ?? "", r.CreatedByName });
+                break;
+            default: // "Case"
+                title = "Case Data";
+                headers = new[] { "Id", "Session", "Created", "Text", "Created By" };
+                weights = new float[] { 0.6f, 2.0f, 1.6f, 6.0f, 1.6f };
+                foreach (var r in sd.GetCaseData(pcId))
+                    rows.Add(new[] {
+                        r.Id.ToString(), SessLabel(r.SessionId), DateOnly(r.CreatedAt),
+                        r.Text ?? "", r.CreatedByName });
                 break;
         }
 
@@ -2139,4 +2238,18 @@ public record BackupErrorDto(
     string? FullPath,
     string? PcName,
     string? Detail,
+    string? When);
+
+public record BackupDownloadedPdfRequest(
+    string? UserName,
+    string? StartTime,
+    string? EndTime,
+    int     SyntheticSkipped,
+    List<BackupDownloadedDto>? Files);
+
+public record BackupDownloadedDto(
+    string? Phase,
+    string? RelPath,
+    string? FullPath,
+    string? PcName,
     string? When);

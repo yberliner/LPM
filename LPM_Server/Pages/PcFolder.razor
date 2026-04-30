@@ -4170,7 +4170,10 @@
 
     // Upload overwrite confirmation
     bool _showOverwriteConfirm;
-    List<(string Name, byte[] Data, bool EnforcePdf)> _uploadPendingFiles = [];
+    // Temp-staged pending uploads. Each entry holds the path to a file in %TEMP%
+    // (raw upload bytes, NOT the final encrypted version). Bytes never sit in server
+    // RAM while the user mulls the overwrite dialog. Cleaned up in Confirm/Cancel/Dispose.
+    List<(string Name, string TempPath, bool EnforcePdf)> _uploadPendingFiles = [];
     List<string> _uploadDuplicateNames = [];
 
     // Doc→PDF conversion toasts
@@ -6788,6 +6791,13 @@
         if (_csSessionId > 0 && !_csLocked
             && _activeCsSessions.TryGetValue(_csSessionId, out var lockInfo) && ReferenceEquals(lockInfo.Instance, this))
             _activeCsSessions.TryRemove(_csSessionId, out _);
+        // If the user closed the tab while the overwrite dialog was open, the staged
+        // temp files for pending uploads must be deleted — otherwise %TEMP% leaks on every
+        // abandoned upload session.
+        foreach (var (_, tempPath, _) in _uploadPendingFiles)
+        {
+            try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { /* best-effort */ }
+        }
         _dotNetRef?.Dispose();
         _dupeCts?.Dispose();
         _stopwatchCts?.Cancel();
@@ -8064,6 +8074,14 @@
 
     async Task NewMenuUploadFile(InputFileChangeEventArgs e)
     {
+        // Belt-and-suspenders: if a prior upload session left pending entries (shouldn't
+        // normally happen — Confirm/Cancel both delete + clear — but if the user spam-
+        // clicks or the dialog gets dismissed externally, stale temp paths could survive
+        // in the list. Delete them before clearing so we never leak %TEMP%.
+        foreach (var (_, tempPath, _) in _uploadPendingFiles)
+        {
+            try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { }
+        }
         _uploadPendingFiles.Clear();
         _uploadDuplicateNames.Clear();
         _uploadRejectedFiles.Clear();
@@ -8106,7 +8124,8 @@
                 // Save image as-is (no PDF conversion)
                 if (FolderSvc.SectionFileExistsAtPath(PcId, parentFolder, file.Name, Solo, enforcePdf: false))
                 {
-                    _uploadPendingFiles.Add((file.Name, rawBytes, false));
+                    var staged = StageUploadTempFile(rawBytes);
+                    _uploadPendingFiles.Add((file.Name, staged, false));
                     _uploadDuplicateNames.Add(file.Name);
                 }
                 else if (ShouldRedirectToProgram(file.Name, parentFolder))
@@ -8133,7 +8152,8 @@
         {
             if (FolderSvc.SectionFileExistsAtPath(PcId, parentFolder, name, Solo))
             {
-                _uploadPendingFiles.Add((name, data, true));
+                var staged = StageUploadTempFile(data);
+                _uploadPendingFiles.Add((name, staged, true));
                 _uploadDuplicateNames.Add(name);
             }
             else if (ShouldRedirectToProgram(name, parentFolder))
@@ -8211,13 +8231,39 @@
         }
     }
 
+    // Stage upload bytes into a temp file under %TEMP% so the server doesn't sit on raw
+    // bytes while waiting for the user to confirm the overwrite dialog. Returns the
+    // absolute temp path. Cleanup is the caller's responsibility (Confirm/Cancel/Dispose).
+    static string StageUploadTempFile(byte[] data)
+    {
+        var path = Path.Combine(Path.GetTempPath(), "lpm-up-" + Guid.NewGuid().ToString("N") + ".bin");
+        File.WriteAllBytes(path, data);
+        return path;
+    }
+
     void ConfirmOverwrite()
     {
-        foreach (var (name, data, enforcePdf) in _uploadPendingFiles)
+        foreach (var (name, tempPath, enforcePdf) in _uploadPendingFiles)
         {
-            Console.WriteLine($"[PcFolder] Overwriting file '{name}' in '{_newMenuParentFolder}' by '{_userName}' — PC {PcId}");
-            FolderSvc.SaveSectionFileToPath(PcId, _newMenuParentFolder, name, data, overwrite: true, solo: Solo, enforcePdf: enforcePdf);
-            ActivitySvc.RecordActivity(_loginUsername, $"Uploaded file '{name}' (overwrite) to {_newMenuParentFolder} for: {_pcName}", "folder");
+            // Each item is independent — one failure must NOT abort the rest of the
+            // batch (would leave the user staring at a half-written set of files plus
+            // orphaned temps). Catch + continue, with the finally guaranteeing temp
+            // cleanup whether the move succeeded, returned false, or threw.
+            try
+            {
+                Console.WriteLine($"[PcFolder] Overwriting file '{name}' in '{_newMenuParentFolder}' by '{_userName}' — PC {PcId}");
+                var ok = FolderSvc.SaveSectionFileFromTempPath(PcId, _newMenuParentFolder, name, tempPath, overwrite: true, solo: Solo, enforcePdf: enforcePdf);
+                if (ok)
+                    ActivitySvc.RecordActivity(_loginUsername, $"Uploaded file '{name}' (overwrite) to {_newMenuParentFolder} for: {_pcName}", "folder");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[PcFolder] Overwrite of '{name}' FAILED: {ex.Message}");
+            }
+            finally
+            {
+                try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { /* best-effort */ }
+            }
         }
         _uploadPendingFiles.Clear();
         _uploadDuplicateNames.Clear();
@@ -8227,6 +8273,11 @@
 
     void CancelOverwrite()
     {
+        // Drop all staged temp files — user chose not to overwrite.
+        foreach (var (_, tempPath, _) in _uploadPendingFiles)
+        {
+            try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { /* best-effort */ }
+        }
         _uploadPendingFiles.Clear();
         _uploadDuplicateNames.Clear();
         _showOverwriteConfirm = false;

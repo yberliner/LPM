@@ -3647,6 +3647,144 @@ public class PdfService
         }).GeneratePdf();
     }
 
+    // ── Backup Downloaded Files Table PDF ────────────────────────────────
+
+    public record BackupDownloadedPdfRow(
+        string Phase,        // "user" | "server"
+        string RelPath,
+        string FullPath,
+        string? PcName,
+        DateTime When);
+
+    public byte[] GenerateBackupDownloadedPdf(
+        List<BackupDownloadedPdfRow> rows, string userName,
+        DateTime? startTime, DateTime? endTime, int syntheticSkipped)
+    {
+        QuestPDF.Settings.License = LicenseType.Community;
+
+        string FormatDuration(TimeSpan ts)
+        {
+            if (ts.TotalSeconds < 1) return "0s";
+            if (ts.TotalSeconds < 60) return $"{(int)ts.TotalSeconds}s";
+            if (ts.TotalMinutes < 60) return $"{(int)ts.TotalMinutes}m {ts.Seconds}s";
+            return $"{(int)ts.TotalHours}h {ts.Minutes}m {ts.Seconds}s";
+        }
+
+        var startLabel = startTime?.ToString("yyyy-MM-dd HH:mm:ss") ?? "—";
+        var endLabel   = endTime?.ToString("yyyy-MM-dd HH:mm:ss")   ?? "—";
+        var durLabel   = (startTime.HasValue && endTime.HasValue)
+            ? FormatDuration(endTime.Value - startTime.Value)
+            : "—";
+
+        return Document.Create(doc =>
+        {
+            doc.Page(page =>
+            {
+                page.Size(PageSizes.A4.Landscape());
+                page.Margin(24, Unit.Point);
+                page.DefaultTextStyle(x => x.FontFamily("DejaVu Sans", "Noto Sans Hebrew"));
+
+                page.Header().Column(h =>
+                {
+                    h.Item().Row(r =>
+                    {
+                        r.RelativeItem().Text("LPM Backup — Actual Downloaded Files").FontSize(14).Bold().FontColor("#1e293b");
+                        r.ConstantItem(220).AlignRight().Text(t =>
+                        {
+                            t.Span("User: ").FontSize(8).FontColor("#64748b");
+                            t.Span(userName).FontSize(8).Bold().FontColor("#1e293b");
+                            t.Span($"   Generated: {DateTime.Now:yyyy-MM-dd HH:mm}").FontSize(8).FontColor("#64748b");
+                        });
+                    });
+                    h.Item().PaddingTop(2).Text(t =>
+                    {
+                        t.Span($"{rows.Count} file(s) downloaded").FontSize(8).FontColor("#1e293b").Bold();
+                        if (syntheticSkipped > 0)
+                        {
+                            t.Span($"  ·  {syntheticSkipped} self-generated file(s) excluded (folder summaries / EvilPurposes / ServiceFacsimiles / PtsHandling / CaseData)")
+                                .FontSize(8).FontColor("#64748b");
+                        }
+                    });
+                    h.Item().PaddingTop(2).Text(t =>
+                    {
+                        t.Span("Started: ").FontSize(8).FontColor("#64748b");
+                        t.Span(startLabel).FontSize(8).Bold().FontColor("#1e293b");
+                        t.Span("    Ended: ").FontSize(8).FontColor("#64748b");
+                        t.Span(endLabel).FontSize(8).Bold().FontColor("#1e293b");
+                        t.Span("    Duration: ").FontSize(8).FontColor("#64748b");
+                        t.Span(durLabel).FontSize(8).Bold().FontColor("#16a34a");
+                    });
+                });
+
+                page.Content().PaddingVertical(6).Table(table =>
+                {
+                    table.ColumnsDefinition(cd =>
+                    {
+                        cd.RelativeColumn(0.4f);  // #
+                        cd.RelativeColumn(0.8f);  // Phase
+                        cd.RelativeColumn(2.4f);  // File
+                        cd.RelativeColumn(1.2f);  // PC
+                        cd.RelativeColumn(4.6f);  // Path
+                        cd.RelativeColumn(1.4f);  // When
+                    });
+
+                    table.Header(header =>
+                    {
+                        void H(string text) => header.Cell()
+                            .Background("#1e3a5f").Padding(4, Unit.Point).AlignMiddle()
+                            .Text(text).FontSize(8).Bold().FontColor("#ffffff");
+                        H("#");
+                        H("Phase");
+                        H("File");
+                        H("PC Name");
+                        H("Full Server Path");
+                        H("When");
+                    });
+
+                    for (int i = 0; i < rows.Count; i++)
+                    {
+                        var row = rows[i];
+                        string bg = i % 2 == 0 ? "#ffffff" : "#f8fafc";
+
+                        table.Cell().Background(bg).Padding(4, Unit.Point).AlignMiddle()
+                            .Text((i + 1).ToString()).FontSize(7).FontColor("#334155");
+
+                        var phaseLabel = row.Phase == "user" ? "User" : row.Phase == "server" ? "Server" : row.Phase;
+                        var phaseBg    = row.Phase == "user" ? "#dbeafe" : "#dcfce7";
+                        var phaseFg    = row.Phase == "user" ? "#1e3a8a" : "#14532d";
+                        table.Cell().Background(phaseBg).Padding(4, Unit.Point).AlignMiddle()
+                            .Text(phaseLabel).FontSize(7).Bold().FontColor(phaseFg);
+
+                        var baseName = row.RelPath;
+                        var slash = row.RelPath.LastIndexOf('/');
+                        if (slash >= 0 && slash + 1 < row.RelPath.Length)
+                            baseName = row.RelPath.Substring(slash + 1);
+                        table.Cell().Background(bg).Padding(4, Unit.Point).AlignMiddle()
+                            .Text(baseName).FontSize(7).FontColor("#1e293b");
+
+                        table.Cell().Background(bg).Padding(4, Unit.Point).AlignMiddle()
+                            .Text(string.IsNullOrWhiteSpace(row.PcName) ? "—" : row.PcName)
+                            .FontSize(7).FontColor(string.IsNullOrWhiteSpace(row.PcName) ? "#94a3b8" : "#1e293b");
+
+                        table.Cell().Background(bg).Padding(4, Unit.Point).AlignMiddle()
+                            .Text(string.IsNullOrEmpty(row.FullPath) ? row.RelPath : row.FullPath)
+                            .FontSize(6.5f).FontColor("#1e293b");
+
+                        table.Cell().Background(bg).Padding(4, Unit.Point).AlignMiddle()
+                            .Text(row.When.ToString("HH:mm:ss")).FontSize(6.5f).FontColor("#334155");
+                    }
+                });
+
+                page.Footer().AlignCenter().Text(t =>
+                {
+                    t.CurrentPageNumber().FontSize(7).FontColor("#94a3b8");
+                    t.Span(" / ").FontSize(7).FontColor("#94a3b8");
+                    t.TotalPages().FontSize(7).FontColor("#94a3b8");
+                });
+            });
+        }).GeneratePdf();
+    }
+
     // ── Session-data table PDF (Evil Purposes / Service Facsimiles / PTS Handling) ──
     public byte[] GenerateSessionDataTablePdf(
         string tableTitle,

@@ -5,7 +5,7 @@ using Microsoft.Extensions.Caching.Memory;
 namespace LPM.Services;
 
 /// <summary>
-/// One sample of memory state captured every ~15 minutes. UsedPct is system memory
+/// One sample of memory state captured every ~5 minutes. UsedPct is system memory
 /// pressure (Linux: from /proc/meminfo; Windows dev: process working set / GC total).
 /// CacheBytes is the IMemoryCache (PDF cache) current estimated size in bytes.
 /// ActiveCircuits / DisconnectedCircuits are the Blazor circuit counts at sample time —
@@ -29,7 +29,7 @@ public sealed record MemorySnapshot(
     long CacheLimitBytes);
 
 /// <summary>
-/// Background watchdog that polls system-wide memory pressure every 15 minutes and
+/// Background watchdog that polls system-wide memory pressure every 5 minutes and
 /// clears the IMemoryCache (PDF bytes) when "used" exceeds <see cref="THRESHOLD_PCT_USED"/>%.
 ///
 /// The PDF cache is a read-through optimisation — the source of truth is always the
@@ -46,7 +46,7 @@ public sealed record MemorySnapshot(
 public sealed class MemoryWatchdogService : BackgroundService
 {
     private const double THRESHOLD_PCT_USED = 85.0;
-    private static readonly TimeSpan _interval     = TimeSpan.FromMinutes(15);
+    private static readonly TimeSpan _interval     = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan _initialDelay = TimeSpan.FromMinutes(2);
 
     private readonly IMemoryCache _cache;

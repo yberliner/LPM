@@ -126,6 +126,11 @@
                 }
             </a>
         </li>
+        <li class="nav-item">
+            <a class="nav-link @(_diagTab == "memreport" ? "active" : "")" @onclick='() => _diagTab = "memreport"' href="javascript:void(0)">
+                <i class="ri-file-chart-line me-1"></i>Memory Report
+            </a>
+        </li>
     </ul>
 
     @if (_diagTab == "health")
@@ -1987,6 +1992,74 @@
                     </table>
                 </div>
             }
+        </div>
+    </div>
+}
+
+@if (_diagTab == "memreport")
+{
+    <div class="diag-editor-card mb-4">
+        <div class="diag-editor-header">
+            <i class="ri-file-chart-line me-2"></i>Per-Circuit Memory Report
+            <span class="diag-editor-sub">Inventory of every field stored in server RAM per browser tab</span>
+        </div>
+        <div class="diag-editor-body">
+
+            <div style="font-size:.85rem;color:#475569;margin-bottom:14px;line-height:1.55;">
+                Two ways to read the inventory:
+            </div>
+
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <div style="border:1px solid #e2e8f0;border-radius:10px;padding:14px;background:#f8fafc;height:100%;">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                            <i class="ri-pencil-ruler-2-line" style="color:#6366f1;font-size:1.2rem;"></i>
+                            <span style="font-weight:700;color:#1e293b;">Curated</span>
+                            <span class="badge" style="background:#e0e7ff;color:#3730a3;font-size:.65rem;">Hand-vetted</span>
+                        </div>
+                        <div style="font-size:.78rem;color:#64748b;line-height:1.5;margin-bottom:12px;">
+                            Hand-written rows with explanations of <em>why</em> each field can grow
+                            (upload buffers, base64 PDFs, Quill HTML bodies, etc.). Most accurate notes,
+                            but stale once someone adds a new field that hasn't been added to the list.
+                        </div>
+                        <a href="/api/admin/memory-report-curated.pdf" target="_blank"
+                           class="btn btn-primary btn-sm" style="font-weight:600;">
+                            <i class="ri-file-download-line me-1"></i>Generate Curated PDF
+                        </a>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div style="border:1px solid #e2e8f0;border-radius:10px;padding:14px;background:#f8fafc;height:100%;">
+                        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                            <i class="ri-search-eye-line" style="color:#059669;font-size:1.2rem;"></i>
+                            <span style="font-weight:700;color:#1e293b;">Reflected</span>
+                            <span class="badge" style="background:#d1fae5;color:#065f46;font-size:.65rem;">Always current</span>
+                        </div>
+                        <div style="font-size:.78rem;color:#64748b;line-height:1.5;margin-bottom:12px;">
+                            Walks the live compiled assembly via reflection. Every field of every Razor
+                            component and scoped service that exists in this build appears automatically.
+                            Notes are best-effort heuristics from type + name.
+                        </div>
+                        <a href="/api/admin/memory-report-reflected.pdf" target="_blank"
+                           class="btn btn-success btn-sm" style="font-weight:600;">
+                            <i class="ri-file-download-line me-1"></i>Generate Reflected PDF
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top:16px;padding:12px 14px;background:#fef3c7;border-left:3px solid #f59e0b;border-radius:6px;font-size:.78rem;color:#78350f;line-height:1.55;">
+                <strong>Tip:</strong> open both side-by-side. The Reflected report tells you
+                <em>what fields exist</em>; the Curated report tells you <em>which ones matter and why</em>.
+                When a Reflected row shows up that the Curated report doesn't explain, it's a sign that
+                <code>MemoryReportService.GenerateCuratedReport</code> needs an update.
+            </div>
+
+            <div style="margin-top:14px;font-size:.78rem;color:#64748b;line-height:1.55;">
+                <i class="ri-information-line me-1"></i>
+                For accurate <em>live</em> retained-size numbers (vs. estimates), use the heap-snapshot
+                button on the System Health tab — it walks the actual GC heap with ClrMD.
+            </div>
         </div>
     </div>
 }

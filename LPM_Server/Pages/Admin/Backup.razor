@@ -206,6 +206,132 @@
         </div>
     }
 
+    @* ── Actual Downloaded Files Table ── *@
+    @if (_fbfHasStarted || _downloadedFiles.Count > 0)
+    {
+        <div class="bk-dl-card mt-3">
+            <div class="bk-dl-head">
+                <div class="bk-dl-title">
+                    <i class="ri-checkbox-circle-fill"></i>
+                    Actual Downloaded Files (@_downloadedFiles.Count)
+                </div>
+                <div class="bk-dl-actions">
+                    <button class="btn btn-sm btn-light bk-err-btn" @onclick="DownloadDownloadedPdf"
+                            disabled="@(_downloadedPdfBusy || _downloadedFiles.Count == 0)">
+                        @if (_downloadedPdfBusy)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        else
+                        {
+                            <i class="ri-file-pdf-2-line me-1"></i>
+                        }
+                        Download PDF
+                    </button>
+                </div>
+            </div>
+            <div class="bk-dl-meta">
+                <span class="bk-dl-meta-item">
+                    <i class="ri-play-circle-line"></i>
+                    <span class="bk-dl-meta-k">Started:</span>
+                    <span class="bk-dl-meta-v">@(_backupStartTime?.ToString("yyyy-MM-dd HH:mm:ss") ?? "—")</span>
+                </span>
+                <span class="bk-dl-meta-item">
+                    <i class="ri-stop-circle-line"></i>
+                    <span class="bk-dl-meta-k">Ended:</span>
+                    <span class="bk-dl-meta-v">
+                        @(_backupEndTime?.ToString("yyyy-MM-dd HH:mm:ss") ?? (_fbfDownloading ? "in progress…" : "—"))
+                    </span>
+                </span>
+                <span class="bk-dl-meta-item">
+                    <i class="ri-time-line"></i>
+                    <span class="bk-dl-meta-k">Duration:</span>
+                    <span class="bk-dl-meta-v bk-dl-meta-dur">
+                        @(_backupStartTime.HasValue && _backupEndTime.HasValue
+                            ? FormatBackupDuration(_backupEndTime.Value - _backupStartTime.Value)
+                            : (_fbfDownloading ? "running…" : "—"))
+                    </span>
+                </span>
+            </div>
+
+            @* BIG, can't-miss notice listing what's excluded from this table. Synthetic
+               PDFs (built on the fly from DB during backup) and folder summaries (combined
+               from DB + canvas at fetch time) ARE backed up, but they aren't "files
+               downloaded from the server" so they don't belong here. *@
+            <div class="bk-dl-excl">
+                <div class="bk-dl-excl-head">
+                    <i class="ri-information-fill"></i>
+                    <span>Files NOT shown in this table (still backed up — generated on the fly, not downloaded):</span>
+                    @if (_syntheticSkippedCount > 0)
+                    {
+                        <span class="bk-dl-excl-count">@_syntheticSkippedCount excluded this run</span>
+                    }
+                </div>
+                <ul class="bk-dl-excl-list">
+                    <li><code>Folder Summary.pdf</code> &mdash; built from <code>sess_folder_summary</code> + Front Cover canvas at fetch time</li>
+                    <li><code>EvilPurposes.pdf</code> &mdash; built from <code>sess_evil_purposes</code> rows (Back Cover)</li>
+                    <li><code>ServiceFacsimiles.pdf</code> &mdash; built from <code>sess_serfacs</code> rows (Back Cover)</li>
+                    <li><code>PtsHandling.pdf</code> &mdash; built from <code>sess_pts_handling</code> rows (Back Cover)</li>
+                    <li><code>CaseData.pdf</code> &mdash; built from <code>sess_case_data</code> rows (Back Cover)</li>
+                </ul>
+            </div>
+            <div class="bk-dl-scroll">
+                <table class="bk-dl-table">
+                    <thead>
+                        <tr>
+                            <th style="width:8%;">Phase</th>
+                            <th style="width:25%;">File</th>
+                            <th style="width:14%;">PC Name</th>
+                            <th style="width:43%;">Full Server Path</th>
+                            <th style="width:10%;">When</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (_downloadedFiles.Count == 0)
+                        {
+                            <tr>
+                                <td colspan="5" class="bk-err-empty">
+                                    <i class="ri-checkbox-circle-line"></i>
+                                    @(_fbfDownloading ? "No files downloaded yet — backup in progress…" : "No real files downloaded for this run (everything was either skipped or self-generated).")
+                                </td>
+                            </tr>
+                        }
+                        else
+                        {
+                            @foreach (var f in _downloadedFiles)
+                            {
+                                var slash = f.RelPath.LastIndexOf('/');
+                                var basename = slash >= 0 && slash + 1 < f.RelPath.Length
+                                    ? f.RelPath.Substring(slash + 1)
+                                    : f.RelPath;
+                                <tr>
+                                    <td>
+                                        <span class="bk-dl-pill bk-dl-pill-@(f.Phase == "user" ? "user" : "server")">
+                                            @(f.Phase == "user" ? "User" : f.Phase == "server" ? "Server" : f.Phase)
+                                        </span>
+                                    </td>
+                                    <td class="bk-dl-file">@basename</td>
+                                    <td>
+                                        @if (string.IsNullOrEmpty(f.PcName))
+                                        {
+                                            <span class="bk-err-dash">—</span>
+                                        }
+                                        else
+                                        {
+                                            @f.PcName
+                                        }
+                                    </td>
+                                    <td class="bk-err-path">@f.FullPath</td>
+                                    <td class="bk-err-when">@f.When.ToString("HH:mm:ss")</td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+
     @* ── Backup Errors Table ── *@
     @if (_fbfHasStarted || _errors.Count > 0)
     {
@@ -520,6 +646,160 @@
         .bk-err-actions { width: 100%; justify-content: flex-end; }
         .bk-err-title { width: 100%; }
     }
+
+    /* ── Actual Downloaded Files Table ───────────────────────── */
+    .bk-dl-card {
+        background: #1e293b;
+        border: 1px solid #334155;
+        border-radius: 12px;
+        max-width: 1200px;
+        overflow: hidden;
+        box-shadow: 0 4px 18px rgba(0,0,0,.35);
+    }
+    .bk-dl-head {
+        display: flex; align-items: center; gap: 12px;
+        padding: 14px 18px;
+        background: linear-gradient(135deg, #14532d 0%, #166534 100%);
+        border-bottom: 1px solid #334155;
+        flex-wrap: wrap;
+    }
+    .bk-dl-title {
+        font-size: 1.05rem; font-weight: 800; color: #bbf7d0;
+        letter-spacing: .04em; flex: 1; min-width: 180px;
+        display: flex; align-items: center; gap: 10px;
+        text-shadow: 0 1px 2px rgba(0,0,0,.3);
+    }
+    .bk-dl-title i { color: #4ade80; font-size: 1.35rem; }
+    .bk-dl-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .bk-dl-meta {
+        display: flex; flex-wrap: wrap; gap: 18px;
+        padding: 12px 18px;
+        background: #0f172a;
+        border-bottom: 1px solid #1e293b;
+        font-size: .82rem;
+        color: #cbd5e1;
+    }
+    .bk-dl-meta-item {
+        display: inline-flex; align-items: center; gap: 6px;
+    }
+    .bk-dl-meta-item i { color: #4ade80; font-size: 1rem; }
+    .bk-dl-meta-k { color: #94a3b8; font-weight: 600; }
+    .bk-dl-meta-v { color: #e2e8f0; font-weight: 700; font-family: 'Consolas','Courier New',monospace; }
+    .bk-dl-meta-dur { color: #4ade80; }
+    .bk-dl-meta-skip i { color: #fbbf24; }
+    .bk-dl-meta-skip .bk-dl-meta-v { color: #fbbf24; }
+
+    /* Big, can't-miss "what's excluded" banner inside the downloaded-files card */
+    .bk-dl-excl {
+        margin: 0;
+        padding: 14px 18px 16px;
+        background: linear-gradient(135deg, rgba(251,191,36,.10) 0%, rgba(251,191,36,.04) 100%);
+        border-top: 2px solid #fbbf24;
+        border-bottom: 1px solid #1e293b;
+        color: #fde68a;
+    }
+    .bk-dl-excl-head {
+        display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+        font-size: 1rem; font-weight: 800; color: #fbbf24;
+        letter-spacing: .02em; line-height: 1.3;
+    }
+    .bk-dl-excl-head i { font-size: 1.5rem; flex-shrink: 0; }
+    .bk-dl-excl-count {
+        margin-left: auto;
+        background: #fbbf24; color: #1f2937;
+        font-size: .75rem; font-weight: 800;
+        padding: 4px 12px; border-radius: 999px;
+        white-space: nowrap;
+        box-shadow: 0 2px 6px rgba(251,191,36,.4);
+    }
+    .bk-dl-excl-list {
+        margin: 10px 0 0;
+        padding-left: 28px;
+        font-size: .9rem; color: #fef3c7;
+        line-height: 1.7;
+    }
+    .bk-dl-excl-list li { margin: 0; }
+    .bk-dl-excl-list code {
+        background: rgba(251,191,36,.18);
+        color: #fde68a;
+        padding: 1px 7px; border-radius: 4px;
+        font-size: .82rem; font-weight: 700;
+    }
+    @@media (max-width: 480px) {
+        .bk-dl-excl { padding: 12px 14px 14px; }
+        .bk-dl-excl-head { font-size: .9rem; }
+        .bk-dl-excl-head i { font-size: 1.25rem; }
+        .bk-dl-excl-count { font-size: .68rem; padding: 3px 10px; }
+        .bk-dl-excl-list { font-size: .82rem; padding-left: 22px; }
+    }
+
+    .bk-dl-scroll {
+        max-height: 420px; overflow: auto;
+        background: #0f172a;
+    }
+    .bk-dl-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+    .bk-dl-scroll::-webkit-scrollbar-track { background: #0f172a; }
+    .bk-dl-scroll::-webkit-scrollbar-thumb { background: #334155; border-radius: 6px; }
+    .bk-dl-scroll::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+    .bk-dl-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: .82rem;
+        color: #e2e8f0;
+    }
+    .bk-dl-table thead th {
+        position: sticky; top: 0;
+        background: #1e3a5f; color: #fff;
+        font-weight: 700; text-align: left;
+        padding: 11px 12px;
+        font-size: .78rem;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+        border-bottom: 2px solid #0f172a;
+        z-index: 2;
+    }
+    .bk-dl-table tbody tr {
+        border-bottom: 1px solid #1e293b;
+        transition: background .15s ease;
+    }
+    .bk-dl-table tbody tr:nth-child(even) { background: #17223a; }
+    .bk-dl-table tbody tr:hover { background: #273449; }
+    .bk-dl-table tbody td {
+        padding: 9px 12px;
+        vertical-align: top;
+    }
+    .bk-dl-pill {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 16px;
+        font-size: .68rem;
+        font-weight: 800;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+        white-space: nowrap;
+        box-shadow: 0 1px 4px rgba(0,0,0,.25);
+    }
+    .bk-dl-pill-user   { background: #3b82f6; color: #fff; }
+    .bk-dl-pill-server { background: #16a34a; color: #fff; }
+    .bk-dl-file {
+        font-family: 'Consolas','Courier New',monospace;
+        font-size: .76rem;
+        color: #e2e8f0;
+        word-break: break-all;
+    }
+
+    @@media (max-width: 768px) {
+        .bk-dl-head { padding: 12px; }
+        .bk-dl-title { font-size: .95rem; }
+        .bk-dl-meta { gap: 10px; padding: 10px 12px; font-size: .76rem; }
+        .bk-dl-scroll { overflow-x: auto; max-height: 360px; }
+        .bk-dl-table { min-width: 820px; }
+    }
+    @@media (max-width: 480px) {
+        .bk-dl-actions { width: 100%; justify-content: flex-end; }
+        .bk-dl-title { width: 100%; }
+    }
 </style>
 
 @code {
@@ -549,6 +829,15 @@
     string _copyToast = "";
     bool _pdfBusy;
     bool _fbfHasStarted;   // true once a file-by-file backup was started this session; keeps the table visible
+
+    // Per-file log of files actually downloaded this run (excludes skipped, excludes errors,
+    // excludes self-generated synthetic PDFs — folder summaries, EvilPurposes, ServiceFacsimiles, PtsHandling)
+    record DownloadedFile(string Phase, string RelPath, string FullPath, string? PcName, DateTime When);
+    List<DownloadedFile> _downloadedFiles = new();
+    int _syntheticSkippedCount;          // count of synthetic files received but excluded from the table
+    DateTime? _backupStartTime;
+    DateTime? _backupEndTime;
+    bool _downloadedPdfBusy;
 
     // Password modal
     bool _showPasswordModal;
@@ -703,6 +992,10 @@
         _fbfCurrent = 0; _fbfTotal = 0; _fbfSkipped = 0; _fbfErrors = 0;
         _fbfCurrentFile = "";
         _errors = new();   // clear previous run's errors at start of a new backup
+        _downloadedFiles = new();   // clear previous run's downloaded list
+        _syntheticSkippedCount = 0;
+        _backupStartTime = DateTime.Now;
+        _backupEndTime = null;
         _fbfHasStarted = true;
         _copyToast = "";
         _done = false;
@@ -731,6 +1024,7 @@
     public void OnBackupComplete(bool ok, string? error, int userTotal, int userSkipped, int userErrors, int serverTotal, int serverSkipped, int serverErrors)
     {
         _fbfDownloading = false;
+        _backupEndTime = DateTime.Now;
         if (ok)
         {
             _done = true;
@@ -741,6 +1035,69 @@
             _error = error ?? "Backup failed";
         }
         InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public void OnFileDownloaded(string phase, string relPath, string fullPath, string? pcName, string isoTime)
+    {
+        // Self-generated synthetic PDFs are excluded from the user-facing table —
+        // they're useful for restore but they're not "downloaded from the server" in
+        // the meaningful sense the user cares about (folder summaries / EvilPurposes
+        // / ServiceFacsimiles / PtsHandling are all reconstructed on demand).
+        if (IsSelfGeneratedBackupPath(relPath))
+        {
+            _syntheticSkippedCount++;
+            return;
+        }
+
+        DateTime when;
+        if (!DateTime.TryParse(isoTime, System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.RoundtripKind, out when))
+            when = DateTime.UtcNow;
+
+        _downloadedFiles.Add(new DownloadedFile(
+            Phase:    phase ?? "",
+            RelPath:  relPath ?? "",
+            FullPath: string.IsNullOrEmpty(fullPath) ? (relPath ?? "") : fullPath,
+            PcName:   string.IsNullOrWhiteSpace(pcName) ? null : pcName,
+            When:     when.ToLocalTime()));
+
+        // Re-rendering on every single file would be too chatty; the OnFileProgress
+        // callback (which fires right after this in the JS) already triggers a render.
+    }
+
+    static bool IsSelfGeneratedBackupPath(string? relPath)
+    {
+        if (string.IsNullOrEmpty(relPath)) return false;
+        var norm = relPath.Replace('\\', '/');
+        var lowerPath = norm.ToLowerInvariant();
+        var fileName  = System.IO.Path.GetFileName(norm);
+
+        // Synthetic Back_Cover PDFs (generated on the fly during the User backup phase).
+        // Keep this list in sync with the leaf-name list in Program.cs's
+        // /api/backup-file-list user-phase synthetic loop AND the IsSessionDataSyntheticPath
+        // switch — adding a new synthetic table requires updates in all three spots.
+        if (lowerPath.Contains("/back_cover/"))
+        {
+            if (fileName.Equals("EvilPurposes.pdf",      StringComparison.OrdinalIgnoreCase) ||
+                fileName.Equals("ServiceFacsimiles.pdf", StringComparison.OrdinalIgnoreCase) ||
+                fileName.Equals("PtsHandling.pdf",       StringComparison.OrdinalIgnoreCase) ||
+                fileName.Equals("CaseData.pdf",          StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        // Folder Summary PDFs (Front_Cover/*summary*.pdf, baked from sess_folder_summary)
+        if (FolderService.ParseFolderSummaryBackupPath(norm).IsSummary) return true;
+
+        return false;
+    }
+
+    static string FormatBackupDuration(TimeSpan ts)
+    {
+        if (ts.TotalSeconds < 1) return "0s";
+        if (ts.TotalSeconds < 60) return $"{(int)ts.TotalSeconds}s";
+        if (ts.TotalMinutes < 60) return $"{(int)ts.TotalMinutes}m {ts.Seconds}s";
+        return $"{(int)ts.TotalHours}h {ts.Minutes}m {ts.Seconds}s";
     }
 
     void CancelFolderBackup()
@@ -865,6 +1222,42 @@
         finally
         {
             _pdfBusy = false;
+            StateHasChanged();
+        }
+    }
+
+    async Task DownloadDownloadedPdf()
+    {
+        if (_downloadedFiles.Count == 0 || _downloadedPdfBusy) return;
+        _downloadedPdfBusy = true;
+        StateHasChanged();
+        try
+        {
+            var payload = new
+            {
+                userName         = _username,
+                startTime        = _backupStartTime?.ToUniversalTime().ToString("o"),
+                endTime          = _backupEndTime?.ToUniversalTime().ToString("o"),
+                syntheticSkipped = _syntheticSkippedCount,
+                files = _downloadedFiles.Select(f => new
+                {
+                    phase    = f.Phase,
+                    relPath  = f.RelPath,
+                    fullPath = f.FullPath,
+                    pcName   = f.PcName,
+                    when     = f.When.ToUniversalTime().ToString("o")
+                })
+            };
+            await JS.InvokeVoidAsync("lpmBackupDownloadedPdf.download", payload);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Backup] Downloaded-files PDF failed: {ex.Message}");
+            _error = $"PDF download failed: {ex.Message}";
+        }
+        finally
+        {
+            _downloadedPdfBusy = false;
             StateHasChanged();
         }
     }

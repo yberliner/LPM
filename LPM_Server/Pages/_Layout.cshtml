@@ -277,9 +277,10 @@
         <script src="js/matrix-scroll.js"></script>
         <script src="js/forsight.js"></script>
         <script src="js/javaScriptInterop.js?v=6"></script>
-        <script src="js/backup-download.js?v=3"></script>
+        <script src="js/backup-download.js?v=4"></script>
         <script src="js/stats-tooltip.js?v=5"></script>
         <script src="js/backup-errors-pdf.js?v=1"></script>
+        <script src="js/backup-downloaded-pdf.js?v=1"></script>
         <script src="js/resizeInterop.js"></script>
         <script src="js/signature-pad.js?v=2"></script>
         <script src="js/DragDropTouch.js?v=1"></script>
@@ -500,30 +501,29 @@
         </script>
 
         <script>
+          // Stat PDFs used to be base64-encoded server-side and pushed through SignalR
+          // (`cacheAllPdfData`) into `window._pdfDataCache`. That cost ~50 MB per circuit
+          // per cached staff member AND duplicated the bytes already on disk at
+          // /temp/stat_<sid>_<yyyymmdd>.pdf. We now pass the static URL straight to
+          // pdf.js — the browser HTTP-caches the response, so repeat selections are fast
+          // without us holding any bytes in JS or C#. The only cache that survives is the
+          // RENDERED canvas array per URL (saves re-rendering on tab switch).
           window._pdfCanvasCache = {};
-          window._pdfDataCache = {};
 
-          window.cacheAllPdfData = (dataMap) => {
-            for (const [key, b64] of Object.entries(dataMap))
-              window._pdfDataCache[key] = b64;
-          };
-
-          window.showStatPdf = async (containerId, key) => {
+          window.showStatPdf = async (containerId, url) => {
             try {
               const container = document.getElementById(containerId);
               if (!container) return;
-              if (window._pdfCanvasCache[key]) {
+              if (window._pdfCanvasCache[url]) {
                 container.innerHTML = '';
-                window._pdfCanvasCache[key].forEach(c => container.appendChild(c));
+                window._pdfCanvasCache[url].forEach(c => container.appendChild(c));
                 return;
               }
               container.innerHTML = '';
-              const b64 = window._pdfDataCache[key];
-              if (!b64) return;
+              if (!url) return;
               const pdfjsLib = window['pdfjs-dist/build/pdf'];
               if (!pdfjsLib) { container.innerHTML = '<div style="color:#ef4444;padding:20px;">PDF.js not loaded</div>'; return; }
-              const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-              const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+              const pdf = await pdfjsLib.getDocument({ url }).promise;
               const canvases = [];
               for (let i = 1; i <= pdf.numPages; i++) {
                 const page = await pdf.getPage(i);
@@ -540,20 +540,17 @@
                 await page.render({ canvasContext: canvas.getContext('2d'), viewport: viewport }).promise;
                 canvases.push(canvas);
               }
-              window._pdfCanvasCache[key] = canvases;
+              window._pdfCanvasCache[url] = canvases;
             } catch(e) { console.error('showStatPdf failed:', e); }
           };
 
-          window.preRenderAllStatPdfs = async (keys) => {
-            for (const key of keys) {
-              if (window._pdfCanvasCache[key]) continue;
-              const b64 = window._pdfDataCache[key];
-              if (!b64) continue;
+          window.preRenderAllStatPdfs = async (urls) => {
+            for (const url of urls) {
+              if (!url || window._pdfCanvasCache[url]) continue;
               try {
                 const pdfjsLib = window['pdfjs-dist/build/pdf'];
                 if (!pdfjsLib) continue;
-                const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
-                const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+                const pdf = await pdfjsLib.getDocument({ url }).promise;
                 const canvases = [];
                 for (let i = 1; i <= pdf.numPages; i++) {
                   const page = await pdf.getPage(i);
@@ -568,12 +565,27 @@
                   await page.render({ canvasContext: canvas.getContext('2d'), viewport: viewport }).promise;
                   canvases.push(canvas);
                 }
-                window._pdfCanvasCache[key] = canvases;
-              } catch(e) { console.error('preRender failed for', key, e); }
+                window._pdfCanvasCache[url] = canvases;
+              } catch(e) { console.error('preRender failed for', url, e); }
             }
           };
 
-          window.clearPdfCache = () => { window._pdfCanvasCache = {}; window._pdfDataCache = {}; };
+          window.clearPdfCache = () => { window._pdfCanvasCache = {}; };
+
+          // Trigger a download of a same-origin URL. Used by the stat-PDF Download button —
+          // pairs with `_statPdfUrl` (a static `/temp/stat_*.pdf` path served by ASP.NET),
+          // so no base64 round-trip is needed.
+          window.downloadFromUrl = (fileName, url) => {
+            try {
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = fileName || "";
+              a.click();
+              setTimeout(() => { try { a.remove(); } catch {} }, 0);
+            } catch (e) {
+              console.error("downloadFromUrl failed:", e);
+            }
+          };
         </script>
 
         <!-- PDF.js for PC Folder viewer -->
