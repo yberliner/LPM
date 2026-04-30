@@ -1099,7 +1099,10 @@ public class FolderService
         bool? Rtl,
         List<string>? Lines,
         // Draw field
-        StrokeData? Stroke);
+        StrokeData? Stroke,
+        // Debug timestamps (populated by JS on create/edit; informational only)
+        string? CreatedAt,
+        string? LastModifiedAt);
     private record StrokeData(List<StrokePoint>? Points, string? Color, double? Width, bool? Brush);
     private record StrokePoint(double X, double Y);
 
@@ -1141,6 +1144,17 @@ public class FolderService
             using var ms = new MemoryStream(pdfBytes);
             using var srcDoc = PdfSharpCore.Pdf.IO.PdfReader.Open(ms, PdfSharpCore.Pdf.IO.PdfDocumentOpenMode.Import);
             using var outDoc = new PdfSharpCore.Pdf.PdfDocument();
+
+            // ── Diagnostic: log orphan annotations whose pageIdx >= page count ──
+            // These are silently dropped by the loop below (because we only iterate
+            // 0..PageCount-1). Logging them surfaces "annotation disappeared" bugs.
+            int srcPageCount = srcDoc.PageCount;
+            foreach (var k in textByPage.Keys.Where(k => k >= srcPageCount))
+                Console.WriteLine($"[BakeAnnotations] ORPHAN text annotations dropped: pageIdx={k} (PDF has {srcPageCount} pages, count={textByPage[k].Count}, sample='{textByPage[k][0].Text}')");
+            foreach (var k in drawsByPage.Keys.Where(k => k >= srcPageCount))
+                Console.WriteLine($"[BakeAnnotations] ORPHAN draw annotations dropped: pageIdx={k} (PDF has {srcPageCount} pages, count={drawsByPage[k].Count})");
+            foreach (var k in bgByPage.Keys.Where(k => k >= srcPageCount))
+                Console.WriteLine($"[BakeAnnotations] ORPHAN bg-change dropped: pageIdx={k} (PDF has {srcPageCount} pages, color={bgByPage[k].Color})");
 
             for (int i = 0; i < srcDoc.PageCount; i++)
             {

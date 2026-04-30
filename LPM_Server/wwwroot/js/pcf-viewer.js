@@ -290,13 +290,30 @@ window.pcfViewer = {
                         ? pane.baseScale / sidecarScale : 1;
                     const affectedOverlayPages = new Set();
                     const bgPages = []; // [{pageIdx, color}]
+                    // CRITICAL: compare against the actual PDF page count (pdfDoc.numPages),
+                    // not pane.pages.length. The latter is the partial render count — pages get
+                    // pushed to pane.pages one at a time AFTER each render completes (see the
+                    // for-loop further down that does pane.pages.push). The sidecar fetch is
+                    // small and usually resolves before pages 2..N finish rendering, so using
+                    // pane.pages.length here would silently DROP annotations for not-yet-rendered
+                    // pages from pane.annotations entirely. The next save then rewrites the
+                    // sidecar with only the still-in-memory annotations → permanent on-disk
+                    // data loss. (Reproduced 2026-04-30 by adding text on page 2, save, close,
+                    // reopen → text gone from JSON.)
+                    const totalPageCount = (pane.pdfDoc && pane.pdfDoc.numPages) || pane.pages.length;
                     for (const ann of sidecar.annotations) {
                         if (pane.loadGen !== myGen) return;
                         const a = { ...ann };
                         // Legacy sidecars (no type) are text-only.
                         if (!a.type) a.type = 'text';
-                        // Skip orphans (annotation refers to a page that no longer exists).
-                        if (a.pageIdx >= pane.pages.length) continue;
+                        // True orphan: pageIdx points beyond what the PDF actually has.
+                        if (a.pageIdx >= totalPageCount) {
+                            console.warn('[pcfSidecar-load] keeping out-of-range annotation in pane.annotations: pageIdx=' + a.pageIdx + ' totalPages=' + totalPageCount + ' type=' + a.type + ' text=' + JSON.stringify(a.text || ''));
+                            // Still push so the next save round-trips it back to disk
+                            // (data preservation > display correctness — the C# bake skips orphans).
+                            pane.annotations.push(a);
+                            continue;
+                        }
 
                         if (a.type === 'text') {
                             if (ratio !== 1) {
@@ -873,7 +890,8 @@ window.pcfViewer = {
         overlay.addEventListener('pointerup', () => {
             const pane = self.panes[paneId];
             if (drawing && pane && pane.currentStroke && pane.currentStroke.points.length > 1) {
-                pane.annotations.push({ pageIdx, type: 'draw', stroke: pane.currentStroke });
+                const stamp = self._nowIso();
+                pane.annotations.push({ pageIdx, type: 'draw', stroke: pane.currentStroke, createdAt: stamp, lastModifiedAt: stamp });
                 self._notifyChange();
             }
             drawing = false;
@@ -1020,6 +1038,14 @@ window.pcfViewer = {
             const v = c === 'x' ? r : (r & 0x3) | 0x8;
             return v.toString(16);
         });
+    },
+
+    /// Current UTC timestamp in ISO 8601 (used for annotation createdAt / lastModifiedAt
+    /// fields so the sidecar JSON shows when each annotation was last touched — invaluable
+    /// for diagnosing "this text disappeared after a save" / orphan-annotation issues).
+    _nowIso() {
+        try { return new Date().toISOString(); }
+        catch (e) { return ""; }
     },
 
     /// Fire-and-forget POST to the persistent annotation audit log
@@ -1465,11 +1491,13 @@ window.pcfViewer = {
             if (pane) {
                 const rtl = self._isRtl(text);
                 const lines = text ? computeWrappedLines(text) : null;
+                const stamp = self._nowIso();
                 if (isEditing && existingIdx >= 0) {
                     if (text) {
                         // Update existing annotation — apply current color/fontSize/position from toolbar + drag
                         const cur = pane.annotations[existingIdx];
                         if (!cur.guid) cur.guid = self._newGuid(); // backfill for old sidecars
+                        if (!cur.createdAt) cur.createdAt = stamp; // backfill for old sidecars
                         cur.text = text;
                         cur.lines = lines;
                         cur.color = self.drawColor;
@@ -1478,6 +1506,7 @@ window.pcfViewer = {
                         cur.x = x;
                         cur.y = y;
                         cur.rtl = rtl;
+                        cur.lastModifiedAt = stamp;
                         self._postAnnEvent('upsert', cur, paneId);
                     } else {
                         // Empty text = delete annotation
@@ -1487,7 +1516,7 @@ window.pcfViewer = {
                     }
                 } else if (text) {
                     // New annotation (also handles restore-as-new when existingIdx = -1)
-                    const newAnn = { pageIdx, type: 'text', text, lines, x, y, color, fontSize, maxWidth: input.offsetWidth, rtl, guid: self._newGuid() };
+                    const newAnn = { pageIdx, type: 'text', text, lines, x, y, color, fontSize, maxWidth: input.offsetWidth, rtl, guid: self._newGuid(), createdAt: stamp, lastModifiedAt: stamp };
                     pane.annotations.push(newAnn);
                     console.log('[txt-dbg] pushed annotation: pageIdx=' + pageIdx + ' x=' + x.toFixed(1) + ' y=' + y.toFixed(1) + ' maxWidth=' + input.offsetWidth + ' lines=' + (lines?.length ?? 0) + ' text="' + text + '" total=' + pane.annotations.length);
                     self._postAnnEvent('upsert', newAnn, paneId);
@@ -2114,10 +2143,28 @@ window.pcfViewer = {
 
     // ── Auto-save support ──
 
+    // If a text-annotation input is currently focused/open, force its synchronous commit
+    // handler (registered on blur) so any in-progress text lands in pane.annotations BEFORE
+    // the caller reads the array. Returns true if a flush happened.
+    _flushActiveTextInput() {
+        if (this.textInputEl) {
+            try { this.textInputEl.blur(); } catch (e) { /* element may already be detached */ }
+            return true;
+        }
+        return false;
+    },
+
     // Save a specific pane synchronously (for beforeunload)
     _saveSync(paneId) {
         const pane = this.panes[paneId];
-        if (!pane || pane.readOnly || pane.annotations.length === 0 || !pane.filePath || !this._pcId) return;
+        if (!pane || pane.readOnly || !pane.filePath || !this._pcId) return;
+
+        // Flush any open text input so its in-progress text lands in pane.annotations
+        // BEFORE we read the array. blur() fires the synchronous commit handler that
+        // pushes/updates the entry. Without this, typing "03.04.26" then closing the
+        // tab loses the text — the input never blurred so commit never ran.
+        this._flushActiveTextInput();
+        if (pane.annotations.length === 0) return;
 
         const meta = JSON.parse(this.getAnnotationData(paneId));
         const formData = new FormData();
@@ -2143,7 +2190,21 @@ window.pcfViewer = {
         const xhr = new XMLHttpRequest();
         const soloParam = pane.solo ? '&solo=true' : '';
         xhr.open('POST', '/api/pc-file-save-annotated?pcId=' + this._pcId + '&path=' + encodeURIComponent(pane.filePath) + soloParam, false);
-        xhr.send(formData);
+        try {
+            xhr.send(formData);
+        } catch (e) {
+            console.error('[pcfSync] PDF save threw — skipping sidecar to avoid orphan: ' + (e && e.message));
+            return;
+        }
+
+        // CRITICAL: if the PDF save failed (4xx/5xx, or network error → status 0), DO NOT
+        // save the sidecar. Otherwise we'd persist annotations referencing pages that
+        // never made it to disk → orphan annotations the bake silently skips. The next
+        // successful save will retry both PDF and sidecar atomically (savePane).
+        if (xhr.status < 200 || xhr.status >= 300) {
+            console.error('[pcfSync] PDF save returned HTTP ' + xhr.status + ' — skipping sidecar to avoid orphan');
+            return;
+        }
 
         // Pages we just baked into the PDF — their draws/bg are now part of the file and
         // must NOT be persisted to the sidecar (would double-render on next reload).
@@ -2173,7 +2234,11 @@ window.pcfViewer = {
     // Async save for a pane (used when switching files / manual Save / CS-Done).
     async savePane(paneId) {
         const pane = this.panes[paneId];
-        if (!pane || pane.readOnly || pane.annotations.length === 0 || !pane.filePath || !this._pcId) return;
+        if (!pane || pane.readOnly || !pane.filePath || !this._pcId) return;
+
+        // Flush any open text input — see _saveSync for the rationale.
+        this._flushActiveTextInput();
+        if (pane.annotations.length === 0) return;
 
         const dataJson = this.getAnnotationData(paneId);
         const metaObj = JSON.parse(dataJson);
@@ -2201,13 +2266,27 @@ window.pcfViewer = {
     //     into the PDF on disk in the same save and shouldn't double-render via sidecar on reload.
     //     (Text always goes through; text is fully sidecar-managed regardless of page status.)
     _buildSidecarPayload(pane, bakedPages) {
+        // NEVER prune by pageIdx here — data preservation > "tidy" sidecar.
+        // If pageIdx is out of range, the C# bake silently skips it and logs it
+        // (see FolderService.BakeAnnotations orphan diagnostics). The annotation
+        // stays on disk so a future fix or page restoration can render it.
+        // (A prior version of this function dropped "orphan" annotations on save —
+        // that destroyed legitimate user data when pageIdx was set incorrectly,
+        // because the next save rewrote the sidecar without the dropped entry.)
         const out = [];
         for (const a of pane.annotations) {
+            if (typeof a.pageIdx === 'number' && pane.pdfDoc && pane.pages && pane.pages.length > 0
+                && a.pageIdx >= pane.pages.length) {
+                // Diagnostic only — keep the entry in the payload.
+                console.warn('[pcfSidecar] keeping out-of-range annotation pageIdx=' + a.pageIdx +
+                    ' (pages=' + pane.pages.length + ') type=' + a.type +
+                    ' text=' + JSON.stringify(a.text || ''));
+            }
             if (a.type === 'text') { out.push(a); continue; }
             if (bakedPages && bakedPages.has(a.pageIdx)) continue;
             if (a.type === 'draw') { out.push(a); continue; }
             if (a.type === 'bg-change') {
-                out.push({ type: 'bg-change', pageIdx: a.pageIdx, color: a.color });
+                out.push({ type: 'bg-change', pageIdx: a.pageIdx, color: a.color, createdAt: a.createdAt, lastModifiedAt: a.lastModifiedAt });
                 continue;
             }
         }
@@ -2268,7 +2347,8 @@ window.pcfViewer = {
         snapshot.width = w;
         snapshot.height = h;
         snapshot.getContext('2d').drawImage(pg.canvas, 0, 0);
-        pane.annotations.push({ type: 'bg-change', pageIdx, color, snapshot });
+        const stamp = this._nowIso();
+        pane.annotations.push({ type: 'bg-change', pageIdx, color, snapshot, createdAt: stamp, lastModifiedAt: stamp });
 
         await this._paintPageBg(pane, pg, color);
         if (this.dotNetRef) this.dotNetRef.invokeMethodAsync('OnAnnotationChanged');
