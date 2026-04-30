@@ -1916,10 +1916,14 @@ public class PdfService
         double y = margin;
 
         // Draws text segment-by-segment: Hebrew chars with Hebrew font, everything else with Latin font.
+        // alreadyVisualOrdered: when true (e.g. text came from WrapText/VisualReorder), the BiDi
+        // reordering inside this method is skipped — the caller has already produced visual order
+        // and double-reversing would garble Hebrew when mixed with Latin words.
         void DrawMixed(string? text, double pt, bool bold,
                        PdfSharpCore.Drawing.XBrush brush,
                        PdfSharpCore.Drawing.XRect rect,
-                       PdfSharpCore.Drawing.XStringFormat fmt)
+                       PdfSharpCore.Drawing.XStringFormat fmt,
+                       bool alreadyVisualOrdered = false)
         {
             if (string.IsNullOrEmpty(text))
             {
@@ -1962,7 +1966,7 @@ public class PdfService
                 while (p < text.Length && text[p] != ' ' && IsHebrewChar(text[p]) == heb)
                     p++;
                 var segText = text[start..p];
-                if (heb && hasLatinLetter) segText = new string(segText.Reverse().ToArray());
+                if (heb && hasLatinLetter && !alreadyVisualOrdered) segText = new string(segText.Reverse().ToArray());
                 segs.Add((segText, heb ? hebrewFont : latinFont));
             }
 
@@ -1970,7 +1974,8 @@ public class PdfService
             // segments within each contiguous Hebrew run (consecutive Hebrew segs separated
             // only by space segs). The PDF viewer's BiDi will visually flip the whole Hebrew
             // run back, so pre-flipping word order here yields correct logical visual.
-            if (hasLatinLetter)
+            // Skipped when the caller already produced visual order (alreadyVisualOrdered).
+            if (hasLatinLetter && !alreadyVisualOrdered)
             {
                 int i = 0;
                 while (i < segs.Count)
@@ -2133,6 +2138,9 @@ public class PdfService
 
         // Simplified Unicode BiDi for Hebrew+Latin mixed text.
         // Returns (visual string, isRtl base direction).
+        // Hebrew chars are ALWAYS pre-reversed (PdfSharp draws glyphs LTR with no BiDi support,
+        // so each Hebrew run must be in reverse-logical order to display correctly).
+        // Run-order is reversed only when the paragraph is RTL-base.
         static (string Visual, bool IsRtl) VisualReorder(string logical)
         {
             if (string.IsNullOrEmpty(logical)) return ("", false);
@@ -2144,7 +2152,6 @@ public class PdfService
                 if (IsRtlChar(c)) { rtlBase = true; break; }
                 if (IsLtrChar(c)) { rtlBase = false; break; }
             }
-            if (!rtlBase) return (logical, false);
 
             // Split into directional runs: RTL, LTR, Neutral
             // Run type: 0 = neutral (space/digits/punct), 1 = LTR, 2 = RTL
@@ -2165,10 +2172,44 @@ public class PdfService
                 runs.Add((type, logical[start..pos]));
             }
 
-            // Reverse the run order for RTL base paragraph
-            runs.Reverse();
+            if (rtlBase)
+            {
+                // RTL-base paragraph: flip the run order so logically-first runs land at the right.
+                runs.Reverse();
+            }
+            else
+            {
+                // LTR-base paragraph: each embedded RTL island still needs its internal run order
+                // reversed so the first logical Hebrew word lands at the right edge of the island.
+                // An island = a maximal cluster of RTL runs joined by neutral runs.
+                for (int i = 0; i < runs.Count; )
+                {
+                    if (runs[i].Type != 2) { i++; continue; }
+                    int clusterStart = i;
+                    int clusterEnd   = i;
+                    int j = i + 1;
+                    while (j < runs.Count)
+                    {
+                        if (runs[j].Type == 2) { clusterEnd = j; j++; continue; }
+                        if (runs[j].Type == 0)
+                        {
+                            int k = j + 1;
+                            while (k < runs.Count && runs[k].Type == 0) k++;
+                            if (k < runs.Count && runs[k].Type == 2)
+                            {
+                                clusterEnd = k; j = k + 1; continue;
+                            }
+                        }
+                        break;
+                    }
+                    if (clusterEnd > clusterStart)
+                        runs.Reverse(clusterStart, clusterEnd - clusterStart + 1);
+                    i = clusterEnd + 1;
+                }
+            }
 
-            // Within each RTL run, reverse the characters
+            // Within each RTL run, reverse the characters (always — needed for correct glyph
+            // placement under any base direction, since PdfSharp lacks BiDi-aware drawing).
             var sb = new System.Text.StringBuilder(logical.Length);
             foreach (var (type, text) in runs)
             {
@@ -2182,7 +2223,7 @@ public class PdfService
                     sb.Append(text);
                 }
             }
-            return (sb.ToString(), true);
+            return (sb.ToString(), rtlBase);
         }
 
         // ── Word-wrap helper (handles \n, applies BiDi reordering per line) ──
@@ -2279,7 +2320,8 @@ public class PdfService
                     var fmt = rtl2 ? fmtCR : fmtCL;
                     var rx  = rtl2 ? x0          : x0 + pad;
                     var rw  = rtl2 ? procW - pad  : procW - 2 * pad;
-                    DrawMixed(vis, 15, false, bDark, R(rx, y + pad + li * lineH, rw, lineH), fmt);
+                    // vis is already visual-ordered by WrapText/VisualReorder — skip DrawMixed's BiDi.
+                    DrawMixed(vis, 15, false, bDark, R(rx, y + pad + li * lineH, rw, lineH), fmt, alreadyVisualOrdered: true);
                 }
                 gfx.DrawString(r.Time    ?? "", fCell, bDark, R(x1, y, timeW, rowH), fmtCC);
                 gfx.DrawString(r.ToneArm ?? "", fCell, bDark, R(x2, y, toneW, rowH), fmtCC);
@@ -2289,7 +2331,8 @@ public class PdfService
                     var fmt = rtl2 ? fmtCR : fmtCL;
                     var rx  = rtl2 ? x3          : x3 + pad;
                     var rw  = rtl2 ? resW - pad   : resW - 2 * pad;
-                    DrawMixed(vis, 15, false, bDark, R(rx, y + pad + li * lineH, rw, lineH), fmt);
+                    // vis is already visual-ordered by WrapText/VisualReorder — skip DrawMixed's BiDi.
+                    DrawMixed(vis, 15, false, bDark, R(rx, y + pad + li * lineH, rw, lineH), fmt, alreadyVisualOrdered: true);
                 }
 
                 y += rowH;
