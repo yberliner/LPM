@@ -177,6 +177,7 @@ builder.Services.AddSingleton<LPM.Services.EffortService>();
 builder.Services.AddSingleton<LPM.Services.WalletService>();
 builder.Services.AddScoped<LPM.Services.SessionManagerLauncher>();
 builder.Services.AddSingleton<LPM.Services.MemoryReportService>();
+builder.Services.AddSingleton<LPM.Services.DiagnosisCacheService>();
 builder.Services.AddHostedService<LPM.Services.MaintenanceService>();
 
 // Add session services

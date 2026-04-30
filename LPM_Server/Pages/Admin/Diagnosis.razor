@@ -10,6 +10,7 @@
 @inject LPM.Services.PdfShrinkService PdfShrinkSvc
 @inject LPM.Services.FolderService FolderSvc
 @inject LPM.Services.DashboardService DashSvc
+@inject LPM.Services.DiagnosisCacheService DiagCacheSvc
 @inject LPM.Services.UserActivityService ActivitySvc
 @inject LPM.Services.PcService PcSvc
 @inject LPM.Services.SmsService SmsSvc
@@ -2189,17 +2190,28 @@
     }
 
     // ── Read-only table display ────────────────────────────────────────────
-    record TableData(string Name, string Icon, List<string> Columns, List<List<string>> Rows);
+    record TableData(string Name, string Icon, List<string> Columns, List<List<string>> Rows, int TotalRows = 0);
 
     RenderFragment<TableData> TableSection => t =>
         @<div class="cedb-section mt-3">
             <div class="cedb-section-title cedb-section-toggle" @onclick="() => ToggleSection(t.Name)">
                 <i class="@t.Icon me-1"></i>@t.Name
-                <span class="cedb-count">@t.Rows.Count row@(t.Rows.Count != 1 ? "s" : "")</span>
+                <span class="cedb-count" title="Loaded / total rows in table">
+                    @if (t.TotalRows > t.Rows.Count)
+                    {
+                        @($"{t.Rows.Count} of {t.TotalRows:N0}")
+                        <span style="color:#94a3b8;font-size:.75em;font-weight:400;margin-left:4px;">(latest @t.Rows.Count shown)</span>
+                    }
+                    else
+                    {
+                        @($"{t.Rows.Count} row{(t.Rows.Count != 1 ? "s" : "")}")
+                    }
+                </span>
                 <select class="form-select form-select-sm ms-auto me-2" style="width:auto;font-size:.72rem;"
                         @onclick:stopPropagation="true"
                         value="@(_tableLimit.TryGetValue(t.Name, out var tl) ? tl : 200)"
-                        @onchange="e => { _tableLimit[t.Name] = int.Parse(e.Value!.ToString()!); }">
+                        @onchange="e => OnTableLimitChanged(t.Name, int.Parse(e.Value!.ToString()!))"
+                        title="Higher values re-query SQLite with a larger LIMIT — use sparingly on big tables.">
                     <option value="10">10</option>
                     <option value="100">100</option>
                     <option value="200">200</option>
@@ -2285,6 +2297,20 @@
             _sortState[tableName] = (col, true);
     }
 
+    // Triggered when the per-table row-count dropdown changes. Records the new limit
+    // and re-runs LoadLiveTables; the cache key includes (table, orderBy, limit) so
+    // only the changed table actually re-queries — every other table hits its 30-second
+    // cache entry. forceFresh=false: we want to KEEP the other tables' cached data.
+    void OnTableLimitChanged(string tableName, int newLimit)
+    {
+        _tableLimit[tableName] = newLimit;
+        // Drop only this table's cache so the new limit is honoured (the (table, orderBy, OLD)
+        // entry stays cached but unused; it'll TTL out in 30s).
+        DiagCacheSvc.Invalidate(tableName);
+        LoadLiveTables();
+        StateHasChanged();
+    }
+
     IEnumerable<List<string>> SortedRows(TableData t)
     {
         IEnumerable<List<string>> rows = t.Rows;
@@ -2312,11 +2338,21 @@
         @<div class="cedb-section mt-3">
             <div class="cedb-section-title cedb-section-toggle" @onclick="() => ToggleSection(args.Table.Name)">
                 <i class="@args.Table.Icon me-1"></i>@args.Table.Name
-                <span class="cedb-count">@args.Table.Rows.Count row@(args.Table.Rows.Count != 1 ? "s" : "")</span>
+                <span class="cedb-count" title="Loaded / total rows in table">
+                    @if (args.Table.TotalRows > args.Table.Rows.Count)
+                    {
+                        @($"{args.Table.Rows.Count} of {args.Table.TotalRows:N0}")
+                    }
+                    else
+                    {
+                        @($"{args.Table.Rows.Count} row{(args.Table.Rows.Count != 1 ? "s" : "")}")
+                    }
+                </span>
                 <select class="form-select form-select-sm ms-auto me-2" style="width:auto;font-size:.72rem;"
                         @onclick:stopPropagation="true"
                         value="@(_tableLimit.TryGetValue(args.Table.Name, out var curLim) ? curLim : 200)"
-                        @onchange="e => { _tableLimit[args.Table.Name] = int.Parse(e.Value!.ToString()!); }">
+                        @onchange="e => OnTableLimitChanged(args.Table.Name, int.Parse(e.Value!.ToString()!))"
+                        title="Higher values re-query SQLite with a larger LIMIT — use sparingly on big tables.">
                     <option value="10">10</option>
                     <option value="100">100</option>
                     <option value="200">200</option>
@@ -2593,7 +2629,7 @@
                     string.Join(", ", editableCols.Select((c, i) => $"{c}='{editableVals[i]}'")));
             });
             _editModalMsg = "Saved."; _editModalOk = true;
-            LoadLiveTables();
+            LoadLiveTables(forceFresh: true);
         }
         catch (Exception ex)
         {
@@ -2649,7 +2685,7 @@
                 cmd.ExecuteNonQuery();
                 Console.WriteLine($"[Diagnosis] Admin '{admin}' deleted row from {tableName}: {rowDesc}");
             });
-            LoadLiveTables();
+            LoadLiveTables(forceFresh: true);
         }
         catch (Exception ex)
         {
@@ -2802,7 +2838,7 @@
         _ = Task.Run(() => { LoadUserList(); LoadPcsRows(); }, ct)
                 .ContinueWith(_ => { if (!ct.IsCancellationRequested) InvokeAsync(() => { _loadingUsers = false; StateHasChanged(); }); });
 
-        _ = Task.Run(LoadLiveTables, ct)
+        _ = Task.Run(() => LoadLiveTables(), ct)
                 .ContinueWith(_ => { if (!ct.IsCancellationRequested) InvokeAsync(() => { _loadingTables = false; StateHasChanged(); }); });
 
         _ = Task.Run(LoadRecentFiles, ct)
@@ -2929,7 +2965,7 @@
                     string.Join(", ", editableCols.Select((c, i) => $"{c}='{editableVals[i]}'")));
             });
             _userMsg = "Saved."; _userMsgOk = true;
-            LoadUserList(); LoadLiveTables();
+            LoadUserList(); LoadLiveTables(forceFresh: true);
         }
         catch (Exception ex)
         {
@@ -2962,7 +2998,7 @@
             });
             _newPassword = "";
             OnUserSelected(new ChangeEventArgs { Value = _selectedUserId.ToString() });
-            LoadLiveTables();
+            LoadLiveTables(forceFresh: true);
             _userMsg = "Password changed."; _userMsgOk = true;
         }
         catch (Exception ex)
@@ -2994,7 +3030,7 @@
             OnUserSelected(new ChangeEventArgs { Value = _selectedUserId.ToString() });
             _userMsg = $"Security reset for {targetUser} — will be forced to change password, set up 2FA, and confirm contact info on next login.";
             _userMsgOk = true;
-            LoadLiveTables();
+            LoadLiveTables(forceFresh: true);
         }
         catch (Exception ex)
         {
@@ -3025,7 +3061,7 @@
             OnUserSelected(new ChangeEventArgs { Value = _selectedUserId.ToString() });
             _userMsg = $"TOTP secret cleared for {targetUser}. User will need to set up 2FA again on next login.";
             _userMsgOk = true;
-            LoadLiveTables();
+            LoadLiveTables(forceFresh: true);
         }
         catch (Exception ex)
         {
@@ -3054,7 +3090,7 @@
                 Console.WriteLine($"[Diagnosis] Admin '{admin}' cleared password and deactivated user '{targetUser}' (Id={_selectedUserId})");
             });
             OnUserSelected(new ChangeEventArgs { Value = _selectedUserId.ToString() });
-            LoadLiveTables();
+            LoadLiveTables(forceFresh: true);
             _userMsg = $"Password cleared and account deactivated for {targetUser}.";
             _userMsgOk = true;
         }
@@ -3088,7 +3124,7 @@
                 Console.WriteLine($"[Diagnosis] Admin '{admin}' set first password for user '{targetUser}' (Id={_selectedUserId})");
             });
             OnUserSelected(new ChangeEventArgs { Value = _selectedUserId.ToString() });
-            LoadLiveTables();
+            LoadLiveTables(forceFresh: true);
             _userMsg = $"Account activated for {targetUser}. First password: ";
             _userMsgOk = true;
             _firstPwd = plainPwd;
@@ -3204,7 +3240,7 @@
 
             _delPurchModal = false;
             _delPurchInfo  = null;
-            LoadLiveTables();
+            LoadLiveTables(forceFresh: true);
         }
         catch (Exception ex)
         {
@@ -3263,7 +3299,7 @@
             });
             _pendingDeletePcId = 0;
             _pcsMsg = $"Deleted PcId {pcId}."; _pcsMsgOk = true;
-            LoadPcsRows(); LoadLiveTables();
+            LoadPcsRows(); LoadLiveTables(forceFresh: true);
         }
         catch (Exception ex)
         {
@@ -3293,7 +3329,7 @@
             });
             _newPcIdStr = "";
             _pcsMsg = $"Added PcId {newId}."; _pcsMsgOk = true;
-            LoadPcsRows(); LoadLiveTables();
+            LoadPcsRows(); LoadLiveTables(forceFresh: true);
         }
         catch (Exception ex)
         {
@@ -3362,7 +3398,7 @@
             _pcsModalMsg = $"Saved: PcId {oldId} → {newId}."; _pcsModalOk = true;
             _pcsModalOldId = newId;
             _pcsModalNewStr = newId.ToString();
-            LoadPcsRows(); LoadLiveTables();
+            LoadPcsRows(); LoadLiveTables(forceFresh: true);
         }
         catch (Exception ex)
         {
@@ -3379,22 +3415,60 @@
         _recentGroups = [];
         if (!Directory.Exists(basePath)) return;
 
-        var allFiles = new List<(string FullPath, string PcName, string RelPath, DateTime Modified, long Size)>();
+        // The PC-Folders tree contains 13K+ files at typical scale. The previous
+        // implementation built a List of every file, sorted by Modified, then took
+        // the top N — peak ~5 MB of transient tuples + 13K syscalls split between
+        // GetLastWriteTime and FileInfo.Length.
+        //
+        // New approach: a bounded min-heap of size _recentLimit. We push every
+        // file's modification time; once full, the smallest (oldest) is evicted
+        // when a newer file arrives. Final heap holds exactly the top-N newest,
+        // O(N log limit) time and O(limit) memory.
+        //
+        // Bonus: one FileInfo per file (gives us LastWriteTime AND Length without
+        // a second syscall — the previous code did GetLastWriteTime + new FileInfo).
+
+        // limit==0 means "no cap" (legacy behaviour). Don't allow that on a tree
+        // this big; it brought the page to its knees. Force a soft ceiling.
+        int cap = _recentLimit > 0 ? _recentLimit : 5000;
+
+        // Heap value is (FullPath, PcName, RelPath, Modified, Size). Tuples here
+        // because local records aren't allowed inside method bodies.
+        var heap = new PriorityQueue<(string FullPath, string PcName, string RelPath, DateTime Modified, long Size), DateTime>(cap);
         foreach (var file in Directory.EnumerateFiles(basePath, "*", SearchOption.AllDirectories))
         {
-            // skip backup/temp dirs
             var rel   = Path.GetRelativePath(basePath, file);
             var parts = rel.Split(Path.DirectorySeparatorChar);
             if (parts.Any(p => p.StartsWith("_", StringComparison.Ordinal))) continue;
 
-            var modified = File.GetLastWriteTime(file);
-            var pcName   = parts[0];
-            var relPath  = string.Join("/", parts.Skip(1));
-            allFiles.Add((file, pcName, relPath, modified, new FileInfo(file).Length));
+            FileInfo fi;
+            try { fi = new FileInfo(file); }
+            catch { continue; } // file vanished mid-scan — skip
+            var modified = fi.LastWriteTime;
+            long size;
+            try { size = fi.Length; }
+            catch { continue; }
+
+            var pcName  = parts[0];
+            var relPath = string.Join("/", parts.Skip(1));
+            var entry   = (FullPath: file, PcName: pcName, RelPath: relPath, Modified: modified, Size: size);
+
+            if (heap.Count < cap)
+            {
+                heap.Enqueue(entry, modified);
+            }
+            else if (heap.TryPeek(out _, out var oldestKept) && modified > oldestKept)
+            {
+                heap.Dequeue();             // evict the oldest of the top-cap so far
+                heap.Enqueue(entry, modified);
+            }
+            // else: this file is older than every kept entry — discard without allocating.
         }
 
-        var sorted = allFiles.OrderByDescending(f => f.Modified);
-        var taken  = _recentLimit > 0 ? sorted.Take(_recentLimit) : sorted;
+        // Drain the heap into a list. Heap pops oldest-first, so reverse for newest-first.
+        var taken = new List<(string FullPath, string PcName, string RelPath, DateTime Modified, long Size)>(heap.Count);
+        while (heap.TryDequeue(out var e, out _)) taken.Add(e);
+        taken.Reverse();
 
         var groups = new Dictionary<string, List<RecentFile>>(StringComparer.OrdinalIgnoreCase);
         foreach (var f in taken)
@@ -3585,18 +3659,29 @@
     // ── Table loading ──────────────────────────────────────────────────────
     // Each group runs in its own Task with its own SQLite connection so all 7
     // groups are read in parallel (SQLite supports concurrent readers).
-    void LoadLiveTables()
+    void LoadLiveTables(bool forceFresh = false)
     {
-        var cs = DbCs();
+        // The cache service opens its own connection per call (cheap; SQLite connection
+        // pooling is built in). Each Load is at most one cache hit + one COUNT + one
+        // SELECT LIMIT 200. Three or four concurrent Diagnosis tabs share results.
+        //
+        // forceFresh=true is set by every admin-edit callsite so the post-write reload
+        // sees the actual mutation, not a 30-second-stale snapshot.
+        if (forceFresh) DiagCacheSvc.InvalidateAll();
 
-        // helper: open a fresh connection, load every item in the group, return the list
+        // Snapshot per-table-limit overrides ONCE on the UI thread. The Group(...) calls
+        // below run inside Task.Run on the thread pool — reading the live _tableLimit
+        // (plain Dictionary) concurrently with a UI-thread write would throw under
+        // contention. The snapshot is small (<30 entries) so the copy is free.
+        var limitSnapshot = new Dictionary<string, int>(_tableLimit);
+        int LimitFor(string tableName) =>
+            limitSnapshot.TryGetValue(tableName, out var l) ? l : DefaultRowLimit;
+
         List<TableData> Group(params (string t, string icon, string order, string[]? skip)[] items)
         {
-            using var conn = new SqliteConnection(cs);
-            conn.Open();
             var list = new List<TableData>(items.Length);
             foreach (var (t, icon, order, skip) in items)
-                list.Add(Load(conn, t, icon, order, skip));
+                list.Add(Load(t, icon, order, skip, LimitFor(t)));
             return list;
         }
 
@@ -3766,33 +3851,19 @@
         : colName.Equals("PasswordHash", StringComparison.OrdinalIgnoreCase) ? "..." + val[^8..]
         : val[..8] + "....";
 
-    TableData Load(SqliteConnection conn, string table, string icon,
-                   string orderBy = "", string[]? skipCols = null)
+    // Default cap: matches the UI's default 200-row render limit. Loading more
+    // than this from SQLite was the cause of ~50–80 MB per-circuit growth before we
+    // started using the singleton cache (DiagnosisCacheService).
+    const int DefaultRowLimit = 200;
+
+    // Wrapper around the singleton cache that returns the in-page TableData record
+    // (so the rest of this file doesn't have to know about TableSnapshot). The
+    // SqliteConnection arg is now unused — the cache opens its own — but keeping it
+    // would require touching every Group(...) call site, which we did anyway.
+    TableData Load(string table, string icon, string orderBy = "", string[]? skipCols = null, int limit = DefaultRowLimit)
     {
-        var skip = new HashSet<string>(skipCols ?? [], StringComparer.OrdinalIgnoreCase);
-        var cols = new List<string>();
-        var rows = new List<List<string>>();
-        try
-        {
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = $"SELECT * FROM {table} {orderBy}";
-            using var r = cmd.ExecuteReader();
-            for (int i = 0; i < r.FieldCount; i++)
-                if (!skip.Contains(r.GetName(i))) cols.Add(r.GetName(i));
-            while (r.Read())
-            {
-                var row = new List<string>();
-                for (int i = 0; i < r.FieldCount; i++)
-                    if (!skip.Contains(r.GetName(i)))
-                    {
-                        var val = r.IsDBNull(i) ? "" : r.GetValue(i).ToString() ?? "";
-                        row.Add(MaskValue(r.GetName(i), val));
-                    }
-                rows.Add(row);
-            }
-        }
-        catch (Exception ex) { cols = [$"Error: {ex.Message}"]; }
-        return new TableData(table, icon, cols, rows);
+        var snap = DiagCacheSvc.GetOrLoad(table, icon, orderBy, skipCols, limit);
+        return new TableData(snap.Name, snap.Icon, snap.Columns, snap.Rows, snap.TotalRows);
     }
 
     // ── Run Shrink PDF Service ──────────────────────────────────────────────
@@ -3882,7 +3953,7 @@
             _cedbError = $"Failed: {ex.Message}";
             Console.WriteLine($"[Diagnosis] Admin '{admin}' Create Empty DB Copy failed: {ex}");
         }
-        finally { _busy = false; LoadLiveTables(); }
+        finally { _busy = false; LoadLiveTables(forceFresh: true); }
     }
 
     void DoCreate()
@@ -3990,7 +4061,7 @@
             await Task.Run(() => DashSvc.ExecuteSessionDeletion(info, admin, FolderSvc));
             _delSessModal = false;
             _delSessInfo  = null;
-            LoadLiveTables();
+            LoadLiveTables(forceFresh: true);
         }
         catch (Exception ex)
         {
@@ -4720,7 +4791,7 @@
                 _pcfdTables     = [];
                 _pcfdFolders    = [];
                 LoadPcsRows();
-                LoadLiveTables();
+                LoadLiveTables(forceFresh: true);
                 StateHasChanged();
             }));
         }

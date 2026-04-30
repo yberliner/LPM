@@ -22,7 +22,14 @@ public class MaintenanceService : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Delay first run so startup finishes cleanly.
+        // Run an immediate one-shot prune so existing oversized tables drop straight
+        // after a deploy — without waiting 5 minutes (and another 24 hours after that)
+        // for the regular cycle. Wrapped in its own try so a startup failure here can't
+        // prevent the regular maintenance loop from running.
+        try { RunPruneJobs(); }
+        catch (Exception ex) { Console.WriteLine($"[Maintenance] Startup prune error: {ex.Message}"); }
+
+        // Delay subsequent runs so startup finishes cleanly.
         try { await Task.Delay(TimeSpan.FromMinutes(5), stoppingToken); }
         catch (OperationCanceledException) { return; }
 
@@ -39,13 +46,21 @@ public class MaintenanceService : BackgroundService
         }
     }
 
+    // Hard cap on sys_activity_log row count. The Diagnosis "Database" tab loads this
+    // table into RAM as a List<List<string>> per circuit; once it gets above ~10K rows
+    // the per-circuit memory cost climbs into double-digit MB. Capping at 5K keeps
+    // diagnostic value (a few days of activity for a busy install) without that cost.
+    private const int ActivityLogMaxRows = 5_000;
+
     private void RunPruneJobs()
     {
         // Retention windows — tune via these constants if needed.
         var jobs = new (string Label, string Sql)[]
         {
-            ("sys_activity_log > 90d",
-                "DELETE FROM sys_activity_log WHERE ActivityAt < datetime('now', '-90 days')"),
+            // Row-count cap (replaces the old 90-day rule — that let busy installs
+            // accumulate 100K+ rows). Keeps the latest 5K by Id, deletes the rest.
+            ($"sys_activity_log keep latest {ActivityLogMaxRows}",
+                $"DELETE FROM sys_activity_log WHERE Id NOT IN (SELECT Id FROM sys_activity_log ORDER BY Id DESC LIMIT {ActivityLogMaxRows})"),
             ("sys_file_audit > 365d",
                 "DELETE FROM sys_file_audit WHERE CreatedAt < datetime('now', '-365 days')"),
             ("sys_shrunk_files > 365d",
@@ -58,8 +73,10 @@ public class MaintenanceService : BackgroundService
                 "DELETE FROM sys_trusted_devices WHERE CreatedAt < datetime('now', '-180 days')"),
         };
 
+        Console.WriteLine($"[Maintenance] {DateTime.Now:yyyy-MM-dd HH:mm:ss} — RunPruneJobs starting ({jobs.Length} jobs)");
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
+        int totalDeleted = 0;
         foreach (var (label, sql) in jobs)
         {
             try
@@ -67,13 +84,19 @@ public class MaintenanceService : BackgroundService
                 using var cmd = conn.CreateCommand();
                 cmd.CommandText = sql;
                 var deleted = cmd.ExecuteNonQuery();
-                if (deleted > 0)
-                    Console.WriteLine($"[Maintenance] Pruned {deleted} row(s) — {label}");
+                totalDeleted += deleted;
+                // Always log every job — including the 0-deleted no-ops — so it's
+                // visible in journalctl/stdout that the maintenance pass is firing
+                // and which retention rule did or didn't trim anything.
+                Console.WriteLine(deleted > 0
+                    ? $"[Maintenance]   ✓ {label}: deleted {deleted} row(s)"
+                    : $"[Maintenance]   • {label}: nothing to delete");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Maintenance] Prune job failed ({label}): {ex.Message}");
+                Console.WriteLine($"[Maintenance]   ✗ {label}: FAILED — {ex.Message}");
             }
         }
+        Console.WriteLine($"[Maintenance] {DateTime.Now:yyyy-MM-dd HH:mm:ss} — RunPruneJobs done (total deleted: {totalDeleted})");
     }
 }
