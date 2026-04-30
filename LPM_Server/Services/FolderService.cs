@@ -2501,14 +2501,21 @@ public class FolderService
         var foldersToCheck = new HashSet<string?>(StringComparer.OrdinalIgnoreCase)
             { FindPcFolder(pcId), FindSoloPcFolder(pcId) };
 
+        // Detection covers PDFs and shared images (jpg/jpeg/png) so typed attachments
+        // saved via /share-image (e.g. Instruct.jpg) propagate to My Auditing Status
+        // exactly like their PDF counterparts.
+        var detectExts = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { ".pdf", ".jpg", ".jpeg", ".png" };
+
         foreach (var folder in foldersToCheck)
         {
             if (folder == null) continue;
             var wsPath = Path.Combine(folder, "WorkSheets");
             if (!Directory.Exists(wsPath)) continue;
 
-            foreach (var file in Directory.EnumerateFiles(wsPath, prefix + "*.pdf"))
+            foreach (var file in Directory.EnumerateFiles(wsPath, prefix + "*"))
             {
+                if (!detectExts.Contains(Path.GetExtension(file))) continue;
                 var lower = Path.GetFileName(file).ToLowerInvariant();
                 if      (lower.Contains("pinksheet")) result.Add("PinkSheet");
                 else if (lower.Contains("instruct"))  result.Add("Instruct");

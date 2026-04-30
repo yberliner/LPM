@@ -41,6 +41,15 @@
                     <div class="si-success-item">
                         <i class="ri-checkbox-circle-fill" style="color:#22c55e;font-size:1.15rem;"></i>
                         <div>
+                            <div style="font-weight:700;color:#0f172a;">Type</div>
+                            <div class="si-sub-line">
+                                <span class="si-type-pill si-type-@(_successTypeKey.ToLower())">@_successTypeLabel</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="si-success-item">
+                        <i class="ri-checkbox-circle-fill" style="color:#22c55e;font-size:1.15rem;"></i>
+                        <div>
                             <div style="font-weight:700;color:#0f172a;">Saved as</div>
                             <div class="si-sub-line" style="word-break:break-all;">@_successSavedName</div>
                         </div>
@@ -82,7 +91,7 @@
 
             @if (_step == 1)
             {
-                <div class="si-step-label">Step 1 · Select PC</div>
+                <div class="si-step-label">Step 1 of 3 · Select PC</div>
                 @if (_pcs.Count == 0)
                 {
                     <div class="si-empty">
@@ -127,7 +136,7 @@
                         <i class="ri-arrow-left-s-line"></i>Change
                     </button>
                 </div>
-                <div class="si-step-label">Step 2 · Select session / report (last 5)</div>
+                <div class="si-step-label">Step 2 of 3 · Select session / report (last 5)</div>
                 @if (_recentSessions.Count == 0)
                 {
                     <div class="si-empty">
@@ -158,6 +167,43 @@
                 }
             }
             else if (_step == 3)
+            {
+                <div class="si-pc-pill">
+                    <i class="ri-user-line"></i>
+                    <span>@_selectedPcName</span>
+                    @if (_selectedSolo) { <span class="si-solo-badge">Solo</span> }
+                    <span style="color:#94a3b8;">·</span>
+                    <i class="ri-file-paper-2-line" style="color:#0ea5e9;"></i>
+                    <span style="font-weight:600;">@_selectedSessionName</span>
+                    <button class="si-back-btn" @onclick="BackToStep2">
+                        <i class="ri-arrow-left-s-line"></i>Change
+                    </button>
+                </div>
+                <div class="si-step-label">Step 3 of 3 · Choose attachment type</div>
+                <div class="si-type-grid">
+                    <button class="si-type-card si-type-normal" @onclick='() => OnTypeSelected("Normal", "Normal")'>
+                        <i class="ri-attachment-2"></i>
+                        <div class="si-type-name">Normal</div>
+                        <div class="si-type-desc">Plain attachment</div>
+                    </button>
+                    <button class="si-type-card si-type-pinksheet" @onclick='() => OnTypeSelected("PinkSheet", "Pink Sheet")'>
+                        <i class="ri-file-add-line"></i>
+                        <div class="si-type-name">Pink Sheet</div>
+                        <div class="si-type-desc">Pink-page report</div>
+                    </button>
+                    <button class="si-type-card si-type-cramming" @onclick='() => OnTypeSelected("Cramming", "Cramming")'>
+                        <i class="ri-file-add-line"></i>
+                        <div class="si-type-name">Cramming</div>
+                        <div class="si-type-desc">Cramming notes</div>
+                    </button>
+                    <button class="si-type-card si-type-instruct" @onclick='() => OnTypeSelected("Instruct", "Instruct")'>
+                        <i class="ri-file-add-line"></i>
+                        <div class="si-type-name">Instruct</div>
+                        <div class="si-type-desc">Shows in My Auditing Status</div>
+                    </button>
+                </div>
+            }
+            else if (_step == 4)
             {
                 <div class="si-saving">
                     <span class="spinner-border" style="color:#8b5cf6;width:32px;height:32px;border-width:3px;"></span>
@@ -250,6 +296,51 @@
     .si-empty-title { font-size: 1.1rem; font-weight: 700; color: #475569; }
     .si-empty-sub { font-size: .85rem; color: #94a3b8; margin-top: 6px; }
 
+    /* ── Type grid (Step 3) ── */
+    .si-type-grid {
+        display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;
+        margin-top: 6px;
+    }
+    .si-type-card {
+        position: relative;
+        border: 2px solid; border-radius: 14px;
+        padding: 18px 14px; min-height: 120px;
+        background: #fff; cursor: pointer;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 6px; text-align: center;
+        transition: transform .12s ease, box-shadow .12s ease, background .12s ease;
+        font: inherit; color: inherit;
+    }
+    .si-type-card:hover  { transform: translateY(-3px); box-shadow: 0 10px 24px rgba(0,0,0,.12); }
+    .si-type-card:active { transform: translateY(0); }
+    .si-type-card i      { font-size: 2rem; }
+    .si-type-name { font-size: 1rem; font-weight: 800; }
+    .si-type-desc { font-size: .74rem; color: #64748b; }
+
+    .si-type-normal     { border-color: #94a3b8; }
+    .si-type-normal i   { color: #475569; }
+    .si-type-normal:hover     { background: #f1f5f9; }
+    .si-type-pinksheet  { border-color: #ec4899; }
+    .si-type-pinksheet i { color: #ec4899; }
+    .si-type-pinksheet:hover  { background: #fdf2f8; }
+    .si-type-cramming   { border-color: #34d399; }
+    .si-type-cramming i { color: #10b981; }
+    .si-type-cramming:hover   { background: #ecfdf5; }
+    .si-type-instruct   { border-color: #60a5fa; }
+    .si-type-instruct i { color: #2563eb; }
+    .si-type-instruct:hover   { background: #eff6ff; }
+
+    /* ── Type pill (success card) ── */
+    .si-type-pill {
+        display: inline-block; padding: 3px 10px;
+        border-radius: 999px; font-size: .78rem; font-weight: 700;
+        letter-spacing: .02em;
+    }
+    .si-type-pill.si-type-normal    { background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; }
+    .si-type-pill.si-type-pinksheet { background: #fce7f3; color: #9d174d; border: 1px solid #f9a8d4; }
+    .si-type-pill.si-type-cramming  { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
+    .si-type-pill.si-type-instruct  { background: #dbeafe; color: #1e3a8a; border: 1px solid #93c5fd; }
+
     .si-saving { padding: 30px 16px; text-align: center; }
     .si-saving-text { margin-top: 12px; font-size: .92rem; color: #475569; font-weight: 600; }
 
@@ -322,8 +413,9 @@
         animation: si-slide .45s ease both;
     }
     .si-success-item:nth-child(1) { animation-delay: .30s; }
-    .si-success-item:nth-child(2) { animation-delay: .45s; }
-    .si-success-item:nth-child(3) { animation-delay: .60s; }
+    .si-success-item:nth-child(2) { animation-delay: .42s; }
+    .si-success-item:nth-child(3) { animation-delay: .54s; }
+    .si-success-item:nth-child(4) { animation-delay: .66s; }
     @@keyframes si-slide { from { opacity:0; transform: translateX(-14px); } to { opacity:1; transform: translateX(0); } }
     .si-sub-line { font-size: .82rem; color: #64748b; margin-top: 2px; word-break: break-all; }
 
@@ -367,6 +459,7 @@
         .si-check { width: 78px; height: 78px; }
         .si-check i { font-size: 2.6rem; }
         .si-ring { width: 110px; height: 110px; }
+        .si-type-grid { grid-template-columns: 1fr; }
     }
 </style>
 
@@ -396,7 +489,13 @@
     // Recent sessions for selected PC
     List<(int SessionId, string Name, string CreatedAt)> _recentSessions = new();
 
+    // Selected session (Step 2 → Step 3 hand-off)
+    int    _selectedSessionId;
+    string _selectedSessionName = "";
+    string _selectedSessionDate = "";
+
     string _error = "";
+    bool _saving;
 
     // Success modal state
     bool   _showSuccess;
@@ -408,6 +507,8 @@
     string _successOriginalName = "";
     int    _successSize;
     string _successFormat = "";
+    string _successTypeKey = "";
+    string _successTypeLabel = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -466,23 +567,63 @@
         _recentSessions.Clear();
     }
 
-    async Task OnSessionSelected(int sessionId, string sessionName, string sessionCreatedAt)
+    void OnSessionSelected(int sessionId, string sessionName, string sessionCreatedAt)
     {
         _error = "";
-        _step = 3;
+        _selectedSessionId   = sessionId;
+        _selectedSessionName = sessionName;
+        _selectedSessionDate = sessionCreatedAt;
+        _step = 3;   // advance to Type picker (the save now happens in OnTypeSelected)
+    }
+
+    void BackToStep2()
+    {
+        _step = 2;
+        _selectedSessionId = 0;
+        _selectedSessionName = "";
+        _selectedSessionDate = "";
+    }
+
+    async Task OnTypeSelected(string typeKey, string typeLabel)
+    {
+        if (_saving) return;            // guard against double-tap before re-render
+        _saving = true;
+        _error = "";
+
+        // Re-check permission right before the write
+        if (_personId.HasValue && !DashSvc.CanAccessPcFolder(_personId.Value, _selectedPcId, _username))
+        {
+            _error = "You do not have permission to attach to this PC.";
+            _step = 2;
+            _saving = false;
+            StateHasChanged();
+            return;
+        }
+
+        _step = 4;   // saving spinner
         StateHasChanged();
 
         try
         {
-            // Compute "picture_N.{ext}" by inspecting existing attachments alongside this session
             string ext = _imageExt;
-            string baseName = ComputeNextPictureName(_selectedPcId, sessionName, ext, _selectedSolo);
+            // Filename per type. Normal preserves the existing picture_N numbering;
+            // typed cases use "{Type}.{ext}" so GetSessionAttachmentTypes substring-match
+            // flags PinkSheet/Cramming/Instruct just like in the PDF flow.
+            string baseName = typeKey.ToLowerInvariant() switch
+            {
+                "pinksheet" => $"PinkSheet.{ext}",
+                "instruct"  => $"Instruct.{ext}",
+                "cramming"  => $"Cramming.{ext}",
+                _           => ComputeNextPictureName(_selectedPcId, _selectedSessionName, ext, _selectedSolo)
+            };
+
             var saved = await Task.Run(() =>
-                FolderSvc.SaveAttachment(_selectedPcId, sessionName, baseName, _imageBytes!, _selectedSolo));
+                FolderSvc.SaveAttachment(_selectedPcId, _selectedSessionName, baseName, _imageBytes!, _selectedSolo));
             if (saved == null)
             {
                 _error = "Failed to save the attachment (folder not found).";
-                _step = 2;
+                _step = 3;
+                _saving = false;
                 StateHasChanged();
                 return;
             }
@@ -492,20 +633,23 @@
 
             _successPcName       = _selectedPcName;
             _successIsSolo       = _selectedSolo;
-            _successSessionName  = sessionName;
-            _successSessionDate  = FormatDateShort(sessionCreatedAt);
+            _successSessionName  = _selectedSessionName;
+            _successSessionDate  = FormatDateShort(_selectedSessionDate);
             _successSavedName    = saved;
             _successOriginalName = _originalFileName;
             _successSize         = _imageBytes?.Length ?? 0;
             _successFormat       = ext;
+            _successTypeKey      = typeKey;
+            _successTypeLabel    = typeLabel;
             _showSuccess         = true;
             StateHasChanged();
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[ShareImage] OnSessionSelected failed: {ex}");
+            Console.WriteLine($"[ShareImage] OnTypeSelected failed: {ex}");
             _error = $"Save failed: {ex.Message}";
-            _step = 2;
+            _step = 3;
+            _saving = false;
             StateHasChanged();
         }
     }

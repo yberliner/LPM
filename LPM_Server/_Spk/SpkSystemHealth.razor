@@ -2,9 +2,11 @@
 @using System.Diagnostics
 @using System.IO
 @using System.Runtime.InteropServices
+@using Microsoft.JSInterop
 @using LPM.Services
 @inject MemoryWatchdogService MemSvc
 @inject CircuitTrackingService Circuits
+@inject IJSRuntime JS
 
 <div class="shg-row">
     @* CPU *@
@@ -570,6 +572,14 @@
     }
 </style>
 
+<script>
+    // Sidecar data for the rich ApexChart tooltips (memory + circuits charts).
+    // Populated by C# via IJSRuntime after each ReadMetrics tick.
+    window.lpmHealth = window.lpmHealth || {};
+    window.lpmHealth.setMemSamples   = function (a) { window.lpmHealth.memSamples   = a || []; };
+    window.lpmHealth.setActiveUsers  = function (a) { window.lpmHealth.activeUsers  = a || []; };
+</script>
+
 @code {
     System.Threading.Timer? _timer;
     double _cpuPercent;
@@ -676,7 +686,9 @@
         o.Yaxis![0].Min = 0;
         o.Yaxis![0].Max = 100;
         o.Yaxis![0].Labels!.Formatter = "function(v){ return Math.round(v) + '%'; }";
-        o.Tooltip!.Y = new TooltipY { Formatter = "function(v){ return v.toFixed(1) + '%'; }" };
+        // Rich custom tooltip — pulls extra fields (UsedMB / TotalMB / circuits / live users)
+        // from window.lpmHealth.memSamples + window.lpmHealth.activeUsers, kept in sync by C#.
+        o.Tooltip!.Custom = MemoryTooltipJs;
         return o;
     }
 
@@ -685,15 +697,69 @@
         var o = MakeBaseOptions("#f59e0b");
         // Two series for circuits: active (amber) + disconnected (slate).
         o.Colors = new List<string> { "#f59e0b", "#64748b" };
-        o.Stroke!.Width = 2;
+        o.Stroke!.Width = 2.5;
         o.Yaxis![0].Min = 0;
         o.Yaxis![0].DecimalsInFloat = 0;
         o.Legend = new Legend { Show = true, Position = LegendPosition.Top, Labels = new LegendLabels { Colors = "#94a3b8" } };
-        // Plain lines (no gradient fill) so the two series stay visually distinct.
-        o.Fill = new Fill { Type = new List<FillType> { FillType.Solid }, Opacity = new Opacity(0d) };
-        o.Tooltip!.Y = new TooltipY { Formatter = "function(v){ return v + ' circuits'; }" };
+        // Hide the under-line fill (so two overlapping series stay readable) without
+        // nuking the stroke. Using a gradient with zero opacities — Solid + Opacity(0)
+        // was making the whole series invisible until hover.
+        o.Fill = new Fill
+        {
+            Type     = new List<FillType> { FillType.Gradient },
+            Gradient = new FillGradient { OpacityFrom = 0, OpacityTo = 0 }
+        };
+        // Small markers so data points are visible even when there are only a few samples
+        // (history fills slowly — one sample per cycle). Hover marker stays larger.
+        o.Markers = new Markers { Size = 3, StrokeWidth = 0, Hover = new MarkersHover { Size = 6 } };
+        // Rich custom tooltip — also explains what "Disconnected" means.
+        o.Tooltip!.Custom = CircuitsTooltipJs;
         return o;
     }
+
+    // ── Chart tooltip JS — both charts read the sidecar data published by OnAfterRenderAsync. ──
+    // Memory tooltip: time, used MB / total MB (with %), active + disconnected circuits, live users.
+    const string MemoryTooltipJs = @"function({series, seriesIndex, dataPointIndex, w}) {
+  var L = (window.lpmHealth && window.lpmHealth.memSamples) || [];
+  var s = L[dataPointIndex] || {};
+  var users = (window.lpmHealth && window.lpmHealth.activeUsers) || [];
+  var t = s.utc ? new Date(s.utc).toLocaleString() : '';
+  var fmt = function(n){ return (n!=null && !isNaN(n)) ? n.toLocaleString() : '?'; };
+  var esc = function(x){ return String(x==null?'':x).replace(/[&<>""']/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','""':'&quot;',""'"":'&#39;'})[c]; }); };
+  var pct = (s.pct!=null) ? s.pct.toFixed(1) : '?';
+  var html = ''
+    + '<div style=""padding:8px 12px;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:.82rem;min-width:240px;"">'
+    +   '<div style=""font-weight:700;margin-bottom:4px;color:#94a3b8;"">' + esc(t) + '</div>'
+    +   '<div>Memory: <strong>' + fmt(s.usedMB) + ' / ' + fmt(s.totalMB) + ' MB</strong> (' + pct + '%)</div>'
+    +   '<div>Active circuits: <strong>' + fmt(s.active) + '</strong></div>'
+    +   '<div>Disconnected: <strong>' + fmt(s.disc) + '</strong> <span style=""color:#94a3b8;font-size:.85em;"">(retained ≤5 min after SignalR drop)</span></div>'
+    +   (users.length > 0
+        ? '<div style=""margin-top:6px;color:#94a3b8;""><strong>Live users:</strong> ' + users.map(esc).join(', ') + '</div>'
+        : '')
+    + '</div>';
+  return html;
+}";
+
+    // Circuits tooltip: focuses on active vs disconnected counts, with the same retention note.
+    const string CircuitsTooltipJs = @"function({series, seriesIndex, dataPointIndex, w}) {
+  var L = (window.lpmHealth && window.lpmHealth.memSamples) || [];
+  var s = L[dataPointIndex] || {};
+  var users = (window.lpmHealth && window.lpmHealth.activeUsers) || [];
+  var t = s.utc ? new Date(s.utc).toLocaleString() : '';
+  var fmt = function(n){ return (n!=null && !isNaN(n)) ? n.toLocaleString() : '?'; };
+  var esc = function(x){ return String(x==null?'':x).replace(/[&<>""']/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','""':'&quot;',""'"":'&#39;'})[c]; }); };
+  var html = ''
+    + '<div style=""padding:8px 12px;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:.82rem;min-width:240px;"">'
+    +   '<div style=""font-weight:700;margin-bottom:4px;color:#94a3b8;"">' + esc(t) + '</div>'
+    +   '<div><span style=""color:#f59e0b;"">●</span> Active: <strong>' + fmt(s.active) + '</strong></div>'
+    +   '<div><span style=""color:#64748b;"">●</span> Disconnected: <strong>' + fmt(s.disc) + '</strong></div>'
+    +   '<div style=""margin-top:4px;color:#94a3b8;font-size:.78rem;"">Disconnected = SignalR connection dropped (laptop closed, network blip, tab backgrounded). Blazor keeps the circuit in memory for up to 5 min in case the user reconnects; after that it is disposed.</div>'
+    +   (users.length > 0
+        ? '<div style=""margin-top:6px;color:#94a3b8;""><strong>Live users:</strong> ' + users.map(esc).join(', ') + '</div>'
+        : '')
+    + '</div>';
+  return html;
+}";
 
     static ApexChartOptions<MemorySample> BuildCacheChartOptions()
     {
@@ -711,6 +777,8 @@
     string? _circOldestAge;
     long _circAvgBytesEach;          // GC heap ÷ active circuits — rough but free signal
     List<(string User, int Count)> _circTopUsers = new();
+    List<string> _activeUsernames = new();   // distinct usernames with at least one connected circuit
+    volatile bool _pushNeeded = true;        // marks "JS sidecar data is stale — push on next render"
 
     // Action buttons (Force GC / Snapshot top types)
     bool   _actBusy;
@@ -757,6 +825,31 @@
         _serverStarted = MemSvc.ProcessStartedAt;
         _uptime        = DateTime.Now - _serverStarted;
         if (_uptime < TimeSpan.Zero) _uptime = TimeSpan.Zero;
+        _pushNeeded    = true;   // sidecar data for chart tooltips is stale — push on next render
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Keep the JS-side sidecar data (memSamples + activeUsers) in sync with the C# state
+        // so the rich chart tooltips can read fresh values. Cheap when there's nothing to push.
+        if (!_pushNeeded) return;
+        _pushNeeded = false;
+        try
+        {
+            var samples = _memHistory.Select(s => new
+            {
+                utc     = s.Utc.ToString("o"),
+                pct     = s.UsedPct,
+                usedMB  = s.UsedMB,
+                totalMB = s.TotalMB,
+                active  = s.ActiveCircuits,
+                disc    = s.DisconnectedCircuits,
+            }).ToArray();
+            await JS.InvokeVoidAsync("lpmHealth.setMemSamples",  samples);
+            await JS.InvokeVoidAsync("lpmHealth.setActiveUsers", _activeUsernames);
+        }
+        catch (JSDisconnectedException) { /* circuit closing — ignore */ }
+        catch (TaskCanceledException)   { /* circuit closing — ignore */ }
     }
 
     void ReadDeepMemoryAndCircuits()
@@ -781,6 +874,12 @@
                 .Select(g => (User: g.Key, Count: g.Count()))
                 .OrderByDescending(t => t.Count)
                 .Take(5)
+                .ToList();
+            _activeUsernames = snap
+                .Where(c => c.IsConnected)
+                .Select(c => string.IsNullOrWhiteSpace(c.Username) ? "(anon)" : c.Username!)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(u => u, StringComparer.OrdinalIgnoreCase)
                 .ToList();
         }
         catch { /* circuit registry unavailable — leave defaults */ }

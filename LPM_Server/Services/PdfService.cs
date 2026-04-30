@@ -2341,6 +2341,63 @@ public class PdfService
         }).GeneratePdf();
     }
 
+    /// <summary>
+    /// Single-page record documenting that a folder-summary entry was added — used as the
+    /// "billable artifact" when the user checks "Bill the user" in Actions → Write to Folder
+    /// Summary. Header strip lists Date / Auditor / Admin time billed; body renders the
+    /// rich-text content the user typed (same Quill HTML as the actual folder-summary row).
+    /// </summary>
+    public byte[] GenerateFsRecordPdf(string pcName, DateOnly date, string auditorName, string adminTimeHHmm, string contentHtml)
+    {
+        QuestPDF.Settings.License = LicenseType.Community;
+        return Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4);
+                page.Margin(30);
+                page.DefaultTextStyle(x => x.FontSize(12).FontColor("#1a1a1a").FontFamily("DejaVu Sans", "Noto Sans Hebrew"));
+                page.Content().Column(col =>
+                {
+                    col.Spacing(8);
+
+                    // Title
+                    col.Item().Text("Folder Summary Record")
+                        .FontSize(18).Bold().FontColor("#0f172a");
+                    col.Item().Text($"PC: {pcName}").FontSize(12).FontColor("#475569");
+
+                    // Header strip
+                    col.Item().PaddingTop(6).Border(1).BorderColor("#cbd5e1").Padding(8).Row(row =>
+                    {
+                        row.RelativeItem().Column(c =>
+                        {
+                            c.Item().Text("Date").FontSize(9).FontColor("#64748b");
+                            c.Item().Text(date.ToString("yyyy-MM-dd")).FontSize(12).Bold();
+                        });
+                        row.RelativeItem().Column(c =>
+                        {
+                            c.Item().Text("Auditor").FontSize(9).FontColor("#64748b");
+                            c.Item().Text(string.IsNullOrWhiteSpace(auditorName) ? "—" : auditorName).FontSize(12).Bold();
+                        });
+                        row.RelativeItem().Column(c =>
+                        {
+                            c.Item().Text("Admin time billed").FontSize(9).FontColor("#64748b");
+                            c.Item().Text(string.IsNullOrWhiteSpace(adminTimeHHmm) ? "—" : adminTimeHHmm).FontSize(12).Bold().FontColor("#0f766e");
+                        });
+                    });
+
+                    // Body — what the user wrote
+                    col.Item().PaddingTop(12).Text("Folder summary content").FontSize(10).FontColor("#64748b");
+                    col.Item().PaddingTop(2).Border(1).BorderColor("#e2e8f0").Padding(10).Column(body =>
+                    {
+                        if (!string.IsNullOrWhiteSpace(contentHtml))
+                            RenderHtmlBlock(body, contentHtml, 1.5f);
+                    });
+                });
+            });
+        }).GeneratePdf();
+    }
+
     private static List<(string Text, PdfSharpCore.Drawing.XColor? Color)> ArfSummaryLines(string html)
     {
         var result = new List<(string, PdfSharpCore.Drawing.XColor?)>();

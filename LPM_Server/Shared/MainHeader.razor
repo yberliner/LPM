@@ -3597,6 +3597,33 @@
                         <div id="act-summary-editor-wrap">
                             <div id="act-summary-editor"></div>
                         </div>
+
+                        @* ── Bill the user (mirrors "Bill the PC" toggle in Memo wizard) ── *@
+                        <button type="button"
+                                class="memo-also-summary-toggle d-flex align-items-center gap-2 mt-3"
+                                @onclick="ToggleActSummaryBill">
+                            <span class="memo-also-summary-box @(_actSummaryBillUser ? "memo-also-summary-box-on" : "")">
+                                @if (_actSummaryBillUser)
+                                {
+                                    <i class="ri-check-line"></i>
+                                }
+                            </span>
+                            <span class="memo-also-summary-text">
+                                <i class="ri-money-dollar-circle-line me-1" style="color:#10b981;"></i>Bill the user
+                            </span>
+                        </button>
+                        @if (_actSummaryBillUser)
+                        {
+                            <div class="d-flex align-items-center gap-2 mt-2">
+                                <AdminTimeInput @bind-Value="_actSummaryBillAdminTime" />
+                            </div>
+                            @if (!string.IsNullOrEmpty(_actSummaryBillError))
+                            {
+                                <div class="alert alert-warning d-flex align-items-center gap-2 mt-2 mb-0 py-2" style="font-size:.82rem;">
+                                    <i class="ri-error-warning-line"></i>@_actSummaryBillError
+                                </div>
+                            }
+                        }
                     }
                 </div>
                 @if (_actionSummaryStep == 2)
@@ -3604,7 +3631,7 @@
                     <div class="modal-footer py-2" style="border-color:#e2e8f0; background:#fff !important;">
                         <button class="btn btn-sm btn-outline-secondary" @onclick="() => CloseActionSummary()">@LS.T("common.cancel")</button>
                         <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
-                                disabled="@_actionSummaryBusy"
+                                disabled="@(_actionSummaryBusy || (_actSummaryBillUser && string.IsNullOrWhiteSpace(_actSummaryBillAdminTime)))"
                                 @onclick="SubmitActionSummary">
                             @if (_actionSummaryBusy)
                             {
@@ -9718,6 +9745,10 @@ string _actionPcSearch = "";
     string _actionPermMsg = "";
     string _actionSuccessMsg = "";
     bool   _actionSummaryBusy;
+    // Bill-the-user fields (mirrors the "Bill the PC" toggle in Add Misc Report)
+    bool   _actSummaryBillUser;
+    string _actSummaryBillAdminTime = "";
+    string _actSummaryBillError     = "";
     List<DashboardService.ApprovedPc> _actionAllPcs = [];   // Open Folder + Write to Folder Summary (AllowAll respected)
 
     // ── File History state ──
@@ -10655,6 +10686,12 @@ string _actionPcSearch = "";
         _actionPermMsg = "";
         _actionSuccessMsg = "";
         _actionSummaryBusy = false;
+        // Bill-the-user fields — reset every time the modal opens so a stale state from a
+        // prior invocation can't leak into this submit (incl. the shared >20-min confirm flag).
+        _actSummaryBillUser       = false;
+        _actSummaryBillAdminTime  = "";
+        _actSummaryBillError      = "";
+        _adminTimeConfirmed       = false;
         _showActionSummary = true;
 
         if (_isSoloUser)
@@ -10715,9 +10752,70 @@ string _actionPcSearch = "";
         });
     }
 
+    void ToggleActSummaryBill()
+    {
+        _actSummaryBillUser = !_actSummaryBillUser;
+        _actSummaryBillError = ""; // clear any stale validation error from a previous attempt
+    }
+
+    /// <summary>
+    /// Validate and consume the "Bill the user" admin time for the Write-to-FS submit.
+    /// Mirrors <see cref="TryConsumeMemoBillAdminTime"/> against the FS-specific fields.
+    /// Returns false if validation failed or the >20-min confirm modal was raised — caller aborts.
+    /// </summary>
+    bool TryConsumeFsBillAdminTime(Func<Task> onConfirmed, out int adminSec, out string formattedAdminTime)
+    {
+        adminSec = 0;
+        formattedAdminTime = "";
+        _actSummaryBillError = "";
+        if (!_actSummaryBillUser) return true;
+
+        if (string.IsNullOrWhiteSpace(_actSummaryBillAdminTime))
+        {
+            _actSummaryBillError = "Please enter an admin time (h:mm).";
+            return false;
+        }
+
+        var formatted = FormatArfTime(_actSummaryBillAdminTime.Trim());
+        if (string.IsNullOrEmpty(formatted))
+        {
+            _actSummaryBillError = "Please enter a valid admin time (h:mm).";
+            return false;
+        }
+        var mins = ArfTimeToMinutes(formatted);
+        if (mins <= 0)
+        {
+            _actSummaryBillError = "Admin time must be greater than 0:00.";
+            return false;
+        }
+        if (mins > 20 && !_adminTimeConfirmed)
+        {
+            _pendingAdminTime = formatted;
+            _adminTimeConfirmContinuation = onConfirmed;
+            _showAdminTimeConfirm = true;
+            return false;
+        }
+        _adminTimeConfirmed = false;
+        _adminTimeConfirmContinuation = null;
+        formattedAdminTime = formatted;
+        adminSec = mins * 60;
+        return true;
+    }
+
     async Task SubmitActionSummary()
     {
         if (!_msgUserId.HasValue || _actionSummaryPcId == 0) return;
+
+        // Validate Bill-the-user admin time first. If the >20-min confirm modal needs to show,
+        // the helper sets _adminTimeConfirmContinuation = SubmitActionSummary and returns false;
+        // when the user clicks "Yes, save it", the modal calls our continuation which re-enters here.
+        if (!TryConsumeFsBillAdminTime(SubmitActionSummary, out var capturedBillAdminSec, out var capturedBillAdminTime))
+        {
+            StateHasChanged();
+            return;
+        }
+        var capturedBillUser = _actSummaryBillUser;
+
         _actionSummaryBusy = true;
         _actionSuccessMsg = "";
         StateHasChanged();
@@ -10730,9 +10828,35 @@ string _actionPcSearch = "";
                 _actionPermMsg = "Please write something before saving.";
                 return;
             }
-            DashSvc.AddFolderSummary(null, _actionSummaryPcId, _actionSummaryIsSoloFolder ? null : _msgUserId.Value, html);
+
+            int? linkedSessionId = null;
+            if (capturedBillUser)
+            {
+                // Generate a 1-page "Folder Summary Record" PDF, save to WorkSheets, and create
+                // a billable session row. The session links the FS row so the folder-summary
+                // list display picks up s.AdminSeconds via the JOIN (same trick as the memo flow).
+                var today      = DateOnly.FromDateTime(DateTime.Today);
+                var auditorName = string.IsNullOrWhiteSpace(_logUsername) ? "(unknown)" : _logUsername;
+                var pdfBytes   = PdfSvc.GenerateFsRecordPdf(_actionSummaryPcName, today, auditorName, capturedBillAdminTime, html);
+                var fileName   = $"{today:yyMMdd} FS Record";
+                var savedName  = await Task.Run(() =>
+                    FolderSvc.SaveMemoFile(_actionSummaryPcId, fileName, pdfBytes, _actionSummaryIsSoloFolder));
+
+                linkedSessionId = DashSvc.AddMemoSession(
+                    auditorId:       _msgUserId.Value,
+                    pcId:            _actionSummaryPcId,
+                    name:            savedName,
+                    date:            today,
+                    solo:            _actionSummaryIsSoloFolder,
+                    createdByUserId: _currentCoreUserId,
+                    adminSeconds:    capturedBillAdminSec,
+                    isFreeSession:   false);
+                Console.WriteLine($"[MainHeader] FS Record billed for PC {_actionSummaryPcId} ({_actionSummaryPcName}) — admin={capturedBillAdminTime} sessionId={linkedSessionId} by '{_logUsername}'");
+            }
+
+            DashSvc.AddFolderSummary(linkedSessionId, _actionSummaryPcId, _actionSummaryIsSoloFolder ? null : _msgUserId.Value, html);
             DashSvc.NotifyDataChanged();
-            Console.WriteLine($"[MainHeader] Folder summary saved for PC {_actionSummaryPcId} by '{_logUsername}'");
+            Console.WriteLine($"[MainHeader] Folder summary saved for PC {_actionSummaryPcId} by '{_logUsername}' (billed={capturedBillUser})");
             _actionSummaryBusy = false;
             _actionSummaryStep = 0; // show success screen
             StateHasChanged();
