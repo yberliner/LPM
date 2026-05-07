@@ -119,6 +119,77 @@ public record UserSalaryGroup(int PersonId, string FullName, List<SalarySessionR
         }
         return map;
     }
+
+    /// <summary>Returns the individual rows that sum to a single cell value in the bottom summary.
+    /// category = "AuditingPlusCsSolo" | "Csing" | "Commission" | "Total".
+    /// orgFilter = null → all organizations.</summary>
+    public List<BreakdownItem> CellItems(int? orgFilter, string currency, string category)
+    {
+        bool wantAud  = category == "AuditingPlusCsSolo" || category == "Total";
+        bool wantCs   = category == "Csing"               || category == "Total";
+        bool wantComm = category == "Commission"          || category == "Total";
+
+        var list = new List<BreakdownItem>();
+
+        if (wantAud)
+        {
+            foreach (var s in Sessions)
+                if (s.IsApproved && !s.IsFree && s.Currency == currency
+                    && (orgFilter == null || s.OrgId == orgFilter))
+                {
+                    var hours = s.DurationSec / 3600.0;
+                    var rate  = s.RateCentsPerHour / 100;
+                    list.Add(new BreakdownItem(
+                        s.Date, "Auditing", s.PcName,
+                        $"{(string.IsNullOrEmpty(s.Name) ? "Session" : s.Name)} · {hours:F2}h × {rate} {currency}/hr",
+                        s.PaymentCents, s.Currency, s.OrgId, s.OrgName));
+                }
+            foreach (var c in CsReviews)
+                if (c.IsSolo && c.IsApproved && !c.IsFree && c.Currency == currency
+                    && (orgFilter == null || c.OrgId == orgFilter))
+                {
+                    var hours = c.DurationSec / 3600.0;
+                    var rate  = c.RateCentsPerHour / 100;
+                    list.Add(new BreakdownItem(
+                        c.Date, "CS Solo", c.PcName,
+                        $"{(string.IsNullOrEmpty(c.Name) ? "CS Solo" : c.Name)} · {hours:F2}h × {rate} {currency}/hr",
+                        c.PaymentCents, c.Currency, c.OrgId, c.OrgName));
+                }
+        }
+
+        if (wantCs)
+        {
+            foreach (var c in CsReviews)
+                if (!c.IsSolo && c.IsApproved && !c.IsFree && c.Currency == currency
+                    && (orgFilter == null || c.OrgId == orgFilter))
+                {
+                    var hours = c.DurationSec / 3600.0;
+                    var rate  = c.RateCentsPerHour / 100;
+                    list.Add(new BreakdownItem(
+                        c.Date, "CSing", c.PcName,
+                        $"{(string.IsNullOrEmpty(c.Name) ? "CS Review" : c.Name)} · {hours:F2}h × {rate} {currency}/hr",
+                        c.PaymentCents, c.Currency, c.OrgId, c.OrgName));
+                }
+        }
+
+        if (wantComm)
+        {
+            foreach (var k in Commissions)
+                if (k.Currency == currency
+                    && (orgFilter == null || k.OrgId == orgFilter))
+                {
+                    var date = !string.IsNullOrEmpty(k.Detail.PaymentDate)
+                        ? k.Detail.PaymentDate
+                        : k.Detail.PurchaseDate;
+                    list.Add(new BreakdownItem(
+                        date, "Commission", k.PcName,
+                        $"{k.Role} — {k.Category} · {k.Detail.ItemName} · {k.Detail.CommissionPct:F1}%",
+                        k.AmountCents, k.Currency, k.OrgId, k.OrgName));
+                }
+        }
+
+        return list.OrderBy(b => b.Date).ToList();
+    }
 }
 
 public record struct SalaryBreakdown(long AuditingPlusCsSolo, long Csing, long Commission)
@@ -126,6 +197,16 @@ public record struct SalaryBreakdown(long AuditingPlusCsSolo, long Csing, long C
     public bool HasAny => AuditingPlusCsSolo != 0 || Csing != 0 || Commission != 0;
     public long Total => AuditingPlusCsSolo + Csing + Commission;
 }
+
+public sealed record BreakdownItem(
+    string Date,
+    string Kind,            // "Auditing" | "CS Solo" | "CSing" | "Commission"
+    string PcName,
+    string Description,     // session name + duration × rate, OR commission role/category
+    long   AmountCents,
+    string Currency,
+    int    OrgId,
+    string OrgName);
 public record StaffMessage(int Id, int FromId, string FromName, int ToId, string ToName, string MsgText, string CreatedAt, string? AcknowledgedAt);
 
 public record PermissionRequest(int Id, int UserId, string AuditorName, int PcId, string PcName, string RequestedAt);

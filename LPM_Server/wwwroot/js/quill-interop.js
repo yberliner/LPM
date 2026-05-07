@@ -1,7 +1,14 @@
-// Register custom sizes with Quill (must be done before any instance is created)
-var SizeStyle = Quill.import('attributors/style/size');
-SizeStyle.whitelist = ['10px', '14px', '18px', '24px', '32px'];
-Quill.register(SizeStyle, true);
+// Register custom sizes with Quill (must be done before any instance is created).
+// Guard against missing Quill: if the library failed to load, skip registration so the
+// rest of this file (the window.quillInterop wrapper) still defines, and Blazor's
+// JS.InvokeVoidAsync calls hit a clear console error instead of "could not find" runtime crash.
+if (typeof Quill !== 'undefined') {
+    var SizeStyle = Quill.import('attributors/style/size');
+    SizeStyle.whitelist = ['10px', '14px', '18px', '24px', '32px'];
+    Quill.register(SizeStyle, true);
+} else {
+    console.error('[quillInterop] Quill library not loaded — rich editor will not work.');
+}
 
 window.step3Quill = (function () {
     function attachListeners(dotnetRef) {
@@ -25,6 +32,10 @@ window.quillInterop = (function () {
     const instances = new Map();
 
     function init(editorEl, initialHtml, dotNetRef) {
+        if (typeof Quill === 'undefined') {
+            console.error('[quillInterop] init called but Quill is not loaded — check that /assets/libs/quill/quill.min.js is reachable.');
+            return;
+        }
         if (instances.has(editorEl)) return;
 
         const quill = new Quill(editorEl, {

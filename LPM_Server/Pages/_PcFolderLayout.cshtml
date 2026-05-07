@@ -12,7 +12,7 @@
     <link rel="icon" href="/assets/images/brand-logos/lp-favicon.svg" type="image/svg+xml">
     <link href="/assets/css/styles.css" rel="stylesheet">
     <link href="/assets/css/icons.css" rel="stylesheet">
-    <link href="https://cdn.quilljs.com/1.3.7/quill.snow.css" rel="stylesheet" />
+    <link href="/assets/libs/quill/quill.snow.css" rel="stylesheet" />
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; overflow: hidden; }
@@ -109,8 +109,8 @@
         });
     </script>
 
-    <!-- Quill rich-text editor -->
-    <script src="https://cdn.quilljs.com/1.3.7/quill.min.js"></script>
+    <!-- Quill rich-text editor (self-hosted to avoid CDN flakiness) -->
+    <script src="/assets/libs/quill/quill.min.js"></script>
     <script src="/js/quill-interop.js"></script>
 
     <!-- Shared JS utilities (lpmTriggerDownload, etc.) -->

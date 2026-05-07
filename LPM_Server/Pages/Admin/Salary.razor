@@ -503,10 +503,10 @@
                         })
                         .Where(o => o.ByCurrency.Count > 0)
                         .ToList();
-                    <div class="sal-summary"
-                         @onmouseenter="() => _hoverGroup = group"
-                         @onmouseleave="() => { if (_hoverGroup == group) _hoverGroup = null; }">
-                        <div class="sal-summary-section">
+                    <div class="sal-summary" @onmouseleave="OnCellLeave">
+                        <div class="sal-summary-section"
+                             @onmouseenter="() => _hoverGroup = group"
+                             @onmouseleave="() => { if (_hoverGroup == group) _hoverGroup = null; }">
                             <div class="sal-summary-section-title">
                                 <i class="ri-money-dollar-circle-line me-1"></i>Total Summary — All Organizations
                             </div>
@@ -530,12 +530,22 @@
                                         <tbody>
                                         @foreach (var kv in allBd)
                                         {
+                                            var capturedGroup = group;
+                                            var capturedCurr  = kv.Key;
                                             <tr>
                                                 <td class="sal-summary-curr">@kv.Key</td>
-                                                <td class="text-end">@SalCurrSym(kv.Key) @FormatShekel(kv.Value.AuditingPlusCsSolo)</td>
-                                                <td class="text-end">@SalCurrSym(kv.Key) @FormatShekel(kv.Value.Csing)</td>
-                                                <td class="text-end">@SalCurrSym(kv.Key) @FormatShekel(kv.Value.Commission)</td>
-                                                <td class="text-end fw-bold sal-summary-total-cell">@SalCurrSym(kv.Key) @FormatShekel(kv.Value.Total)</td>
+                                                <td class="text-end sal-cell-hover"
+                                                    @onmouseenter='(e) => OnCellHover(e, capturedGroup, capturedCurr, "AuditingPlusCsSolo")'
+>@SalCurrSym(kv.Key) @FormatShekel(kv.Value.AuditingPlusCsSolo)</td>
+                                                <td class="text-end sal-cell-hover"
+                                                    @onmouseenter='(e) => OnCellHover(e, capturedGroup, capturedCurr, "Csing")'
+>@SalCurrSym(kv.Key) @FormatShekel(kv.Value.Csing)</td>
+                                                <td class="text-end sal-cell-hover"
+                                                    @onmouseenter='(e) => OnCellHover(e, capturedGroup, capturedCurr, "Commission")'
+>@SalCurrSym(kv.Key) @FormatShekel(kv.Value.Commission)</td>
+                                                <td class="text-end fw-bold sal-summary-total-cell sal-cell-hover"
+                                                    @onmouseenter='(e) => OnCellHover(e, capturedGroup, capturedCurr, "Total")'
+>@SalCurrSym(kv.Key) @FormatShekel(kv.Value.Total)</td>
                                             </tr>
                                         }
                                         </tbody>
@@ -552,6 +562,9 @@
                                 </div>
                                 @foreach (var org in orgBreakdowns)
                                 {
+                                    var capturedOrgGroup = group;
+                                    var capturedOrgId    = org.OrgId;
+                                    var capturedOrgName  = org.OrgName;
                                     <div class="sal-summary-org">
                                         <div class="sal-summary-org-name">@org.OrgName</div>
                                         <div class="table-responsive">
@@ -568,12 +581,17 @@
                                                 <tbody>
                                                 @foreach (var kv in org.ByCurrency)
                                                 {
+                                                    var capturedOrgCurr = kv.Key;
                                                     <tr>
                                                         <td class="sal-summary-curr">@kv.Key</td>
-                                                        <td class="text-end">@SalCurrSym(kv.Key) @FormatShekel(kv.Value.AuditingPlusCsSolo)</td>
-                                                        <td class="text-end">@SalCurrSym(kv.Key) @FormatShekel(kv.Value.Csing)</td>
-                                                        <td class="text-end">@SalCurrSym(kv.Key) @FormatShekel(kv.Value.Commission)</td>
-                                                        <td class="text-end fw-bold sal-summary-total-cell">@SalCurrSym(kv.Key) @FormatShekel(kv.Value.Total)</td>
+                                                        <td class="text-end sal-cell-hover"
+                                                            @onmouseenter='(e) => OnCellHover(e, capturedOrgGroup, capturedOrgId, capturedOrgName, capturedOrgCurr, "AuditingPlusCsSolo")'>@SalCurrSym(kv.Key) @FormatShekel(kv.Value.AuditingPlusCsSolo)</td>
+                                                        <td class="text-end sal-cell-hover"
+                                                            @onmouseenter='(e) => OnCellHover(e, capturedOrgGroup, capturedOrgId, capturedOrgName, capturedOrgCurr, "Csing")'>@SalCurrSym(kv.Key) @FormatShekel(kv.Value.Csing)</td>
+                                                        <td class="text-end sal-cell-hover"
+                                                            @onmouseenter='(e) => OnCellHover(e, capturedOrgGroup, capturedOrgId, capturedOrgName, capturedOrgCurr, "Commission")'>@SalCurrSym(kv.Key) @FormatShekel(kv.Value.Commission)</td>
+                                                        <td class="text-end fw-bold sal-summary-total-cell sal-cell-hover"
+                                                            @onmouseenter='(e) => OnCellHover(e, capturedOrgGroup, capturedOrgId, capturedOrgName, capturedOrgCurr, "Total")'>@SalCurrSym(kv.Key) @FormatShekel(kv.Value.Total)</td>
                                                     </tr>
                                                 }
                                                 </tbody>
@@ -766,8 +784,61 @@
         </div>
     }
 
+    @* ── Per-cell hover card (super-detailed breakdown of a single cell) ── *@
+    @if (_hoverCellGroup != null)
+    {
+        long cellSum = 0;
+        foreach (var it in _hoverCellItems) cellSum += it.AmountCents;
+        <div class="sal-cell-card is-active"
+             style="top:@(_hoverCellY + 14)px; left:min(@(_hoverCellX + 14)px, calc(100vw - 432px));">
+            <div class="sal-cell-head">
+                <div class="sal-cell-title">
+                    <span class="sal-cell-title-name">@_hoverCellGroup.FullName</span>
+                    <i class="ri-arrow-right-s-line sal-cell-arrow"></i>
+                    <span class="sal-cell-title-org">@_hoverCellOrgName</span>
+                    <i class="ri-arrow-right-s-line sal-cell-arrow"></i>
+                    <span class="sal-cell-title-cat">@CategoryLabel(_hoverCellCategory)</span>
+                    <span class="sal-cell-title-curr">@_hoverCellCurrency</span>
+                </div>
+            </div>
+            <div class="sal-cell-body">
+                @if (_hoverCellItems.Count == 0)
+                {
+                    <div class="sal-cell-empty">
+                        <i class="ri-inbox-line"></i> No items contribute to this cell.
+                    </div>
+                }
+                else
+                {
+                    int rowIdx = 0;
+                    @foreach (var item in _hoverCellItems)
+                    {
+                        var idx = rowIdx++;
+                        <div class="sal-cell-row sal-cell-kind-@item.Kind.Replace(" ", "").ToLower()"
+                             style="--row-i: @idx;">
+                            <div class="sal-cell-row-head">
+                                <i class="@KindIcon(item.Kind) sal-cell-row-icon"></i>
+                                <span class="sal-cell-row-kind">@item.Kind</span>
+                                <span class="sal-cell-row-date">@FormatDate(item.Date)</span>
+                                <span class="sal-cell-row-pc">@item.PcName</span>
+                                <span class="sal-cell-row-amt">@SalCurrSym(item.Currency) @FormatShekel(item.AmountCents)</span>
+                            </div>
+                            <div class="sal-cell-row-desc">@item.Description</div>
+                        </div>
+                    }
+                    <div class="sal-cell-foot">
+                        <span class="sal-cell-foot-sigma">Σ</span>
+                        <span class="sal-cell-foot-eq">=</span>
+                        <span class="sal-cell-foot-total">@SalCurrSym(_hoverCellCurrency!) @FormatShekel(cellSum)</span>
+                        <span class="sal-cell-foot-count">(@_hoverCellItems.Count item@(_hoverCellItems.Count == 1 ? "" : "s"))</span>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
     @* ── Floating Total Breakdown Card ── *@
-    @if (_hoverGroup != null)
+    @if (_hoverGroup != null && _hoverCellGroup == null)
     {
         var g = _hoverGroup;
         var sessByCurr = g.Sessions.Where(s => s.IsApproved)
@@ -941,6 +1012,55 @@
     UserSalaryGroup? _hoverGroup;
     void ShowDetail(CommissionRow row) => _detailRow = row;
     void CloseDetail() => _detailRow = null;
+
+    // ── Per-cell hover (bottom summary, All-Orgs only) ──
+    UserSalaryGroup? _hoverCellGroup;
+    string? _hoverCellOrgName;
+    string? _hoverCellCurrency;
+    string? _hoverCellCategory;
+    double  _hoverCellX, _hoverCellY;
+    List<BreakdownItem> _hoverCellItems = new();
+
+    void OnCellHover(Microsoft.AspNetCore.Components.Web.MouseEventArgs e, UserSalaryGroup g, string currency, string category)
+        => OnCellHoverInternal(e, g, orgId: null, orgName: "All Organizations", currency, category);
+
+    void OnCellHover(Microsoft.AspNetCore.Components.Web.MouseEventArgs e, UserSalaryGroup g, int orgId, string orgName, string currency, string category)
+        => OnCellHoverInternal(e, g, orgId, orgName, currency, category);
+
+    void OnCellHoverInternal(Microsoft.AspNetCore.Components.Web.MouseEventArgs e, UserSalaryGroup g, int? orgId, string orgName, string currency, string category)
+    {
+        _hoverCellGroup    = g;
+        _hoverCellOrgName  = orgName;
+        _hoverCellCurrency = currency;
+        _hoverCellCategory = category;
+        _hoverCellX        = e.ClientX;
+        _hoverCellY        = e.ClientY;
+        _hoverCellItems    = g.CellItems(orgId, currency, category);
+    }
+
+    void OnCellLeave()
+    {
+        _hoverCellGroup = null;
+        _hoverCellItems = new();
+    }
+
+    static string CategoryLabel(string? code) => code switch
+    {
+        "AuditingPlusCsSolo" => "Auditing + CS Solo",
+        "Csing"              => "CSing",
+        "Commission"         => "Commission",
+        "Total"              => "Total",
+        _                    => code ?? "",
+    };
+
+    static string KindIcon(string kind) => kind switch
+    {
+        "Auditing"   => "ri-stethoscope-line",
+        "CS Solo"    => "ri-user-star-line",
+        "CSing"      => "ri-user-search-line",
+        "Commission" => "ri-money-dollar-circle-line",
+        _            => "ri-circle-line",
+    };
 
     static string GetRoleExplanation(string role, string pcName) => role switch
     {
@@ -1594,6 +1714,131 @@
         margin-bottom: 4px;
         padding-left: 4px;
     }
+
+    /* ── Per-cell hover (cells that show drilldown card on hover) ── */
+    .sal-cell-hover { cursor: help; transition: background .15s ease, transform .15s ease; }
+    .sal-cell-hover:hover {
+        background: rgba(99,102,241,.18) !important;
+        transform: scale(1.02);
+        box-shadow: inset 0 0 0 1px rgba(99,102,241,.45);
+    }
+
+    /* ── Per-cell drilldown card ── */
+    .sal-cell-card {
+        position: fixed;
+        z-index: 10000;
+        width: 420px;
+        max-width: calc(100vw - 24px);
+        max-height: 70vh;
+        overflow: hidden;
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+        border-radius: 14px;
+        box-shadow: 0 24px 60px rgba(0,0,0,.5), 0 4px 12px rgba(99,102,241,.25), 0 0 0 1px rgba(148,163,184,.15);
+        color: #e2e8f0;
+        opacity: 0;
+        transform: translateY(8px) scale(.96);
+        transform-origin: top left;
+        transition: opacity 200ms cubic-bezier(.2,.9,.25,1), transform 220ms cubic-bezier(.2,.9,.25,1);
+        pointer-events: none;
+        will-change: opacity, transform;
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+    }
+    .sal-cell-card.is-active { opacity: 1; transform: translateY(0) scale(1); }
+
+    .sal-cell-head {
+        background: linear-gradient(135deg, #4338ca, #6d28d9, #be185d);
+        background-size: 200% 200%;
+        animation: sal-cell-gradient 6s ease infinite;
+        padding: 12px 16px;
+        border-bottom: 1px solid rgba(255,255,255,.1);
+    }
+    @@keyframes sal-cell-gradient {
+        0%,100% { background-position: 0% 50%; }
+        50%     { background-position: 100% 50%; }
+    }
+    .sal-cell-title {
+        display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+        font-size: .82rem; color: #fff; font-weight: 600;
+    }
+    .sal-cell-title-name { color: #fbbf24; font-weight: 800; }
+    .sal-cell-title-org  { color: #a5f3fc; }
+    .sal-cell-title-cat  { color: #fff; }
+    .sal-cell-title-curr { background: rgba(255,255,255,.15); padding: 1px 7px; border-radius: 8px; font-size: .72rem; margin-left: auto; }
+    .sal-cell-arrow { font-size: .9rem; opacity: .5; color: #fff; }
+
+    .sal-cell-body {
+        padding: 8px 12px 10px;
+        max-height: calc(70vh - 60px);
+        overflow-y: auto;
+        scrollbar-width: thin;
+        scrollbar-color: #475569 transparent;
+    }
+    .sal-cell-body::-webkit-scrollbar { width: 6px; }
+    .sal-cell-body::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+
+    .sal-cell-empty {
+        text-align: center; padding: 20px; font-size: .82rem; color: #94a3b8; font-style: italic;
+    }
+    .sal-cell-empty i { display: block; font-size: 1.6rem; margin-bottom: 6px; opacity: .4; }
+
+    .sal-cell-row {
+        padding: 6px 8px 7px 12px;
+        margin-bottom: 4px;
+        border-radius: 8px;
+        background: rgba(30,41,59,.6);
+        border-left: 3px solid transparent;
+        opacity: 0;
+        transform: translateX(-8px);
+        animation: sal-cell-row-in 280ms cubic-bezier(.2,.9,.25,1) forwards;
+        animation-delay: calc(var(--row-i, 0) * 22ms);
+    }
+    @@keyframes sal-cell-row-in {
+        from { opacity: 0; transform: translateX(-8px); }
+        to   { opacity: 1; transform: translateX(0); }
+    }
+    .sal-cell-kind-auditing   { border-left-color: #3b82f6; }
+    .sal-cell-kind-cssolo     { border-left-color: #14b8a6; }
+    .sal-cell-kind-csing      { border-left-color: #a855f7; }
+    .sal-cell-kind-commission { border-left-color: #f59e0b; }
+
+    .sal-cell-row-head {
+        display: flex; align-items: center; gap: 8px; font-size: .76rem;
+    }
+    .sal-cell-row-icon { font-size: .95rem; flex-shrink: 0; }
+    .sal-cell-kind-auditing   .sal-cell-row-icon { color: #93c5fd; }
+    .sal-cell-kind-cssolo     .sal-cell-row-icon { color: #5eead4; }
+    .sal-cell-kind-csing      .sal-cell-row-icon { color: #d8b4fe; }
+    .sal-cell-kind-commission .sal-cell-row-icon { color: #fcd34d; }
+    .sal-cell-row-kind {
+        font-size: .65rem; text-transform: uppercase; letter-spacing: .04em;
+        color: #94a3b8; font-weight: 700;
+    }
+    .sal-cell-row-date { color: #94a3b8; font-variant-numeric: tabular-nums; font-size: .72rem; }
+    .sal-cell-row-pc   { color: #fff; font-weight: 600; flex-grow: 1; }
+    .sal-cell-row-amt  { color: #4ade80; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .sal-cell-row-desc {
+        margin-top: 3px; padding-left: 24px;
+        font-size: .72rem; color: #cbd5e1; line-height: 1.35;
+    }
+
+    .sal-cell-foot {
+        margin-top: 8px; padding: 10px 12px;
+        background: linear-gradient(90deg, rgba(74,222,128,.18), rgba(74,222,128,.06));
+        border-radius: 8px;
+        display: flex; align-items: center; gap: 8px;
+        animation: sal-cell-foot-in 350ms ease both;
+        animation-delay: 180ms;
+        opacity: 0;
+    }
+    @@keyframes sal-cell-foot-in {
+        from { opacity: 0; transform: translateY(4px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+    .sal-cell-foot-sigma { font-size: 1.3rem; font-weight: 800; color: #4ade80; line-height: 1; }
+    .sal-cell-foot-eq    { color: #94a3b8; font-size: 1rem; }
+    .sal-cell-foot-total { font-size: 1.05rem; font-weight: 800; color: #4ade80; font-variant-numeric: tabular-nums; }
+    .sal-cell-foot-count { margin-left: auto; font-size: .72rem; color: #94a3b8; }
 
     /* ── Recalculate animation ── */
     .sal-recalculating {

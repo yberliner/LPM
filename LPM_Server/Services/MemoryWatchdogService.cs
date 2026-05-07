@@ -58,6 +58,10 @@ public sealed class MemoryWatchdogService : BackgroundService
     private DateTime _prevWallUtc;
     private bool _haveCpuBaseline;
 
+    // Throttles the routine status WriteLine to every 10 ticks (= 10 min). Sampling for the
+    // chart and pressure-threshold checks still happen every tick.
+    private int _logTickCounter;
+
     // Sample ring — capped so memory stays small even on long uptimes.
     // 7 days × 60 samples/hour × 24h = 10,080 entries → ~500 KB.
     private const int MaxSamples = 10080;
@@ -124,6 +128,10 @@ public sealed class MemoryWatchdogService : BackgroundService
 
     private void Check()
     {
+        _logTickCounter++;
+        // Routine status WriteLine fires on tick 1, 11, 21, … (= every 10 min). Pressure
+        // warnings and sample recording still run every tick, regardless of this flag.
+        bool logRoutine = _logTickCounter % 10 == 1;
         var stamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
 
         // ── CPU% for the LPM process: delta(CPU time) / delta(wall) / cpuCount ──
@@ -171,12 +179,15 @@ public sealed class MemoryWatchdogService : BackgroundService
 
             RecordSample(pctUsed, usedMB, totalMB);
 
-            Console.WriteLine(
-                $"[MemWatch] {stamp} | sysMem used={pctUsed:F1}% (avail={availMB}MB/total={totalMB}MB) " +
-                $"| lpmRSS={procRssMB}MB priv={procPrivMB}MB gcHeap={gcHeapMB}MB " +
-                $"| lpmCpu={lpmCpuStr} sysLoad1m/5m/15m={loadStr} (cores={cores}) " +
-                $"| threads={threadCount} " +
-                $"| disk={diskStr}");
+            if (logRoutine)
+            {
+                Console.WriteLine(
+                    $"[MemWatch] {stamp} | sysMem used={pctUsed:F1}% (avail={availMB}MB/total={totalMB}MB) " +
+                    $"| lpmRSS={procRssMB}MB priv={procPrivMB}MB gcHeap={gcHeapMB}MB " +
+                    $"| lpmCpu={lpmCpuStr} sysLoad1m/5m/15m={loadStr} (cores={cores}) " +
+                    $"| threads={threadCount} " +
+                    $"| disk={diskStr}");
+            }
 
             if (pctUsed > THRESHOLD_PCT_USED)
             {
@@ -202,12 +213,15 @@ public sealed class MemoryWatchdogService : BackgroundService
             }
             catch { /* best-effort on dev */ }
 
-            Console.WriteLine(
-                $"[MemWatch] {stamp} | sysMem n/a (non-Linux) " +
-                $"| lpmRSS={procRssMB}MB priv={procPrivMB}MB gcHeap={gcHeapMB}MB " +
-                $"| lpmCpu={lpmCpuStr} (cores={Environment.ProcessorCount}) " +
-                $"| threads={threadCount} " +
-                $"| disk={diskStr}");
+            if (logRoutine)
+            {
+                Console.WriteLine(
+                    $"[MemWatch] {stamp} | sysMem n/a (non-Linux) " +
+                    $"| lpmRSS={procRssMB}MB priv={procPrivMB}MB gcHeap={gcHeapMB}MB " +
+                    $"| lpmCpu={lpmCpuStr} (cores={Environment.ProcessorCount}) " +
+                    $"| threads={threadCount} " +
+                    $"| disk={diskStr}");
+            }
         }
     }
 
