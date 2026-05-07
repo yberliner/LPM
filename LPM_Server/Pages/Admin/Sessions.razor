@@ -206,6 +206,7 @@
                     int pcTotal    = pcGroup.Sessions.Count;
                     int pcDraft    = pcGroup.Sessions.Count(s => s.VerifiedStatus != "Approved");
                     int pcApproved = pcGroup.Sessions.Count(s => s.VerifiedStatus == "Approved");
+                    bool isNewPc   = pcDef.ChargeRate == 0 && pcDef.Salary == 0;
 
                     @if (!firstPc) { <div class="sa-pc-divider"></div> }
                     firstPc = false;
@@ -214,8 +215,15 @@
                     {
                         <div class="d-flex align-items-center gap-3 px-4 py-2 sa-pc-header flex-wrap">
                             <div class="d-flex align-items-center gap-2">
-                                <div class="sa-pc-dot"></div>
-                                <span class="fw-semibold sa-pc-name">@pcGroup.PcName</span>
+                                <div class="sa-pc-dot @(isNewPc ? "sa-pc-dot-new" : "")"></div>
+                                <span class="fw-semibold @(isNewPc ? "sa-pc-name-new" : "sa-pc-name")">@pcGroup.PcName</span>
+                                @if (isNewPc)
+                                {
+                                    <span class="sa-pc-new-badge" title="This auditor has never had an approved session for this PC. Set Rate and Salary before approving.">
+                                        <i class="ri-sparkling-2-fill"></i>
+                                        <span>* new PC</span>
+                                    </span>
+                                }
                                 @if (pcDraft > 0)    { <span class="badge rounded-pill sa-badge-pending">@pcDraft @LS.T("sessions.pending")</span> }
                                 @if (pcApproved > 0) { <span class="badge rounded-pill sa-badge-approved-sm">@pcApproved @LS.T("sessions.approved")</span> }
                             </div>
@@ -285,9 +293,16 @@
                                         <td class="ps-4 py-2">
                                             @if (pcTotal == 1)
                                             {
-                                                <div class="d-flex align-items-center gap-2">
-                                                    <div class="sa-pc-dot"></div>
-                                                    <span class="fw-semibold sa-pc-name">@pcGroup.PcName</span>
+                                                <div class="d-flex align-items-center gap-2 flex-wrap">
+                                                    <div class="sa-pc-dot @(isNewPc ? "sa-pc-dot-new" : "")"></div>
+                                                    <span class="fw-semibold @(isNewPc ? "sa-pc-name-new" : "sa-pc-name")">@pcGroup.PcName</span>
+                                                    @if (isNewPc)
+                                                    {
+                                                        <span class="sa-pc-new-badge" title="This auditor has never had an approved session for this PC. Set Rate and Salary before approving.">
+                                                            <i class="ri-sparkling-2-fill"></i>
+                                                            <span>* new PC</span>
+                                                        </span>
+                                                    }
                                                 </div>
                                             }
                                             <span class="fw-semibold sa-date">@FormatDate(s.CreatedAt)</span>
@@ -747,6 +762,67 @@
     .sa-pc-dot     { width: 8px; height: 8px; border-radius: 50%; background: #2d6a9f; flex-shrink: 0; }
     .sa-pc-dot-cs  { background: #4a7fc1; }
     .sa-pc-name    { font-size: 0.9rem; color: #1e3a5f; }
+
+    /* ── New-PC indicator (auditor has never had an approved session for this PC) ── */
+    .sa-pc-dot-new {
+        background: #f97316 !important;
+        box-shadow: 0 0 0 0 rgba(249,115,22,0.6);
+        animation: sa-newpc-dot-pulse 1.6s ease-in-out infinite;
+    }
+    @@keyframes sa-newpc-dot-pulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(249,115,22,0.55); }
+        50%      { box-shadow: 0 0 0 6px rgba(249,115,22,0.0); }
+    }
+    .sa-pc-name-new {
+        font-size: 0.92rem;
+        font-weight: 700 !important;
+        background: linear-gradient(90deg, #c2410c 0%, #ea580c 50%, #f97316 100%);
+        -webkit-background-clip: text; background-clip: text; color: transparent;
+        animation: sa-newpc-name-shimmer 2.4s ease-in-out infinite;
+        background-size: 200% auto;
+    }
+    @@keyframes sa-newpc-name-shimmer {
+        0%, 100% { background-position: 0% 50%; }
+        50%      { background-position: 100% 50%; }
+    }
+    .sa-pc-new-badge {
+        display: inline-flex; align-items: center; gap: 5px;
+        margin-inline-start: 4px;
+        padding: 3px 10px;
+        border-radius: 999px;
+        background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 50%, #fed7aa 100%);
+        color: #9a3412;
+        border: 1.5px solid #f97316;
+        font-size: 0.7rem;
+        font-weight: 800;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        box-shadow: 0 0 0 0 rgba(249,115,22,0.55);
+        animation: sa-newpc-badge-pulse 1.6s ease-in-out infinite;
+        white-space: nowrap;
+    }
+    .sa-pc-new-badge i {
+        color: #ea580c;
+        font-size: 0.85rem;
+        animation: sa-newpc-spark 2s ease-in-out infinite;
+    }
+    @@keyframes sa-newpc-badge-pulse {
+        0%, 100% {
+            box-shadow: 0 0 0 0 rgba(249,115,22,0.55), 0 2px 6px -2px rgba(249,115,22,0.4);
+            transform: translateY(0) scale(1);
+        }
+        50%      {
+            box-shadow: 0 0 0 8px rgba(249,115,22,0.0), 0 4px 14px -2px rgba(249,115,22,0.55);
+            transform: translateY(-1px) scale(1.04);
+        }
+    }
+    @@keyframes sa-newpc-spark {
+        0%, 100% { transform: rotate(0deg)   scale(1);   opacity: 1;   }
+        25%      { transform: rotate(-15deg) scale(1.18); opacity: 0.85; }
+        50%      { transform: rotate(0deg)   scale(1);   opacity: 1;   }
+        75%      { transform: rotate(15deg)  scale(1.18); opacity: 0.85; }
+    }
+
     .sa-input-label{ font-size: 0.72rem; white-space: nowrap; }
 
     /* "Set all" inputs */

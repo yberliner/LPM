@@ -2497,100 +2497,26 @@ public class DashboardService
         }).ToList();
     }
 
-    public (int chargeRate, int salary) GetLastApprovedDefaults(int auditorId)
-    {
-        using var conn = new SqliteConnection(_connectionString);
-        conn.Open();
-        using var cmd = conn.CreateCommand();
-        // Skip free sessions — they always store rate=0/salary=0, so they'd poison the defaults.
-        cmd.CommandText = @"
-            SELECT ChargedRateCentsPerHour, AuditorSalaryCentsPerHour
-            FROM sess_sessions
-            WHERE AuditorId = @id AND VerifiedStatus = 'Approved'
-              AND COALESCE(IsFreeSession, 0) = 0
-            ORDER BY SessionDate DESC, SequenceInDay DESC
-            LIMIT 1";
-        cmd.Parameters.AddWithValue("@id", auditorId);
-        using var r = cmd.ExecuteReader();
-        if (r.Read())
-            return (r.GetInt32(0), r.GetInt32(1));
-        return (0, 0);
-    }
-
-    /// Returns defaults for a specific auditor+PC pair, falling back to any auditor-level default.
+    /// Returns defaults for a specific auditor+PC pair from their most recent non-free
+    /// approved session. Returns (0, 0) when this auditor has never had an approved session
+    /// for this PC — the UI uses (0, 0) as the "brand-new PC" signal.
     public (int chargeRate, int salary) GetLastApprovedDefaultsForPc(int auditorId, int pcId)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
-
-        // Step 1: auditor+PC approved session
-        int rate = 0, salary = 0;
-        using (var cmd = conn.CreateCommand())
-        {
-            // Skip free sessions — they always store rate=0/salary=0.
-            cmd.CommandText = @"
-                SELECT ChargedRateCentsPerHour, AuditorSalaryCentsPerHour
-                FROM sess_sessions
-                WHERE AuditorId = @aud AND PcId = @pc AND VerifiedStatus = 'Approved'
-                  AND COALESCE(IsFreeSession, 0) = 0
-                ORDER BY SessionDate DESC, SequenceInDay DESC
-                LIMIT 1";
-            cmd.Parameters.AddWithValue("@aud", auditorId);
-            cmd.Parameters.AddWithValue("@pc",  pcId);
-            using var r = cmd.ExecuteReader();
-            if (r.Read()) { rate = r.GetInt32(0); salary = r.GetInt32(1); }
-        }
-
-        // Step 2: fallback to auditor-only approved session
-        if (rate == 0 || salary == 0)
-        {
-            var (defRate, defSal) = GetLastApprovedDefaults(auditorId);
-            if (rate == 0) rate = defRate;
-            if (salary == 0) salary = defSal;
-        }
-
-        // Step 3: fallback for rate only — PC's last auditing purchase
-        if (rate == 0)
-            rate = GetPcPurchaseRateCents(conn, pcId);
-
-        return (rate, salary);
-    }
-
-    private static int GetPcPurchaseRateCents(SqliteConnection conn, int pcId)
-    {
-        // Budget reset date
-        string? resetDate = null;
-        using (var rdCmd = conn.CreateCommand())
-        {
-            rdCmd.CommandText = "SELECT ResetDate FROM fin_budget_reset WHERE PcId = @pc AND IsActive=1 ORDER BY ResetDate DESC LIMIT 1";
-            rdCmd.Parameters.AddWithValue("@pc", pcId);
-            resetDate = rdCmd.ExecuteScalar() as string;
-        }
-        var rdFilter = resetDate != null ? " AND pu.PurchaseDate >= @rd" : "";
-        var rdFilter2 = resetDate != null ? " AND pu2.PurchaseDate >= @rd" : "";
-
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            SELECT SUM(pi.AmountPaid), SUM(pi.HoursBought)
-            FROM fin_purchase_items pi
-            JOIN fin_purchases pu ON pu.PurchaseId = pi.PurchaseId
-            WHERE pu.PcId = @pc AND pu.IsDeleted = 0 AND pi.ItemType = 'Auditing'" + rdFilter + @"
-              AND pu.PurchaseId = (
-                  SELECT pu2.PurchaseId FROM fin_purchases pu2
-                  JOIN fin_purchase_items pi2 ON pi2.PurchaseId = pu2.PurchaseId
-                  WHERE pu2.PcId = @pc AND pu2.IsDeleted = 0 AND pi2.ItemType = 'Auditing'" + rdFilter2 + @"
-                  GROUP BY pu2.PurchaseId HAVING SUM(pi2.AmountPaid) <> 0
-                  ORDER BY pu2.PurchaseId DESC LIMIT 1
-              )";
-        cmd.Parameters.AddWithValue("@pc", pcId);
-        if (resetDate != null) cmd.Parameters.AddWithValue("@rd", resetDate);
+            SELECT ChargedRateCentsPerHour, AuditorSalaryCentsPerHour
+            FROM sess_sessions
+            WHERE AuditorId = @aud AND PcId = @pc AND VerifiedStatus = 'Approved'
+              AND COALESCE(IsFreeSession, 0) = 0
+            ORDER BY SessionDate DESC, SequenceInDay DESC
+            LIMIT 1";
+        cmd.Parameters.AddWithValue("@aud", auditorId);
+        cmd.Parameters.AddWithValue("@pc",  pcId);
         using var r = cmd.ExecuteReader();
-        if (r.Read() && !r.IsDBNull(0) && !r.IsDBNull(1))
-        {
-            double hrs = r.GetDouble(1);
-            if (Math.Abs(hrs) > 0) return (int)Math.Round(Math.Abs(r.GetDouble(0) / hrs)) * 100;
-        }
-        return 0;
+        if (r.Read()) return (r.GetInt32(0), r.GetInt32(1));
+        return (0, 0);
     }
 
     /// Returns the CsSalaryCentsPerHour from the last approved CS review for a given PC.
