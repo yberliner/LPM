@@ -536,16 +536,16 @@
                                                 <td class="sal-summary-curr">@kv.Key</td>
                                                 <td class="text-end sal-cell-hover"
                                                     @onmouseenter='(e) => OnCellHover(e, capturedGroup, capturedCurr, "AuditingPlusCsSolo")'
->@SalCurrSym(kv.Key) @FormatShekel(kv.Value.AuditingPlusCsSolo)</td>
+                                                    @onmouseleave="OnCellLeaveCell">@SalCurrSym(kv.Key) @FormatShekel(kv.Value.AuditingPlusCsSolo)</td>
                                                 <td class="text-end sal-cell-hover"
                                                     @onmouseenter='(e) => OnCellHover(e, capturedGroup, capturedCurr, "Csing")'
->@SalCurrSym(kv.Key) @FormatShekel(kv.Value.Csing)</td>
+                                                    @onmouseleave="OnCellLeaveCell">@SalCurrSym(kv.Key) @FormatShekel(kv.Value.Csing)</td>
                                                 <td class="text-end sal-cell-hover"
                                                     @onmouseenter='(e) => OnCellHover(e, capturedGroup, capturedCurr, "Commission")'
->@SalCurrSym(kv.Key) @FormatShekel(kv.Value.Commission)</td>
+                                                    @onmouseleave="OnCellLeaveCell">@SalCurrSym(kv.Key) @FormatShekel(kv.Value.Commission)</td>
                                                 <td class="text-end fw-bold sal-summary-total-cell sal-cell-hover"
                                                     @onmouseenter='(e) => OnCellHover(e, capturedGroup, capturedCurr, "Total")'
->@SalCurrSym(kv.Key) @FormatShekel(kv.Value.Total)</td>
+                                                    @onmouseleave="OnCellLeaveCell">@SalCurrSym(kv.Key) @FormatShekel(kv.Value.Total)</td>
                                             </tr>
                                         }
                                         </tbody>
@@ -585,13 +585,17 @@
                                                     <tr>
                                                         <td class="sal-summary-curr">@kv.Key</td>
                                                         <td class="text-end sal-cell-hover"
-                                                            @onmouseenter='(e) => OnCellHover(e, capturedOrgGroup, capturedOrgId, capturedOrgName, capturedOrgCurr, "AuditingPlusCsSolo")'>@SalCurrSym(kv.Key) @FormatShekel(kv.Value.AuditingPlusCsSolo)</td>
+                                                            @onmouseenter='(e) => OnCellHover(e, capturedOrgGroup, capturedOrgId, capturedOrgName, capturedOrgCurr, "AuditingPlusCsSolo")'
+                                                            @onmouseleave="OnCellLeaveCell">@SalCurrSym(kv.Key) @FormatShekel(kv.Value.AuditingPlusCsSolo)</td>
                                                         <td class="text-end sal-cell-hover"
-                                                            @onmouseenter='(e) => OnCellHover(e, capturedOrgGroup, capturedOrgId, capturedOrgName, capturedOrgCurr, "Csing")'>@SalCurrSym(kv.Key) @FormatShekel(kv.Value.Csing)</td>
+                                                            @onmouseenter='(e) => OnCellHover(e, capturedOrgGroup, capturedOrgId, capturedOrgName, capturedOrgCurr, "Csing")'
+                                                            @onmouseleave="OnCellLeaveCell">@SalCurrSym(kv.Key) @FormatShekel(kv.Value.Csing)</td>
                                                         <td class="text-end sal-cell-hover"
-                                                            @onmouseenter='(e) => OnCellHover(e, capturedOrgGroup, capturedOrgId, capturedOrgName, capturedOrgCurr, "Commission")'>@SalCurrSym(kv.Key) @FormatShekel(kv.Value.Commission)</td>
+                                                            @onmouseenter='(e) => OnCellHover(e, capturedOrgGroup, capturedOrgId, capturedOrgName, capturedOrgCurr, "Commission")'
+                                                            @onmouseleave="OnCellLeaveCell">@SalCurrSym(kv.Key) @FormatShekel(kv.Value.Commission)</td>
                                                         <td class="text-end fw-bold sal-summary-total-cell sal-cell-hover"
-                                                            @onmouseenter='(e) => OnCellHover(e, capturedOrgGroup, capturedOrgId, capturedOrgName, capturedOrgCurr, "Total")'>@SalCurrSym(kv.Key) @FormatShekel(kv.Value.Total)</td>
+                                                            @onmouseenter='(e) => OnCellHover(e, capturedOrgGroup, capturedOrgId, capturedOrgName, capturedOrgCurr, "Total")'
+                                                            @onmouseleave="OnCellLeaveCell">@SalCurrSym(kv.Key) @FormatShekel(kv.Value.Total)</td>
                                                     </tr>
                                                 }
                                                 </tbody>
@@ -599,6 +603,60 @@
                                         </div>
                                     </div>
                                 }
+                            </div>
+                        }
+
+                        @* Per-cell hover card — DOM-nested inside .sal-summary so cursor on card
+                           keeps the section's mouseleave from firing (allows scrolling the list). *@
+                        @if (_hoverCellGroup == group)
+                        {
+                            long cellSum = 0;
+                            foreach (var it in _hoverCellItems) cellSum += it.AmountCents;
+                            <div class="sal-cell-card is-active"
+                                 style="top:@(_hoverCellY + 14)px; left:min(@(_hoverCellX + 14)px, calc(100vw - 432px));">
+                                <div class="sal-cell-head">
+                                    <div class="sal-cell-title">
+                                        <span class="sal-cell-title-name">@_hoverCellGroup.FullName</span>
+                                        <i class="ri-arrow-right-s-line sal-cell-arrow"></i>
+                                        <span class="sal-cell-title-org">@_hoverCellOrgName</span>
+                                        <i class="ri-arrow-right-s-line sal-cell-arrow"></i>
+                                        <span class="sal-cell-title-cat">@CategoryLabel(_hoverCellCategory)</span>
+                                        <span class="sal-cell-title-curr">@_hoverCellCurrency</span>
+                                    </div>
+                                </div>
+                                <div class="sal-cell-body">
+                                    @if (_hoverCellItems.Count == 0)
+                                    {
+                                        <div class="sal-cell-empty">
+                                            <i class="ri-inbox-line"></i> No items contribute to this cell.
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        int rowIdx = 0;
+                                        @foreach (var item in _hoverCellItems)
+                                        {
+                                            var idx = rowIdx++;
+                                            <div class="sal-cell-row sal-cell-kind-@item.Kind.Replace(" ", "").ToLower()"
+                                                 style="--row-i: @idx;">
+                                                <div class="sal-cell-row-head">
+                                                    <i class="@KindIcon(item.Kind) sal-cell-row-icon"></i>
+                                                    <span class="sal-cell-row-kind">@item.Kind</span>
+                                                    <span class="sal-cell-row-date">@FormatDate(item.Date)</span>
+                                                    <span class="sal-cell-row-pc">@item.PcName</span>
+                                                    <span class="sal-cell-row-amt">@SalCurrSym(item.Currency) @FormatShekel(item.AmountCents)</span>
+                                                </div>
+                                                <div class="sal-cell-row-desc">@item.Description</div>
+                                            </div>
+                                        }
+                                        <div class="sal-cell-foot">
+                                            <span class="sal-cell-foot-sigma">Σ</span>
+                                            <span class="sal-cell-foot-eq">=</span>
+                                            <span class="sal-cell-foot-total">@SalCurrSym(_hoverCellCurrency!) @FormatShekel(cellSum)</span>
+                                            <span class="sal-cell-foot-count">(@_hoverCellItems.Count item@(_hoverCellItems.Count == 1 ? "" : "s"))</span>
+                                        </div>
+                                    }
+                                </div>
                             </div>
                         }
                     </div>
@@ -784,58 +842,8 @@
         </div>
     }
 
-    @* ── Per-cell hover card (super-detailed breakdown of a single cell) ── *@
-    @if (_hoverCellGroup != null)
-    {
-        long cellSum = 0;
-        foreach (var it in _hoverCellItems) cellSum += it.AmountCents;
-        <div class="sal-cell-card is-active"
-             style="top:@(_hoverCellY + 14)px; left:min(@(_hoverCellX + 14)px, calc(100vw - 432px));">
-            <div class="sal-cell-head">
-                <div class="sal-cell-title">
-                    <span class="sal-cell-title-name">@_hoverCellGroup.FullName</span>
-                    <i class="ri-arrow-right-s-line sal-cell-arrow"></i>
-                    <span class="sal-cell-title-org">@_hoverCellOrgName</span>
-                    <i class="ri-arrow-right-s-line sal-cell-arrow"></i>
-                    <span class="sal-cell-title-cat">@CategoryLabel(_hoverCellCategory)</span>
-                    <span class="sal-cell-title-curr">@_hoverCellCurrency</span>
-                </div>
-            </div>
-            <div class="sal-cell-body">
-                @if (_hoverCellItems.Count == 0)
-                {
-                    <div class="sal-cell-empty">
-                        <i class="ri-inbox-line"></i> No items contribute to this cell.
-                    </div>
-                }
-                else
-                {
-                    int rowIdx = 0;
-                    @foreach (var item in _hoverCellItems)
-                    {
-                        var idx = rowIdx++;
-                        <div class="sal-cell-row sal-cell-kind-@item.Kind.Replace(" ", "").ToLower()"
-                             style="--row-i: @idx;">
-                            <div class="sal-cell-row-head">
-                                <i class="@KindIcon(item.Kind) sal-cell-row-icon"></i>
-                                <span class="sal-cell-row-kind">@item.Kind</span>
-                                <span class="sal-cell-row-date">@FormatDate(item.Date)</span>
-                                <span class="sal-cell-row-pc">@item.PcName</span>
-                                <span class="sal-cell-row-amt">@SalCurrSym(item.Currency) @FormatShekel(item.AmountCents)</span>
-                            </div>
-                            <div class="sal-cell-row-desc">@item.Description</div>
-                        </div>
-                    }
-                    <div class="sal-cell-foot">
-                        <span class="sal-cell-foot-sigma">Σ</span>
-                        <span class="sal-cell-foot-eq">=</span>
-                        <span class="sal-cell-foot-total">@SalCurrSym(_hoverCellCurrency!) @FormatShekel(cellSum)</span>
-                        <span class="sal-cell-foot-count">(@_hoverCellItems.Count item@(_hoverCellItems.Count == 1 ? "" : "s"))</span>
-                    </div>
-                }
-            </div>
-        </div>
-    }
+    @* Per-cell hover card is now rendered inside each group's .sal-summary div (DOM-nested
+       so cursor over the card doesn't trigger .sal-summary's mouseleave → user can scroll). *@
 
     @* ── Floating Total Breakdown Card ── *@
     @if (_hoverGroup != null && _hoverCellGroup == null)
@@ -1021,25 +1029,45 @@
     double  _hoverCellX, _hoverCellY;
     List<BreakdownItem> _hoverCellItems = new();
 
-    void OnCellHover(Microsoft.AspNetCore.Components.Web.MouseEventArgs e, UserSalaryGroup g, string currency, string category)
-        => OnCellHoverInternal(e, g, orgId: null, orgName: "All Organizations", currency, category);
+    int _hoverCellGen;
+    const int HoverDwellMs = 100; // cursor must rest on a cell this long before card content updates
 
-    void OnCellHover(Microsoft.AspNetCore.Components.Web.MouseEventArgs e, UserSalaryGroup g, int orgId, string orgName, string currency, string category)
-        => OnCellHoverInternal(e, g, orgId, orgName, currency, category);
+    Task OnCellHover(Microsoft.AspNetCore.Components.Web.MouseEventArgs e, UserSalaryGroup g, string currency, string category)
+        => OnCellHoverDebounced(e, g, orgId: null, orgName: "All Organizations", currency, category);
 
-    void OnCellHoverInternal(Microsoft.AspNetCore.Components.Web.MouseEventArgs e, UserSalaryGroup g, int? orgId, string orgName, string currency, string category)
+    Task OnCellHover(Microsoft.AspNetCore.Components.Web.MouseEventArgs e, UserSalaryGroup g, int orgId, string orgName, string currency, string category)
+        => OnCellHoverDebounced(e, g, orgId, orgName, currency, category);
+
+    async Task OnCellHoverDebounced(Microsoft.AspNetCore.Components.Web.MouseEventArgs e, UserSalaryGroup g, int? orgId, string orgName, string currency, string category)
     {
+        var myGen = ++_hoverCellGen;
+        var clientX = e.ClientX;
+        var clientY = e.ClientY;
+        try { await Task.Delay(HoverDwellMs); }
+        catch (TaskCanceledException) { return; }
+
+        // If a newer hover (or a leave) came in, abandon — the cursor moved on.
+        if (myGen != _hoverCellGen) return;
+
         _hoverCellGroup    = g;
         _hoverCellOrgName  = orgName;
         _hoverCellCurrency = currency;
         _hoverCellCategory = category;
-        _hoverCellX        = e.ClientX;
-        _hoverCellY        = e.ClientY;
+        _hoverCellX        = clientX;
+        _hoverCellY        = clientY;
         _hoverCellItems    = g.CellItems(orgId, currency, category);
+        StateHasChanged();
     }
+
+    /// <summary>Cell-level mouseleave: aborts any in-flight dwell timer for this cell.
+    /// Does NOT clear the visible card — that happens only when the cursor leaves the
+    /// whole .sal-summary block (so the user can move from a cell to the card, and the
+    /// transit cells along the way don't override the displayed cell.)</summary>
+    void OnCellLeaveCell() => _hoverCellGen++;
 
     void OnCellLeave()
     {
+        _hoverCellGen++;          // abort any pending dwell timer
         _hoverCellGroup = null;
         _hoverCellItems = new();
     }
@@ -1739,7 +1767,7 @@
         transform: translateY(8px) scale(.96);
         transform-origin: top left;
         transition: opacity 200ms cubic-bezier(.2,.9,.25,1), transform 220ms cubic-bezier(.2,.9,.25,1);
-        pointer-events: none;
+        pointer-events: auto;
         will-change: opacity, transform;
         backdrop-filter: blur(10px);
         -webkit-backdrop-filter: blur(10px);
