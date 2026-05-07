@@ -410,8 +410,8 @@ public class DashboardService
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             INSERT INTO sess_sessions
-                (PcId, AuditorId, SessionDate, SequenceInDay, LengthSeconds, AdminSeconds, IsFreeSession, Name, CreatedByUserId, WalletId, CreatedAt)
-            VALUES (@pc, @aud, @dt, @seq, @len, @admin, @free, @name, @creator, @wallet, datetime('now', 'localtime'));
+                (PcId, AuditorId, SessionDate, SequenceInDay, LengthSeconds, AdminSeconds, IsFreeSession, Name, CreatedByUserId, WalletId, CreatedAt, OriginSource)
+            VALUES (@pc, @aud, @dt, @seq, @len, @admin, @free, @name, @creator, @wallet, datetime('now', 'localtime'), 'Import');
             SELECT last_insert_rowid();";
         cmd.Parameters.AddWithValue("@pc", pcId);
         cmd.Parameters.AddWithValue("@aud", audParam);
@@ -461,9 +461,9 @@ public class DashboardService
         cmd.CommandText = @"
             INSERT INTO sess_sessions
                 (PcId, AuditorId, SessionDate, SequenceInDay, LengthSeconds, Name,
-                 CreatedByUserId, CreatedAt, VerifiedStatus, VerifiedByUserId, VerifiedAt, IsImported, WalletId)
+                 CreatedByUserId, CreatedAt, VerifiedStatus, VerifiedByUserId, VerifiedAt, IsImported, WalletId, OriginSource)
             VALUES (@pc, @aud, @dt, @seq, 0, @name,
-                    @creator, @createdAt, 'Verified', @verifier, @verifiedAt, 1, @wallet);
+                    @creator, @createdAt, 'Verified', @verifier, @verifiedAt, 1, @wallet, 'Import');
             SELECT last_insert_rowid();";
         cmd.Parameters.AddWithValue("@pc", pcId);
         cmd.Parameters.AddWithValue("@aud", isSolo ? DBNull.Value : (object)(-1));
@@ -1607,12 +1607,12 @@ public class DashboardService
               (PcId, AuditorId, SessionDate, SequenceInDay,
                LengthSeconds, AdminSeconds, IsFreeSession,
                ChargeSeconds, ChargedRateCentsPerHour,
-               WalletId, CreatedAt)
+               WalletId, CreatedAt, OriginSource)
             VALUES
               (@pcId, @audId, @date, @seq,
                @len, @adm, @free,
                0, 0,
-               @wallet, datetime('now', 'localtime'))";
+               @wallet, datetime('now', 'localtime'), 'Wizard')";
         cmd.Parameters.AddWithValue("@pcId",  pcId);
         cmd.Parameters.AddWithValue("@audId", auditorId);
         cmd.Parameters.AddWithValue("@date",  dateStr);
@@ -1655,12 +1655,12 @@ public class DashboardService
               (PcId, AuditorId, SessionDate, SequenceInDay,
                LengthSeconds, AdminSeconds, IsFreeSession,
                ChargeSeconds, ChargedRateCentsPerHour,
-               Name, CreatedByUserId, WalletId, CreatedAt)
+               Name, CreatedByUserId, WalletId, CreatedAt, OriginSource)
             VALUES
               (@pcId, @audId, @date, @seq,
                0, @adminSec, @free,
                0, 0,
-               @name, @creator, @wallet, datetime('now', 'localtime'))";
+               @name, @creator, @wallet, datetime('now', 'localtime'), 'Wizard')";
         cmd.Parameters.AddWithValue("@pcId",     pcId);
         cmd.Parameters.AddWithValue("@audId",    solo ? DBNull.Value : auditorId);
         cmd.Parameters.AddWithValue("@date",     dateStr);
@@ -2218,12 +2218,12 @@ public class DashboardService
               (PcId, AuditorId, SessionDate, SequenceInDay,
                LengthSeconds, AdminSeconds, IsFreeSession,
                ChargeSeconds, ChargedRateCentsPerHour,
-               WalletId, CreatedAt)
+               WalletId, CreatedAt, OriginSource)
             VALUES
               (@pcId, NULL, @date, @seq,
                @len, @adm, @free,
                0, 0,
-               @wallet, datetime('now', 'localtime'))";
+               @wallet, datetime('now', 'localtime'), 'Wizard')";
         cmd.Parameters.AddWithValue("@pcId", personId);
         cmd.Parameters.AddWithValue("@date", dateStr);
         cmd.Parameters.AddWithValue("@seq",  seq);
@@ -2333,7 +2333,8 @@ public class DashboardService
     public List<AuditorSessionGroup> GetSessionsGroupedByAuditorAndPc(
         bool includeApproved = false,
         DateOnly? from = null,
-        DateOnly? to = null)
+        DateOnly? to = null,
+        int? orgId = null)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -2356,6 +2357,11 @@ public class DashboardService
         {
             where.Append(" AND SUBSTR(s.CreatedAt,1,10) <= @to");
             cmd.Parameters.AddWithValue("@to", to.Value.ToString("yyyy-MM-dd"));
+        }
+        if (orgId.HasValue)
+        {
+            where.Append(" AND pc.Org = @org");
+            cmd.Parameters.AddWithValue("@org", orgId.Value);
         }
 
         cmd.CommandText = $@"
@@ -2418,7 +2424,8 @@ public class DashboardService
     public List<CsReviewerGroup> GetCsReviewsGroupedByCsAndPc(
         bool includeApproved = false,
         DateOnly? from = null,
-        DateOnly? to = null)
+        DateOnly? to = null,
+        int? orgId = null)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -2436,6 +2443,11 @@ public class DashboardService
         {
             where.Append(" AND SUBSTR(s.CreatedAt,1,10) <= @to");
             cmd.Parameters.AddWithValue("@to", to.Value.ToString("yyyy-MM-dd"));
+        }
+        if (orgId.HasValue)
+        {
+            where.Append(" AND pc.Org = @org");
+            cmd.Parameters.AddWithValue("@org", orgId.Value);
         }
 
         cmd.CommandText = $@"
@@ -4210,12 +4222,12 @@ public class DashboardService
               (PcId, AuditorId, SessionDate, SequenceInDay,
                LengthSeconds, AdminSeconds, IsFreeSession,
                ChargeSeconds, ChargedRateCentsPerHour,
-               ApprovedNotes, Name, CreatedByUserId, WalletId, CreatedAt)
+               ApprovedNotes, Name, CreatedByUserId, WalletId, CreatedAt, OriginSource)
             VALUES
               (@pcId, @audId, @date, @seq,
                @len, @adm, @free,
                @charge, 0,
-               @notes, @name, @creator, @wallet, datetime('now', 'localtime'))";
+               @notes, @name, @creator, @wallet, datetime('now', 'localtime'), 'SessionManager')";
         cmd.Parameters.AddWithValue("@pcId",    pcId);
         cmd.Parameters.AddWithValue("@audId",   auditorId.HasValue ? auditorId.Value : DBNull.Value);
         cmd.Parameters.AddWithValue("@date",    sessionDate);
@@ -4407,7 +4419,8 @@ public class DashboardService
                 ApprovedNotes = @notes,
                 ChargeSeconds             = CASE WHEN @free = 1 THEN 0 ELSE @charge      END,
                 ChargedRateCentsPerHour   = CASE WHEN @free = 1 THEN 0 ELSE @chargedRate END,
-                AuditorSalaryCentsPerHour = CASE WHEN @free = 1 THEN 0 ELSE @audSalary   END
+                AuditorSalaryCentsPerHour = CASE WHEN @free = 1 THEN 0 ELSE @audSalary   END,
+                OriginSource              = 'SessionManager'
             WHERE SessionId = @sid";
         cmd.Parameters.AddWithValue("@sid", sessionId);
         cmd.Parameters.AddWithValue("@name", name);
@@ -4457,6 +4470,74 @@ public class DashboardService
         cmd.Parameters.AddWithValue("@charged", csChargedRate);
         cmd.ExecuteNonQuery();
         Console.WriteLine($"[SessionManager] Updated cs_review {csReviewId}");
+    }
+
+    // ── Sessions Origin (Diagnosis tab) ──────────────────────────────────────
+    public record SessionOriginRow(int SessionId, string SessionDate, string PcName,
+        string? AuditorName, bool IsSolo, string Origin, string CreatedAt);
+
+    /// <summary>Returns the latest sessions ordered by CreatedAt DESC, optionally filtered by Origin and limited.</summary>
+    public List<SessionOriginRow> GetSessionsByOrigin(int? limit, string? originFilter = null)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        var where = string.IsNullOrEmpty(originFilter)
+            ? ""
+            : "WHERE COALESCE(s.OriginSource,'Unknown') = @origin";
+        var limitClause = limit.HasValue ? "LIMIT @limit" : "";
+        cmd.CommandText = $@"
+            SELECT s.SessionId,
+                   s.SessionDate,
+                   TRIM(pc.FirstName || ' ' || COALESCE(NULLIF(pc.LastName,''), '')) AS PcName,
+                   CASE WHEN s.AuditorId IS NULL THEN NULL
+                        ELSE TRIM(ap.FirstName || ' ' || COALESCE(NULLIF(ap.LastName,''), ''))
+                   END AS AuditorName,
+                   CASE WHEN s.AuditorId IS NULL THEN 1 ELSE 0 END AS IsSolo,
+                   COALESCE(s.OriginSource,'Unknown') AS Origin,
+                   s.CreatedAt
+            FROM sess_sessions s
+            JOIN core_persons pc      ON pc.PersonId = s.PcId
+            LEFT JOIN core_persons ap ON ap.PersonId = s.AuditorId
+            {where}
+            ORDER BY s.CreatedAt DESC
+            {limitClause}";
+        if (!string.IsNullOrEmpty(originFilter))
+            cmd.Parameters.AddWithValue("@origin", originFilter);
+        if (limit.HasValue)
+            cmd.Parameters.AddWithValue("@limit", limit.Value);
+
+        var list = new List<SessionOriginRow>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            list.Add(new SessionOriginRow(
+                r.GetInt32(0),
+                r.GetString(1),
+                r.GetString(2),
+                r.IsDBNull(3) ? null : r.GetString(3),
+                r.GetInt32(4) == 1,
+                r.GetString(5),
+                r.GetString(6)));
+        }
+        return list;
+    }
+
+    /// <summary>Returns count of sessions per OriginSource (across all rows).</summary>
+    public Dictionary<string, int> GetSessionOriginCounts()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT COALESCE(OriginSource,'Unknown') AS Origin, COUNT(*)
+            FROM sess_sessions
+            GROUP BY COALESCE(OriginSource,'Unknown')";
+        var dict = new Dictionary<string, int>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            dict[r.GetString(0)] = r.GetInt32(1);
+        return dict;
     }
 
     public SessionDeleteInfo LoadSessionDeleteInfo(int sessionId, int pcId, string sessName, FolderService folderSvc)

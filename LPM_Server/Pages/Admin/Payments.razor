@@ -24,6 +24,25 @@
                     <i class="ri-alarm-warning-line me-1"></i>@_overdueCount @LS.T("payments.overdue")
                 </span>
             }
+
+            @* Org filter — chip group, mirrors Statistics tab *@
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <span class="fw-semibold" style="font-size:0.8rem;color:#6b7280;">
+                    <i class="ri-filter-3-line me-1"></i>Org:
+                </span>
+                <div class="btn-group" role="group" aria-label="Organization filter">
+                    <button type="button"
+                            class="btn btn-sm rounded-pill me-1 @(_selOrg == 0 ? "btn-primary" : "btn-outline-primary")"
+                            @onclick="() => SelectOrg(0)" disabled="@_loading">All</button>
+                    <button type="button"
+                            class="btn btn-sm rounded-pill me-1 @(_selOrg == 1 ? "btn-primary" : "btn-outline-primary")"
+                            @onclick="() => SelectOrg(1)" disabled="@_loading">Haifa</button>
+                    <button type="button"
+                            class="btn btn-sm rounded-pill @(_selOrg == 2 ? "btn-primary" : "btn-outline-primary")"
+                            @onclick="() => SelectOrg(2)" disabled="@_loading">Riga</button>
+                </div>
+            </div>
+
             <div class="form-check form-switch d-flex align-items-center gap-1 mb-0">
                 <input class="form-check-input" type="checkbox" role="switch" id="bankToggle"
                        checked="@_showBankCol" @onchange="() => _showBankCol = !_showBankCol" />
@@ -525,6 +544,17 @@
         await LoadData();
     }
 
+    // Organization filter — 0=All, 1=Haifa, 2=Riga (mirrors Statistics tab)
+    private int  _selOrg;
+    private int? OrgFilter => _selOrg == 0 ? (int?)null : _selOrg;
+
+    private async Task SelectOrg(int org)
+    {
+        if (_selOrg == org) return;
+        _selOrg = org;
+        await LoadData();
+    }
+
     async Task LoadData()
     {
         _loading = true;
@@ -532,7 +562,7 @@
         await Task.Yield();
 
         _rows.Clear();
-        var purchases = PcSvc.GetPurchases(true, includeDeleted: false);
+        var purchases = PcSvc.GetPurchases(true, includeDeleted: false, orgId: OrgFilter);
         foreach (var p in purchases)
         {
             var detail = PcSvc.GetPurchaseDetail(p.PurchaseId);

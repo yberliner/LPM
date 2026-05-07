@@ -4442,14 +4442,22 @@ public class FolderService
         File.Copy(TaaTemplatePath, taaPath);
         _audit.Log(pcId, false, $"Front_Cover/{TaaFileName}", "create", new FileInfo(taaPath).Length, null, null, "Import", "From template");
 
-        // Set PC name in B3
+        // Set PC name in B3 — go through the decrypt-modify-encrypt pipeline so TAA matches
+        // the encrypt-at-rest invariant the rest of the system enforces.
         var pcName = GetPcName(pcId) ?? $"PC {pcId}";
         try
         {
-            using var wb = new ClosedXML.Excel.XLWorkbook(taaPath);
+            var inBytes = DecryptBytes(File.ReadAllBytes(taaPath));
+            using var inMs = new MemoryStream(inBytes);
+            using var wb = new ClosedXML.Excel.XLWorkbook(inMs);
             var ws = wb.Worksheets.First();
             ws.Cell("B3").Value = pcName;
-            wb.Save();
+
+            using var outMs = new MemoryStream();
+            wb.SaveAs(outMs);
+            File.WriteAllBytes(taaPath, outMs.ToArray());
+            EncryptFileInPlace(taaPath);
+            InvalidateCache(taaPath);
             Console.WriteLine($"[FolderService] Created TAA Action file for PC {pcId} ({pcName})");
         }
         catch (Exception ex)
@@ -4472,7 +4480,9 @@ public class FolderService
 
         try
         {
-            using var wb = new ClosedXML.Excel.XLWorkbook(taaPath);
+            var inBytes = DecryptBytes(File.ReadAllBytes(taaPath));
+            using var inMs = new MemoryStream(inBytes);
+            using var wb = new ClosedXML.Excel.XLWorkbook(inMs);
             var ws = wb.Worksheets.First();
 
             // Find first empty row starting from row 7
@@ -4502,7 +4512,11 @@ public class FolderService
 
             // F = Remark (empty)
 
-            wb.Save();
+            using var outMs = new MemoryStream();
+            wb.SaveAs(outMs);
+            File.WriteAllBytes(taaPath, outMs.ToArray());
+            EncryptFileInPlace(taaPath);
+            InvalidateCache(taaPath);
             Console.WriteLine($"[FolderService] Appended TAA row for PC {pcId}: date={dateStr}, min={minutes}, ta={totalTa} (row {newRow})");
             return taaPath;
         }
@@ -4535,7 +4549,12 @@ public class FolderService
 
         try
         {
-            using var wb = new ClosedXML.Excel.XLWorkbook(fullPath);
+            // Files saved via SaveSectionFileToPath are AES-encrypted on disk. DecryptBytes
+            // short-circuits on plaintext "PK" magic bytes so legacy unencrypted xlsx (e.g. TAA
+            // Action.xlsx, anything created via File.Copy) still reads correctly.
+            var bytes = DecryptBytes(File.ReadAllBytes(fullPath));
+            using var ms = new MemoryStream(bytes);
+            using var wb = new ClosedXML.Excel.XLWorkbook(ms);
             var ws = wb.Worksheets.First();
             var lastRow = ws.LastRowUsed()?.RowNumber() ?? 6;
             var lastCol = Math.Max(ws.LastColumnUsed()?.ColumnNumber() ?? 6, 6);
@@ -4579,7 +4598,10 @@ public class FolderService
 
         try
         {
-            using var wb = new ClosedXML.Excel.XLWorkbook(fullPath);
+            // Decrypt-modify-encrypt round-trip — see ReadExcelFile for rationale.
+            var inBytes = DecryptBytes(File.ReadAllBytes(fullPath));
+            using var inMs = new MemoryStream(inBytes);
+            using var wb = new ClosedXML.Excel.XLWorkbook(inMs);
             var ws = wb.Worksheets.First();
 
             foreach (var u in updates)
@@ -4621,7 +4643,11 @@ public class FolderService
                 }
             }
 
-            wb.Save();
+            using var outMs = new MemoryStream();
+            wb.SaveAs(outMs);
+            File.WriteAllBytes(fullPath, outMs.ToArray());
+            EncryptFileInPlace(fullPath);
+            InvalidateCache(fullPath);
             _audit.Log(pcId, solo, relativePath, "excel_edit", null, null, null, "ExcelEdit", $"{updates.Count} cells");
             Console.WriteLine($"[FolderService] Saved {updates.Count} Excel changes to '{relativePath}' for PC {pcId}");
             return true;
@@ -4642,14 +4668,21 @@ public class FolderService
 
         try
         {
-            using var wb = new ClosedXML.Excel.XLWorkbook(fullPath);
+            var inBytes = DecryptBytes(File.ReadAllBytes(fullPath));
+            using var inMs = new MemoryStream(inBytes);
+            using var wb = new ClosedXML.Excel.XLWorkbook(inMs);
             var ws = wb.Worksheets.First();
             int newRow = 7;
             while (ws.Cell(newRow, 1).GetString() != "") newRow++;
             // Just create the formulas — user fills A, B, C, F
             ws.Cell(newRow, 4).FormulaA1 = $"IFERROR(C{newRow}*60/B{newRow},0)";
             ws.Cell(newRow, 5).FormulaA1 = $"TEXT(SUM($B$7:B{newRow})/1440, \"[h]:mm\")";
-            wb.Save();
+
+            using var outMs = new MemoryStream();
+            wb.SaveAs(outMs);
+            File.WriteAllBytes(fullPath, outMs.ToArray());
+            EncryptFileInPlace(fullPath);
+            InvalidateCache(fullPath);
             _audit.Log(pcId, solo, relativePath, "excel_edit", null, null, null, "ExcelEdit", $"Added row {newRow}");
             Console.WriteLine($"[FolderService] Added empty Excel row {newRow} in '{relativePath}' for PC {pcId}");
             return true;
@@ -4671,7 +4704,9 @@ public class FolderService
 
         try
         {
-            using var wb = new ClosedXML.Excel.XLWorkbook(fullPath);
+            var inBytes = DecryptBytes(File.ReadAllBytes(fullPath));
+            using var inMs = new MemoryStream(inBytes);
+            using var wb = new ClosedXML.Excel.XLWorkbook(inMs);
             var ws = wb.Worksheets.First();
             ws.Row(row).Delete();
             // Recalculate formulas for remaining rows
@@ -4682,7 +4717,12 @@ public class FolderService
                 ws.Cell(r, 5).FormulaA1 = $"TEXT(SUM($B$7:B{r})/1440, \"[h]:mm\")";
                 r++;
             }
-            wb.Save();
+
+            using var outMs = new MemoryStream();
+            wb.SaveAs(outMs);
+            File.WriteAllBytes(fullPath, outMs.ToArray());
+            EncryptFileInPlace(fullPath);
+            InvalidateCache(fullPath);
             _audit.Log(pcId, solo, relativePath, "excel_edit", null, null, null, "ExcelEdit", $"Deleted row {row}");
             Console.WriteLine($"[FolderService] Deleted Excel row {row} in '{relativePath}' for PC {pcId}");
             return true;

@@ -1484,7 +1484,7 @@ public List<PcListItem> GetAllPcs()
         return purchaseId;
     }
 
-    public List<PurchaseListItem> GetPurchases(bool includeApproved, DateOnly? from = null, DateOnly? to = null, bool includeDeleted = false)
+    public List<PurchaseListItem> GetPurchases(bool includeApproved, DateOnly? from = null, DateOnly? to = null, bool includeDeleted = false, int? orgId = null)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -1503,6 +1503,11 @@ public List<PcListItem> GetAllPcs()
         {
             where.Add("p.PurchaseDate <= @to");
             cmd.Parameters.AddWithValue("@to", to.Value.ToString("yyyy-MM-dd"));
+        }
+        if (orgId.HasValue)
+        {
+            where.Add("per.Org = @org");
+            cmd.Parameters.AddWithValue("@org", orgId.Value);
         }
         var whereClause = where.Count > 0 ? "WHERE " + string.Join(" AND ", where) : "";
 

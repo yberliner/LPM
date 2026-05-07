@@ -148,6 +148,8 @@ builder.Services.AddSingleton<LPM.Services.TextAnnotationService>();
 // read its in-memory sample buffer.
 builder.Services.AddSingleton<LPM.Services.MemoryWatchdogService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<LPM.Services.MemoryWatchdogService>());
+builder.Services.AddSingleton<LPM.Services.HealthHeuristicService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<LPM.Services.HealthHeuristicService>());
 builder.Services.AddSingleton<LPM.Services.MeetingService>();
 builder.Services.AddHostedService<LPM.Services.DbBackupService>();
 builder.Services.AddSingleton<LPM.Services.PdfShrinkService>();

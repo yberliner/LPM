@@ -46,7 +46,7 @@ public sealed record MemorySnapshot(
 public sealed class MemoryWatchdogService : BackgroundService
 {
     private const double THRESHOLD_PCT_USED = 85.0;
-    private static readonly TimeSpan _interval     = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan _interval     = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan _initialDelay = TimeSpan.FromMinutes(2);
 
     private readonly IMemoryCache _cache;
@@ -59,8 +59,8 @@ public sealed class MemoryWatchdogService : BackgroundService
     private bool _haveCpuBaseline;
 
     // Sample ring — capped so memory stays small even on long uptimes.
-    // 7 days × 4 samples/hour × 24h = 672 entries → ~30 KB.
-    private const int MaxSamples = 672;
+    // 7 days × 60 samples/hour × 24h = 10,080 entries → ~500 KB.
+    private const int MaxSamples = 10080;
     private readonly ConcurrentQueue<MemorySample> _samples = new();
 
     public MemoryWatchdogService(IMemoryCache cache, CircuitTrackingService circuits)

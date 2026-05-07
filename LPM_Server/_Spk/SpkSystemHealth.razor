@@ -6,6 +6,7 @@
 @using LPM.Services
 @inject MemoryWatchdogService MemSvc
 @inject CircuitTrackingService Circuits
+@inject HealthHeuristicService HeuristicSvc
 @inject IJSRuntime JS
 
 <div class="shg-row">
@@ -267,7 +268,7 @@
     {
         <div class="shg-chart-empty">
             <i class="ri-line-chart-line"></i>
-            <div>Waiting for the first 5-minute sample. The watchdog ignores the first 2 minutes after startup to avoid JIT-inflated readings.</div>
+            <div>Waiting for the first 1-minute sample. The watchdog ignores the first 2 minutes after startup to avoid JIT-inflated readings.</div>
         </div>
     }
 </div>
@@ -299,13 +300,13 @@
             <ApexPointSeries TItem="MemorySample"
                              Items="@_memHistory"
                              Name="Active circuits"
-                             SeriesType="SeriesType.Line"
+                             SeriesType="SeriesType.Area"
                              XValue="@(s => s.Utc.ToLocalTime())"
                              YValue="@(s => (decimal)s.ActiveCircuits)" />
             <ApexPointSeries TItem="MemorySample"
                              Items="@_memHistory"
                              Name="Disconnected"
-                             SeriesType="SeriesType.Line"
+                             SeriesType="SeriesType.Area"
                              XValue="@(s => s.Utc.ToLocalTime())"
                              YValue="@(s => (decimal)s.DisconnectedCircuits)" />
         </ApexChart>
@@ -314,50 +315,52 @@
     {
         <div class="shg-chart-empty">
             <i class="ri-line-chart-line"></i>
-            <div>Waiting for the first 5-minute sample.</div>
+            <div>Waiting for the first 1-minute sample.</div>
         </div>
     }
 </div>
 
-@* ── History: PDF cache MB over time ─────────────────────────── *@
-<div class="shg-chart-card">
-    <div class="shg-chart-head">
-        <div class="shg-chart-title"><i class="ri-database-2-line"></i> PDF cache · history</div>
-        <div class="shg-chart-meta">
-            @if (_cacheHistory.Count == 0)
-            {
-                <span class="shg-chip shg-chip-info">Collecting first sample…</span>
-            }
-            else
-            {
-                <span class="shg-chip shg-chip-min" title="Minimum recorded">Min @FormatMB(_cacheMinBytes) <small>@_cacheMinAt.ToLocalTime().ToString("HH:mm")</small></span>
-                <span class="shg-chip shg-chip-now" title="Latest sample">Now @FormatMB(_cacheNowBytes)</span>
-                <span class="shg-chip shg-chip-max" title="Maximum recorded">Max @FormatMB(_cacheMaxBytes) <small>@_cacheMaxAt.ToLocalTime().ToString("HH:mm")</small></span>
-            }
+@* ── AI Monitor: heuristic anomaly findings ──────────────────────── *@
+<div class="shg-monitor-card">
+    <div class="shg-monitor-head">
+        <div class="shg-monitor-title">
+            <i class="ri-robot-line"></i> AI Monitor
+            <span class="shg-monitor-sub">heuristic auto-analyzer</span>
+        </div>
+        <div class="shg-monitor-meta">
+            <span class="shg-chip shg-chip-info">@_findings.Count finding@(_findings.Count == 1 ? "" : "s")</span>
+            <button type="button" class="shg-monitor-clear" @onclick="ClearFindings"
+                    title="Clear all findings" disabled="@(_findings.Count == 0)">
+                <i class="ri-eraser-line"></i> Clear
+            </button>
         </div>
     </div>
-    @if (_cacheHistory.Count > 0)
+    @if (_findings.Count == 0)
     {
-        <ApexChart TItem="MemorySample"
-                   Options="@_cacheChartOptions"
-                   Height="220"
-                   @key="@($"cache-{_cacheHistory.Count}")">
-            <ApexPointSeries TItem="MemorySample"
-                             Items="@_cacheHistory"
-                             Name="PDF cache"
-                             SeriesType="SeriesType.Area"
-                             XValue="@(s => s.Utc.ToLocalTime())"
-                             YValue="@(s => (decimal)Math.Round(s.CacheBytes / 1024.0 / 1024.0, 1))" />
-        </ApexChart>
+        <div class="shg-monitor-empty">
+            <i class="ri-shield-check-line"></i>
+            <div>No anomalies detected — system is healthy.</div>
+            <div class="shg-monitor-empty-sub">Analyzer runs once a minute. Needs at least 5 samples (~5 min uptime) before it begins.</div>
+        </div>
     }
     else
     {
-        <div class="shg-chart-empty">
-            <i class="ri-line-chart-line"></i>
-            <div>Waiting for the first 5-minute sample.</div>
+        <div class="shg-monitor-list">
+            @foreach (var f in _findings.OrderByDescending(x => x.Utc))
+            {
+                <div class="shg-monitor-item shg-sev-@f.Severity.ToLower()">
+                    <div class="shg-monitor-item-head">
+                        <span class="shg-sev-badge shg-sev-badge-@f.Severity.ToLower()">@f.Severity</span>
+                        <span class="shg-monitor-item-time">@f.Utc.ToLocalTime().ToString("HH:mm")</span>
+                        <span class="shg-monitor-item-title">@f.Title</span>
+                    </div>
+                    <div class="shg-monitor-item-detail">@f.Detail</div>
+                </div>
+            }
         </div>
     }
 </div>
+
 
 <style>
     .shg-row {
@@ -505,6 +508,90 @@
     .shg-chart-empty i { font-size: 1.6rem; opacity: .4; }
     :root[data-theme-mode="light"] .shg-chart-empty { color: #64748b; }
 
+    /* ── Hover tooltip wrapper — keep ApexCharts' default dark slab from obscuring the chart.
+       The custom inner HTML (MemoryTooltipJs / CircuitsTooltipJs) already sits on a barely-
+       visible bg; this drops the OUTER ApexCharts wrapper to ~1% so on hover the chart stays
+       readable behind the floating text. Scoped to .shg-chart-card so other charts in the app
+       (e.g. Statistics, Academy) keep their normal tooltips. */
+    .shg-chart-card .apexcharts-tooltip,
+    .shg-chart-card .apexcharts-tooltip * {
+        background: rgba(15, 23, 42, 0.01) !important;
+    }
+    .shg-chart-card .apexcharts-tooltip {
+        border-color: rgba(148, 163, 184, 0.01) !important;
+        box-shadow: none !important;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+    }
+    .shg-chart-card .apexcharts-tooltip-title {
+        background: transparent !important;
+        border: none !important;
+    }
+
+    /* ── AI Monitor panel ──────────────────────────────────────── */
+    .shg-monitor-card {
+        background: #0f172a; border: 1px solid #334155; border-radius: 14px;
+        padding: 14px 16px; margin-bottom: 16px;
+    }
+    :root[data-theme-mode="light"] .shg-monitor-card { background: #f8fafc; border-color: #e2e8f0; }
+    .shg-monitor-head {
+        display: flex; align-items: center; justify-content: space-between;
+        margin-bottom: 10px; gap: 12px; flex-wrap: wrap;
+    }
+    .shg-monitor-title {
+        font-weight: 700; color: #e2e8f0; font-size: .95rem;
+        display: flex; align-items: center; gap: 6px;
+    }
+    .shg-monitor-title i { color: #a78bfa; }
+    :root[data-theme-mode="light"] .shg-monitor-title { color: #0f172a; }
+    .shg-monitor-sub {
+        font-size: .72rem; color: #64748b; font-weight: 500; margin-left: 4px;
+        text-transform: uppercase; letter-spacing: .04em;
+    }
+    .shg-monitor-meta { display: flex; align-items: center; gap: 8px; }
+    .shg-monitor-clear {
+        background: transparent; border: 1px solid #475569; color: #cbd5e1;
+        font-size: .72rem; padding: 4px 10px; border-radius: 6px; cursor: pointer;
+        display: inline-flex; align-items: center; gap: 4px;
+    }
+    .shg-monitor-clear:hover:not(:disabled) { background: #1e293b; }
+    .shg-monitor-clear:disabled { opacity: .3; cursor: default; }
+    .shg-monitor-empty {
+        padding: 24px 14px; text-align: center; color: #94a3b8;
+        font-size: .85rem; display: flex; flex-direction: column; align-items: center; gap: 6px;
+    }
+    .shg-monitor-empty i { font-size: 1.6rem; opacity: .5; color: #22c55e; }
+    .shg-monitor-empty-sub { font-size: .72rem; color: #64748b; max-width: 480px; }
+    :root[data-theme-mode="light"] .shg-monitor-empty { color: #64748b; }
+    .shg-monitor-list { display: flex; flex-direction: column; gap: 6px; }
+    .shg-monitor-item {
+        background: rgba(30,41,59,.5); border-left: 3px solid #475569;
+        border-radius: 6px; padding: 8px 12px;
+    }
+    :root[data-theme-mode="light"] .shg-monitor-item { background: #fff; border-color: #cbd5e1; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+    .shg-monitor-item.shg-sev-critical { border-left-color: #ef4444; }
+    .shg-monitor-item.shg-sev-warn     { border-left-color: #f59e0b; }
+    .shg-monitor-item.shg-sev-info     { border-left-color: #38bdf8; }
+    .shg-monitor-item-head {
+        display: flex; align-items: center; gap: 8px; margin-bottom: 2px;
+        flex-wrap: wrap;
+    }
+    .shg-monitor-item-time { font-size: .72rem; color: #94a3b8; font-variant-numeric: tabular-nums; }
+    .shg-monitor-item-title { font-weight: 600; color: #e2e8f0; font-size: .85rem; }
+    :root[data-theme-mode="light"] .shg-monitor-item-title { color: #0f172a; }
+    .shg-monitor-item-detail { font-size: .8rem; color: #cbd5e1; line-height: 1.4; }
+    :root[data-theme-mode="light"] .shg-monitor-item-detail { color: #475569; }
+    .shg-sev-badge {
+        font-size: .65rem; font-weight: 700; text-transform: uppercase;
+        padding: 2px 7px; border-radius: 10px; letter-spacing: .04em;
+    }
+    .shg-sev-badge-critical { background: rgba(239,68,68,.2); color: #fca5a5; }
+    .shg-sev-badge-warn     { background: rgba(245,158,11,.2); color: #fcd34d; }
+    .shg-sev-badge-info     { background: rgba(56,189,248,.2); color: #7dd3fc; }
+    :root[data-theme-mode="light"] .shg-sev-badge-critical { background: #fee2e2; color: #b91c1c; }
+    :root[data-theme-mode="light"] .shg-sev-badge-warn     { background: #fef3c7; color: #92400e; }
+    :root[data-theme-mode="light"] .shg-sev-badge-info     { background: #e0f2fe; color: #075985; }
+
     /* ── Memory Detail panel ───────────────────────────────────── */
     .shg-mdetail {
         background: #1e293b; border: 1px solid #334155; border-radius: 14px;
@@ -624,10 +711,15 @@
     // ── History (Blazor circuits) ────────────────────────────────────
     int _circuitsNow, _circuitsMax;
 
-    // ── History (PDF cache bytes) ────────────────────────────────────
-    List<MemorySample> _cacheHistory = new();
-    long _cacheMinBytes, _cacheMaxBytes, _cacheNowBytes;
-    DateTime _cacheMinAt, _cacheMaxAt;
+    // ── AI Monitor findings ─────────────────────────────────────────
+    IReadOnlyList<HealthFinding> _findings = Array.Empty<HealthFinding>();
+
+    void ClearFindings()
+    {
+        HeuristicSvc.Clear();
+        _findings = HeuristicSvc.GetFindings();
+    }
+
 
     // ── ApexChart options (one per chart, reused across re-renders) ──
     // All three share dark-theme styling, hidden toolbar, datetime X axis,
@@ -678,7 +770,6 @@
 
     private readonly ApexChartOptions<MemorySample> _memChartOptions      = BuildMemChartOptions();
     private readonly ApexChartOptions<MemorySample> _circuitsChartOptions = BuildCircuitsChartOptions();
-    private readonly ApexChartOptions<MemorySample> _cacheChartOptions    = BuildCacheChartOptions();
 
     static ApexChartOptions<MemorySample> BuildMemChartOptions()
     {
@@ -694,28 +785,16 @@
 
     static ApexChartOptions<MemorySample> BuildCircuitsChartOptions()
     {
-        var o = MakeBaseOptions("#f59e0b");
-        // Two series for circuits: active (amber) + disconnected (slate).
-        o.Colors = new List<string> { "#f59e0b", "#64748b" };
-        // Stepline: integer counts step between values; smoother than Straight, clearer than Smooth.
-        // Thick stroke + no markers so the LINE is the primary visual (was dots-on-thin-line before,
-        // which looked like a scatter plot when both series sat near 0).
-        o.Stroke = new Stroke { Curve = Curve.Stepline, Width = 4 };
+        // Match the memory chart style: smooth curve + gradient fill area, just with 2 series.
+        var o = MakeBaseOptions("#fbbf24");
+        // Two series: active (amber) + disconnected (slate).
+        o.Colors = new List<string> { "#fbbf24", "#94a3b8" };
         o.Yaxis![0].Min = 0;
         o.Yaxis![0].DecimalsInFloat = 0;
         // Force at least 1 unit of headroom so a flat zero series isn't drawn ON the x-axis
         // baseline (which made it look like an empty chart).
         o.Yaxis![0].ForceNiceScale = true;
         o.Legend = new Legend { Show = true, Position = LegendPosition.Top, Labels = new LegendLabels { Colors = "#94a3b8" } };
-        // No under-line fill — two line series, each as a clean stroke.
-        o.Fill = new Fill
-        {
-            Type     = new List<FillType> { FillType.Solid },
-            Opacity  = new Opacity(0d)
-        };
-        // Hide markers — the user wants a LINE graph, not dots. Hover still grows a marker
-        // on the focused point so the tooltip has something to anchor to.
-        o.Markers = new Markers { Size = 0, StrokeWidth = 0, Hover = new MarkersHover { Size = 6 } };
         // Rich custom tooltip — also explains what "Disconnected" means.
         o.Tooltip!.Custom = CircuitsTooltipJs;
         return o;
@@ -732,13 +811,13 @@
   var esc = function(x){ return String(x==null?'':x).replace(/[&<>""']/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','""':'&quot;',""'"":'&#39;'})[c]; }); };
   var pct = (s.pct!=null) ? s.pct.toFixed(1) : '?';
   var html = ''
-    + '<div style=""padding:8px 12px;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:.82rem;min-width:240px;"">'
-    +   '<div style=""font-weight:700;margin-bottom:4px;color:#94a3b8;"">' + esc(t) + '</div>'
+    + '<div style=""padding:8px 12px;background:rgba(15,23,42,0.01);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);border:1px solid rgba(148,163,184,0.08);border-radius:6px;color:#e2e8f0;font-size:.82rem;min-width:240px;text-shadow:0 1px 2px rgba(0,0,0,0.6);"">'
+    +   '<div style=""font-weight:700;margin-bottom:4px;color:#cbd5e1;"">' + esc(t) + '</div>'
     +   '<div>Memory: <strong>' + fmt(s.usedMB) + ' / ' + fmt(s.totalMB) + ' MB</strong> (' + pct + '%)</div>'
     +   '<div>Active circuits: <strong>' + fmt(s.active) + '</strong></div>'
-    +   '<div>Disconnected: <strong>' + fmt(s.disc) + '</strong> <span style=""color:#94a3b8;font-size:.85em;"">(retained ≤5 min after SignalR drop)</span></div>'
+    +   '<div>Disconnected: <strong>' + fmt(s.disc) + '</strong> <span style=""color:#cbd5e1;font-size:.85em;"">(retained ≤5 min after SignalR drop)</span></div>'
     +   (users.length > 0
-        ? '<div style=""margin-top:6px;color:#94a3b8;""><strong>Live users:</strong> ' + users.map(esc).join(', ') + '</div>'
+        ? '<div style=""margin-top:6px;color:#cbd5e1;""><strong>Live users:</strong> ' + users.map(esc).join(', ') + '</div>'
         : '')
     + '</div>';
   return html;
@@ -753,26 +832,17 @@
   var fmt = function(n){ return (n!=null && !isNaN(n)) ? n.toLocaleString() : '?'; };
   var esc = function(x){ return String(x==null?'':x).replace(/[&<>""']/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','""':'&quot;',""'"":'&#39;'})[c]; }); };
   var html = ''
-    + '<div style=""padding:8px 12px;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:.82rem;min-width:240px;"">'
-    +   '<div style=""font-weight:700;margin-bottom:4px;color:#94a3b8;"">' + esc(t) + '</div>'
-    +   '<div><span style=""color:#f59e0b;"">●</span> Active: <strong>' + fmt(s.active) + '</strong></div>'
-    +   '<div><span style=""color:#64748b;"">●</span> Disconnected: <strong>' + fmt(s.disc) + '</strong></div>'
-    +   '<div style=""margin-top:4px;color:#94a3b8;font-size:.78rem;"">Disconnected = SignalR connection dropped (laptop closed, network blip, tab backgrounded). Blazor keeps the circuit in memory for up to 5 min in case the user reconnects; after that it is disposed.</div>'
+    + '<div style=""padding:8px 12px;background:rgba(15,23,42,0.01);backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);border:1px solid rgba(148,163,184,0.08);border-radius:6px;color:#e2e8f0;font-size:.82rem;min-width:240px;text-shadow:0 1px 2px rgba(0,0,0,0.6);"">'
+    +   '<div style=""font-weight:700;margin-bottom:4px;color:#cbd5e1;"">' + esc(t) + '</div>'
+    +   '<div><span style=""color:#fbbf24;"">●</span> Active: <strong>' + fmt(s.active) + '</strong></div>'
+    +   '<div><span style=""color:#cbd5e1;"">●</span> Disconnected: <strong>' + fmt(s.disc) + '</strong></div>'
+    +   '<div style=""margin-top:4px;color:#cbd5e1;font-size:.78rem;"">Disconnected = SignalR connection dropped (laptop closed, network blip, tab backgrounded). Blazor keeps the circuit in memory for up to 5 min in case the user reconnects; after that it is disposed.</div>'
     +   (users.length > 0
-        ? '<div style=""margin-top:6px;color:#94a3b8;""><strong>Live users:</strong> ' + users.map(esc).join(', ') + '</div>'
+        ? '<div style=""margin-top:6px;color:#cbd5e1;""><strong>Live users:</strong> ' + users.map(esc).join(', ') + '</div>'
         : '')
     + '</div>';
   return html;
 }";
-
-    static ApexChartOptions<MemorySample> BuildCacheChartOptions()
-    {
-        var o = MakeBaseOptions("#06b6d4");
-        o.Yaxis![0].Min = 0;
-        o.Yaxis![0].Labels!.Formatter = "function(v){ return v + ' MB'; }";
-        o.Tooltip!.Y = new TooltipY { Formatter = "function(v){ return v.toFixed(1) + ' MB'; }" };
-        return o;
-    }
 
     // ── Memory Detail panel ─────────────────────────────────────────
     MemoryWatchdogService.DeepMemoryReport _dm = new(
@@ -782,7 +852,6 @@
     long _circAvgBytesEach;          // GC heap ÷ active circuits — rough but free signal
     List<(string User, int Count)> _circTopUsers = new();
     List<string> _activeUsernames = new();   // distinct usernames with at least one connected circuit
-    volatile bool _pushNeeded = true;        // marks "JS sidecar data is stale — push on next render"
 
     // Action buttons (Force GC / Snapshot top types)
     bool   _actBusy;
@@ -826,18 +895,16 @@
         ReadCacheStats();
         ReadHistory();
         ReadDeepMemoryAndCircuits();
+        _findings      = HeuristicSvc.GetFindings();
         _serverStarted = MemSvc.ProcessStartedAt;
         _uptime        = DateTime.Now - _serverStarted;
         if (_uptime < TimeSpan.Zero) _uptime = TimeSpan.Zero;
-        _pushNeeded    = true;   // sidecar data for chart tooltips is stale — push on next render
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        // Keep the JS-side sidecar data (memSamples + activeUsers) in sync with the C# state
-        // so the rich chart tooltips can read fresh values. Cheap when there's nothing to push.
-        if (!_pushNeeded) return;
-        _pushNeeded = false;
+        // Always push the JS-side sidecar data (memSamples + activeUsers) on every render so the
+        // chart tooltips never read stale or empty data on first hover. Cheap (≤672 entries).
         try
         {
             var samples = _memHistory.Select(s => new
@@ -971,18 +1038,16 @@
     {
         var snap = MemSvc.GetSnapshot();
         // Only rebuild when sample count changed — avoids redundant work on every 1s tick.
-        if (snap.Samples.Count == _memHistory.Count && snap.Samples.Count == _cacheHistory.Count)
+        if (snap.Samples.Count == _memHistory.Count)
             return;
 
-        _memHistory   = snap.Samples.ToList();
-        _cacheHistory = snap.Samples.ToList();
+        _memHistory = snap.Samples.ToList();
         if (_memHistory.Count == 0) return;
 
-        // Compute chip values (Min / Now / Max) for the three chart headers.
+        // Compute chip values (Min / Now / Max) for the chart headers.
         // Chart rendering itself is handled by ApexCharts; we just need these summary stats.
         ComputeMemoryChipStats();
         ComputeCircuitChipStats();
-        ComputeCacheChipStats();
     }
 
     void ComputeMemoryChipStats()
@@ -1007,21 +1072,6 @@
             if (_memHistory[i].ActiveCircuits > maxSeen) maxSeen = _memHistory[i].ActiveCircuits;
         _circuitsMax = maxSeen;
         _circuitsNow = _memHistory[^1].ActiveCircuits;
-    }
-
-    void ComputeCacheChipStats()
-    {
-        _cacheMinBytes = long.MaxValue; _cacheMaxBytes = long.MinValue;
-        int minIdx = 0, maxIdx = 0;
-        for (int i = 0; i < _cacheHistory.Count; i++)
-        {
-            var s = _cacheHistory[i];
-            if (s.CacheBytes < _cacheMinBytes) { _cacheMinBytes = s.CacheBytes; minIdx = i; }
-            if (s.CacheBytes > _cacheMaxBytes) { _cacheMaxBytes = s.CacheBytes; maxIdx = i; }
-        }
-        _cacheMinAt    = _cacheHistory[minIdx].Utc;
-        _cacheMaxAt    = _cacheHistory[maxIdx].Utc;
-        _cacheNowBytes = _cacheHistory[^1].CacheBytes;
     }
 
     // ── CPU ──────────────────────────────────────────────────────────

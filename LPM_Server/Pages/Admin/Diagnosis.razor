@@ -132,6 +132,11 @@
                 <i class="ri-file-chart-line me-1"></i>Memory Report
             </a>
         </li>
+        <li class="nav-item">
+            <a class="nav-link @(_diagTab == "origin" ? "active" : "")" @onclick="SwitchToOriginTab" href="javascript:void(0)">
+                <i class="ri-route-line me-1"></i>Sessions Origin
+            </a>
+        </li>
     </ul>
 
     @if (_diagTab == "health")
@@ -2065,6 +2070,135 @@
     </div>
 }
 
+@if (_diagTab == "origin")
+{
+    <div class="diag-editor-card mb-4">
+        <div class="diag-editor-header">
+            <i class="ri-route-line me-2"></i>Sessions Origin
+            <span class="diag-editor-sub">Where each session was added or last modified from</span>
+        </div>
+        <div class="diag-editor-body">
+
+            @* ── Counts per source (across all sessions) ── *@
+            <div class="row g-2 mb-3">
+                @foreach (var kv in _originCounts.OrderByDescending(x => x.Value))
+                {
+                    <div class="col-6 col-md-3">
+                        <div class="origin-count-card origin-@kv.Key.ToLower()">
+                            <div class="origin-count-label">@kv.Key</div>
+                            <div class="origin-count-value">@kv.Value.ToString("N0")</div>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            @* ── Filter + limit toggles ── *@
+            <div class="d-flex align-items-center gap-3 flex-wrap mb-3">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="fw-semibold" style="font-size:.8rem;color:#6b7280;">
+                        <i class="ri-filter-3-line me-1"></i>Source:
+                    </span>
+                    <div class="btn-group btn-group-sm" role="group">
+                        <button type="button"
+                                class="btn @(_originFilter == null ? "btn-primary" : "btn-outline-primary")"
+                                @onclick="() => SetOriginFilter(null)">All</button>
+                        <button type="button"
+                                class="btn @(_originFilter == "Wizard" ? "btn-primary" : "btn-outline-primary")"
+                                @onclick='() => SetOriginFilter("Wizard")'>Wizard</button>
+                        <button type="button"
+                                class="btn @(_originFilter == "SessionManager" ? "btn-primary" : "btn-outline-primary")"
+                                @onclick='() => SetOriginFilter("SessionManager")'>Session Manager</button>
+                        <button type="button"
+                                class="btn @(_originFilter == "Import" ? "btn-primary" : "btn-outline-primary")"
+                                @onclick='() => SetOriginFilter("Import")'>Import</button>
+                        <button type="button"
+                                class="btn @(_originFilter == "Unknown" ? "btn-primary" : "btn-outline-primary")"
+                                @onclick='() => SetOriginFilter("Unknown")'>Unknown</button>
+                    </div>
+                </div>
+
+                <div class="d-flex align-items-center gap-2 ms-auto">
+                    <span class="fw-semibold" style="font-size:.8rem;color:#6b7280;">Show:</span>
+                    <div class="btn-group btn-group-sm" role="group">
+                        <button type="button"
+                                class="btn @(_originLimit == 10 ? "btn-secondary" : "btn-outline-secondary")"
+                                @onclick="() => SetOriginLimit(10)">10</button>
+                        <button type="button"
+                                class="btn @(_originLimit == 100 ? "btn-secondary" : "btn-outline-secondary")"
+                                @onclick="() => SetOriginLimit(100)">100</button>
+                        <button type="button"
+                                class="btn @(_originLimit == 1000 ? "btn-secondary" : "btn-outline-secondary")"
+                                @onclick="() => SetOriginLimit(1000)">1000</button>
+                        <button type="button"
+                                class="btn @(_originLimit == null ? "btn-secondary" : "btn-outline-secondary")"
+                                @onclick="() => SetOriginLimit(null)">All</button>
+                    </div>
+                </div>
+            </div>
+
+            @* ── Table ── *@
+            @if (_originRows.Count == 0)
+            {
+                <div class="text-center py-4 text-muted small">
+                    <i class="ri-inbox-line me-1"></i>No sessions match this filter.
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle small mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width:80px;">SessionId</th>
+                                <th style="width:110px;">Date</th>
+                                <th>PC</th>
+                                <th>Auditor</th>
+                                <th style="width:140px;">Origin</th>
+                                <th style="width:160px;">Created At</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in _originRows)
+                            {
+                                <tr>
+                                    <td class="text-muted">@row.SessionId</td>
+                                    <td>@row.SessionDate</td>
+                                    <td class="fw-semibold">@row.PcName</td>
+                                    <td>@(row.IsSolo ? "(Solo)" : (row.AuditorName ?? "—"))</td>
+                                    <td>
+                                        <span class="origin-badge origin-@row.Origin.ToLower()">@row.Origin</span>
+                                    </td>
+                                    <td class="text-muted">@row.CreatedAt</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+
+    <style>
+        .origin-count-card {
+            border-radius: 8px; padding: 10px 14px; border: 1px solid #e2e8f0; background: #f8fafc;
+        }
+        .origin-count-card.origin-wizard         { border-color: #86efac; background: #f0fdf4; }
+        .origin-count-card.origin-sessionmanager { border-color: #93c5fd; background: #eff6ff; }
+        .origin-count-card.origin-import         { border-color: #cbd5e1; background: #f8fafc; }
+        .origin-count-card.origin-unknown        { border-color: #fca5a5; background: #fef2f2; }
+        .origin-count-label { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: #64748b; font-weight: 600; }
+        .origin-count-value { font-size: 1.4rem; font-weight: 800; color: #0f172a; }
+        .origin-badge {
+            display: inline-block; font-size: .7rem; font-weight: 700; padding: 2px 8px; border-radius: 10px;
+            letter-spacing: .03em;
+        }
+        .origin-badge.origin-wizard         { background: #dcfce7; color: #166534; }
+        .origin-badge.origin-sessionmanager { background: #dbeafe; color: #1e40af; }
+        .origin-badge.origin-import         { background: #f1f5f9; color: #475569; }
+        .origin-badge.origin-unknown        { background: #fee2e2; color: #b91c1c; }
+    </style>
+}
+
 <style>
     .merge-danger-banner {
         background: linear-gradient(135deg, #7f1d1d, #dc2626, #7f1d1d);
@@ -2138,6 +2272,45 @@
     {
         _diagTab = "deleted";
         _ = LoadDeletedFiles();
+    }
+
+    // ── Sessions Origin tab state + actions ──────────────────────────────
+    int? _originLimit = 100;
+    string? _originFilter;
+    List<LPM.Services.DashboardService.SessionOriginRow> _originRows = new();
+    Dictionary<string, int> _originCounts = new();
+
+    void SwitchToOriginTab()
+    {
+        _diagTab = "origin";
+        LoadOriginData();
+    }
+
+    void LoadOriginData()
+    {
+        try
+        {
+            _originRows   = DashSvc.GetSessionsByOrigin(_originLimit, _originFilter);
+            _originCounts = DashSvc.GetSessionOriginCounts();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Diagnosis] Sessions Origin load failed: {ex.Message}");
+            _originRows   = new();
+            _originCounts = new();
+        }
+    }
+
+    void SetOriginFilter(string? src)
+    {
+        _originFilter = src;
+        LoadOriginData();
+    }
+
+    void SetOriginLimit(int? limit)
+    {
+        _originLimit = limit;
+        LoadOriginData();
     }
 
     async Task LoadDeletedFiles()

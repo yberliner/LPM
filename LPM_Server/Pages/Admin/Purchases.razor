@@ -83,6 +83,25 @@
                         @LS.T("purchases.showDeleted")
                     </label>
                 </div>
+
+                @* Org filter — chip group, mirrors Statistics tab *@
+                <div class="pu-filter-divider d-none d-sm-block"></div>
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <span class="fw-semibold" style="font-size:0.8rem;color:#6b7280;">
+                        <i class="ri-filter-3-line me-1"></i>Org:
+                    </span>
+                    <div class="btn-group" role="group" aria-label="Organization filter">
+                        <button type="button"
+                                class="btn btn-sm rounded-pill me-1 @(_selOrg == 0 ? "btn-primary" : "btn-outline-primary")"
+                                @onclick="() => SelectOrg(0)" disabled="@_loading">All</button>
+                        <button type="button"
+                                class="btn btn-sm rounded-pill me-1 @(_selOrg == 1 ? "btn-primary" : "btn-outline-primary")"
+                                @onclick="() => SelectOrg(1)" disabled="@_loading">Haifa</button>
+                        <button type="button"
+                                class="btn btn-sm rounded-pill @(_selOrg == 2 ? "btn-primary" : "btn-outline-primary")"
+                                @onclick="() => SelectOrg(2)" disabled="@_loading">Riga</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -553,6 +572,17 @@
         await LoadData();
     }
 
+    // Organization filter — 0=All, 1=Haifa, 2=Riga (mirrors Statistics tab)
+    private int  _selOrg;
+    private int? OrgFilter => _selOrg == 0 ? (int?)null : _selOrg;
+
+    private async Task SelectOrg(int org)
+    {
+        if (_selOrg == org) return;
+        _selOrg = org;
+        await LoadData();
+    }
+
     private async Task LoadData()
     {
         _loading = true;
@@ -563,7 +593,7 @@
         if (_includeApproved && DateOnly.TryParse(_fromDateStr, out var f)) from = f;
         if (_includeApproved && DateOnly.TryParse(_toDateStr,   out var t)) to   = t;
 
-        _purchases = PcSvc.GetPurchases(_includeApproved, from, to, _includeDeleted);
+        _purchases = PcSvc.GetPurchases(_includeApproved, from, to, _includeDeleted, OrgFilter);
 
         _itemCounts.Clear();
         _signatures.Clear();
