@@ -386,6 +386,65 @@ public class FolderService
         }
     }
 
+    /// <summary>Convert a legacy .xls (or other spreadsheet) to .xlsx using LibreOffice. Returns the xlsx bytes, or null on failure.</summary>
+    public byte[]? ConvertXlsToXlsx(byte[] xlsBytes, string originalFileName)
+    {
+        if (!CanConvertToPdf) return null;
+
+        var tempDir = Path.Combine(Path.GetTempPath(), $"lpm_xls2x_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var safeInputName = SanitizeName(Path.GetFileName(originalFileName ?? "input.xls"));
+            if (string.IsNullOrWhiteSpace(safeInputName)) safeInputName = "input.xls";
+            var inputPath = Path.Combine(tempDir, safeInputName);
+            File.WriteAllBytes(inputPath, xlsBytes);
+
+            using var process = new Process();
+            process.StartInfo = new ProcessStartInfo
+            {
+                FileName = _libreOfficePath!,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+            process.StartInfo.ArgumentList.Add("--headless");
+            process.StartInfo.ArgumentList.Add("--convert-to");
+            process.StartInfo.ArgumentList.Add("xlsx");
+            process.StartInfo.ArgumentList.Add("--outdir");
+            process.StartInfo.ArgumentList.Add(tempDir);
+            process.StartInfo.ArgumentList.Add(inputPath);
+
+            process.Start();
+            process.WaitForExit(60_000);
+
+            var xlsxName = Path.GetFileNameWithoutExtension(safeInputName) + ".xlsx";
+            var xlsxPath = Path.Combine(tempDir, xlsxName);
+
+            if (process.ExitCode == 0 && File.Exists(xlsxPath))
+            {
+                var bytes = File.ReadAllBytes(xlsxPath);
+                Console.WriteLine($"[Xls→Xlsx] {originalFileName} → {bytes.Length / 1024}KB");
+                return bytes;
+            }
+
+            var err = process.StandardError.ReadToEnd();
+            Console.WriteLine($"[Xls→Xlsx] Failed for {originalFileName}: exit={process.ExitCode} {err}");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Xls→Xlsx] Error: {ex.Message}");
+            return null;
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, recursive: true); } catch { }
+        }
+    }
+
     /// <summary>Repair a corrupt PDF (e.g. invalid XRef) by round-tripping through LibreOffice. Returns repaired bytes, or null on failure.</summary>
     public byte[]? RepairPdf(byte[] pdfBytes)
     {
@@ -2271,6 +2330,21 @@ public class FolderService
         if (existing != null) return existing;
         var path = Path.Combine(_basePath, GetSoloFolderName(pcId));
         Directory.CreateDirectory(path);
+        return path;
+    }
+
+    /// <summary>Find or create the regular (non-solo) PC folder ("{pcId}-{name}") with the
+    /// three standard subfolders. Idempotent — returns the existing path if already there.</summary>
+    public string GetOrCreatePcFolderPath(int pcId)
+    {
+        var existing = FindPcFolder(pcId);
+        if (existing != null) return existing;
+        var pcName = GetPcName(pcId) ?? $"PC {pcId}";
+        var path = Path.Combine(_basePath, $"{pcId}-{pcName}");
+        Directory.CreateDirectory(path);
+        Directory.CreateDirectory(Path.Combine(path, "Front_Cover"));
+        Directory.CreateDirectory(Path.Combine(path, "Back_Cover"));
+        Directory.CreateDirectory(Path.Combine(path, "WorkSheets"));
         return path;
     }
 

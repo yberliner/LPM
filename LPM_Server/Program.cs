@@ -486,6 +486,7 @@ static async Task SignInUser(HttpContext ctx, UserDb db, string username,
         new("StaffRole", flags.StaffRole),
         new("PersonId", flags.PersonId.ToString()),
         new("UserId", flags.UserId.ToString()),
+        new("PermissionsLevel", flags.PermissionsLevel.ToString()),
     };
     foreach (var r in flags.Roles)
         claims.Add(new Claim(ClaimTypes.Role, r));
@@ -528,6 +529,7 @@ app.MapPost("/admin/impersonate", async (HttpContext ctx, UserDb db) =>
         new("StaffRole", flags.StaffRole),
         new("PersonId", flags.PersonId.ToString()),
         new("UserId", flags.UserId.ToString()),
+        new("PermissionsLevel", flags.PermissionsLevel.ToString()),
         new("OriginalUser", "yaniv"),
     };
     foreach (var r in flags.Roles)

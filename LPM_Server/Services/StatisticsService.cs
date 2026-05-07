@@ -15,7 +15,7 @@ public record DayStat(DateOnly Date, List<StaffStatRow> Staff, int AcademyCount,
 
 public record OriginHours(string Origin, int Seconds);
 
-public record StatCellDetailItem(string PcName, string Date, int Seconds, int? SessionId);
+public record StatCellDetailItem(string PcName, string OrgName, string Date, int Seconds, int? SessionId);
 public record StatCellDetail(List<StatCellDetailItem> Items, int TotalSec);
 
 public record WeekStatSummary(DateOnly WeekStart, int TotalAuditCsSec, int AcademyCount, int BodyInShop, int PcCount, int EffortSec = 0)
@@ -983,20 +983,26 @@ public class StatisticsService
     {
         var startStr = start.ToString("yyyy-MM-dd");
         var endStr   = end.ToString("yyyy-MM-dd");
+        var allStaff = auditorId <= 0;
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = @"
+        cmd.CommandText = $@"
             SELECT COALESCE(TRIM(p.FirstName || ' ' || p.LastName), 'Unknown') AS pcName,
+                   COALESCE(og.Name, 'Unknown') AS orgName,
                    DATE(s.CreatedAt, 'localtime') AS d,
                    s.LengthSeconds + s.AdminSeconds AS sec,
                    s.SessionId
             FROM sess_sessions s
             LEFT JOIN core_persons p ON p.PersonId = s.PcId
-            WHERE s.AuditorId = @aid
+            LEFT JOIN lkp_organizations og ON og.OrgId = p.Org
+            WHERE { (allStaff ? "s.AuditorId IS NOT NULL" : "s.AuditorId = @aid") }
               AND DATE(s.CreatedAt, 'localtime') >= @s AND DATE(s.CreatedAt, 'localtime') <= @e
-            ORDER BY DATE(s.CreatedAt, 'localtime') DESC, s.CreatedAt DESC";
-        cmd.Parameters.AddWithValue("@aid", auditorId);
+            ORDER BY (CASE WHEN COALESCE(og.Name, 'Unknown') = 'Unknown' THEN 1 ELSE 0 END),
+                     COALESCE(og.Name, 'Unknown') ASC,
+                     DATE(s.CreatedAt, 'localtime') DESC,
+                     s.CreatedAt DESC";
+        if (!allStaff) cmd.Parameters.AddWithValue("@aid", auditorId);
         cmd.Parameters.AddWithValue("@s", startStr);
         cmd.Parameters.AddWithValue("@e", endStr);
         var items = new List<StatCellDetailItem>();
@@ -1004,8 +1010,8 @@ public class StatisticsService
         using var r = cmd.ExecuteReader();
         while (r.Read())
         {
-            int sec = r.GetInt32(2);
-            items.Add(new StatCellDetailItem(r.GetString(0), r.GetString(1), sec, r.IsDBNull(3) ? null : r.GetInt32(3)));
+            int sec = r.GetInt32(3);
+            items.Add(new StatCellDetailItem(r.GetString(0), r.GetString(1), r.GetString(2), sec, r.IsDBNull(4) ? null : r.GetInt32(4)));
             total += sec;
         }
         return new StatCellDetail(items, total);
@@ -1015,22 +1021,28 @@ public class StatisticsService
     {
         var startStr = start.ToString("yyyy-MM-dd");
         var endStr   = end.ToString("yyyy-MM-dd");
+        var allStaff = csId <= 0;
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = @"
+        cmd.CommandText = $@"
             SELECT COALESCE(TRIM(p.FirstName || ' ' || p.LastName), 'Unknown') AS pcName,
+                   COALESCE(og.Name, 'Unknown') AS orgName,
                    DATE(cr.ReviewedAt, 'localtime') AS d,
                    cr.ReviewLengthSeconds AS sec,
                    cr.SessionId
             FROM cs_reviews cr
             JOIN sess_sessions s ON s.SessionId = cr.SessionId
             LEFT JOIN core_persons p ON p.PersonId = s.PcId
-            WHERE cr.CsId = @cid
+            LEFT JOIN lkp_organizations og ON og.OrgId = p.Org
+            WHERE { (allStaff ? "1=1" : "cr.CsId = @cid") }
               AND DATE(cr.ReviewedAt, 'localtime') >= @s AND DATE(cr.ReviewedAt, 'localtime') <= @e
               AND s.AuditorId IS NULL
-            ORDER BY DATE(cr.ReviewedAt, 'localtime') DESC, cr.ReviewedAt DESC";
-        cmd.Parameters.AddWithValue("@cid", csId);
+            ORDER BY (CASE WHEN COALESCE(og.Name, 'Unknown') = 'Unknown' THEN 1 ELSE 0 END),
+                     COALESCE(og.Name, 'Unknown') ASC,
+                     DATE(cr.ReviewedAt, 'localtime') DESC,
+                     cr.ReviewedAt DESC";
+        if (!allStaff) cmd.Parameters.AddWithValue("@cid", csId);
         cmd.Parameters.AddWithValue("@s", startStr);
         cmd.Parameters.AddWithValue("@e", endStr);
         var items = new List<StatCellDetailItem>();
@@ -1038,8 +1050,8 @@ public class StatisticsService
         using var r = cmd.ExecuteReader();
         while (r.Read())
         {
-            int sec = r.GetInt32(2);
-            items.Add(new StatCellDetailItem(r.GetString(0), r.GetString(1), sec, r.IsDBNull(3) ? null : r.GetInt32(3)));
+            int sec = r.GetInt32(3);
+            items.Add(new StatCellDetailItem(r.GetString(0), r.GetString(1), r.GetString(2), sec, r.IsDBNull(4) ? null : r.GetInt32(4)));
             total += sec;
         }
         return new StatCellDetail(items, total);
@@ -1049,22 +1061,28 @@ public class StatisticsService
     {
         var startStr = start.ToString("yyyy-MM-dd");
         var endStr   = end.ToString("yyyy-MM-dd");
+        var allStaff = csId <= 0;
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = @"
+        cmd.CommandText = $@"
             SELECT COALESCE(TRIM(p.FirstName || ' ' || p.LastName), 'Unknown') AS pcName,
+                   COALESCE(og.Name, 'Unknown') AS orgName,
                    DATE(cr.ReviewedAt, 'localtime') AS d,
                    cr.ReviewLengthSeconds AS sec,
                    cr.SessionId
             FROM cs_reviews cr
             JOIN sess_sessions s ON s.SessionId = cr.SessionId
             LEFT JOIN core_persons p ON p.PersonId = s.PcId
-            WHERE cr.CsId = @cid
+            LEFT JOIN lkp_organizations og ON og.OrgId = p.Org
+            WHERE { (allStaff ? "1=1" : "cr.CsId = @cid") }
               AND DATE(cr.ReviewedAt, 'localtime') >= @s AND DATE(cr.ReviewedAt, 'localtime') <= @e
               AND s.AuditorId IS NOT NULL
-            ORDER BY DATE(cr.ReviewedAt, 'localtime') DESC, cr.ReviewedAt DESC";
-        cmd.Parameters.AddWithValue("@cid", csId);
+            ORDER BY (CASE WHEN COALESCE(og.Name, 'Unknown') = 'Unknown' THEN 1 ELSE 0 END),
+                     COALESCE(og.Name, 'Unknown') ASC,
+                     DATE(cr.ReviewedAt, 'localtime') DESC,
+                     cr.ReviewedAt DESC";
+        if (!allStaff) cmd.Parameters.AddWithValue("@cid", csId);
         cmd.Parameters.AddWithValue("@s", startStr);
         cmd.Parameters.AddWithValue("@e", endStr);
         var items = new List<StatCellDetailItem>();
@@ -1072,8 +1090,8 @@ public class StatisticsService
         using var r = cmd.ExecuteReader();
         while (r.Read())
         {
-            int sec = r.GetInt32(2);
-            items.Add(new StatCellDetailItem(r.GetString(0), r.GetString(1), sec, r.IsDBNull(3) ? null : r.GetInt32(3)));
+            int sec = r.GetInt32(3);
+            items.Add(new StatCellDetailItem(r.GetString(0), r.GetString(1), r.GetString(2), sec, r.IsDBNull(4) ? null : r.GetInt32(4)));
             total += sec;
         }
         return new StatCellDetail(items, total);
@@ -1083,20 +1101,26 @@ public class StatisticsService
     {
         var startStr = start.ToString("yyyy-MM-dd");
         var endStr   = end.ToString("yyyy-MM-dd");
+        var allStaff = personId <= 0;
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = @"
+        cmd.CommandText = $@"
             SELECT COALESCE(TRIM(p.FirstName || ' ' || p.LastName), 'Unknown') AS pcName,
+                   COALESCE(og.Name, 'Unknown') AS orgName,
                    ee.EffortDate AS d,
                    ee.LengthSeconds AS sec
             FROM sys_effort_entries ee
             JOIN core_users u ON u.Id = ee.PerformedByUserId
             LEFT JOIN core_persons p ON p.PersonId = ee.PcId
-            WHERE u.PersonId = @pid
+            LEFT JOIN lkp_organizations og ON og.OrgId = p.Org
+            WHERE { (allStaff ? "u.PersonId IS NOT NULL" : "u.PersonId = @pid") }
               AND ee.EffortDate >= @s AND ee.EffortDate <= @e
-            ORDER BY ee.EffortDate DESC, ee.CreatedAt DESC";
-        cmd.Parameters.AddWithValue("@pid", personId);
+            ORDER BY (CASE WHEN COALESCE(og.Name, 'Unknown') = 'Unknown' THEN 1 ELSE 0 END),
+                     COALESCE(og.Name, 'Unknown') ASC,
+                     ee.EffortDate DESC,
+                     ee.CreatedAt DESC";
+        if (!allStaff) cmd.Parameters.AddWithValue("@pid", personId);
         cmd.Parameters.AddWithValue("@s", startStr);
         cmd.Parameters.AddWithValue("@e", endStr);
         var items = new List<StatCellDetailItem>();
@@ -1104,8 +1128,8 @@ public class StatisticsService
         using var r = cmd.ExecuteReader();
         while (r.Read())
         {
-            int sec = r.GetInt32(2);
-            items.Add(new StatCellDetailItem(r.GetString(0), r.GetString(1), sec, null));
+            int sec = r.GetInt32(3);
+            items.Add(new StatCellDetailItem(r.GetString(0), r.GetString(1), r.GetString(2), sec, null));
             total += sec;
         }
         return new StatCellDetail(items, total);

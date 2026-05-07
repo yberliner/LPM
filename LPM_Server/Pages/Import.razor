@@ -9,6 +9,7 @@
 @inject LPM.Auth.UserDb UserDb
 @inject LPM.Services.SmsService SmsSvc
 @inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Nav
 @inject IJSRuntime JS
 @inject PdfService PdfSvc
 @implements IDisposable
@@ -1137,6 +1138,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        if (await PermissionsLevels.RedirectIfRestricted(AuthStateProvider, Nav)) return;
         _folderItems = DashSvc.GetFolderItems();
         var auth = await AuthStateProvider.GetAuthenticationStateAsync();
         _logUsername = auth.User.Identity?.Name ?? "";

@@ -37,8 +37,8 @@ public record CsReviewerGroup(int CsId, string CsName, List<PcCsGroup> PcGroups)
 
 public record StaffMember(int PersonId, string FullName);
 
-public record SalarySessionRow(string Date, int SessionId, int PcId, string PcName, string Name, int DurationSec, int RateCentsPerHour, long PaymentCents, bool IsApproved, bool IsFree = false, string Currency = "ILS");
-public record SalaryCsRow(string Date, int CsReviewId, int SessionId, int PcId, string PcName, bool IsSolo, string Name, int DurationSec, int RateCentsPerHour, long PaymentCents, bool IsApproved, bool IsFree = false, string Currency = "ILS");
+public record SalarySessionRow(string Date, int SessionId, int PcId, string PcName, string Name, int DurationSec, int RateCentsPerHour, long PaymentCents, bool IsApproved, bool IsFree = false, string Currency = "ILS", int OrgId = 0, string OrgName = "Unknown");
+public record SalaryCsRow(string Date, int CsReviewId, int SessionId, int PcId, string PcName, bool IsSolo, string Name, int DurationSec, int RateCentsPerHour, long PaymentCents, bool IsApproved, bool IsFree = false, string Currency = "ILS", int OrgId = 0, string OrgName = "Unknown");
 public record CommissionDetail(
     int PurchaseId, string PurchaseDate,
     string PaymentMethod, int PaymentGross, string PaymentDate,
@@ -47,7 +47,7 @@ public record CommissionDetail(
     decimal NetAfterDeductions,
     decimal ReserveAmount, decimal NetBase, double CommissionPct,
     string? CourseFinishDate = null);
-public record CommissionRow(string PcName, string Role, string Category, long AmountCents, CommissionDetail Detail);
+public record CommissionRow(string PcName, string Role, string Category, long AmountCents, CommissionDetail Detail, string Currency = "ILS", int OrgId = 0, string OrgName = "Unknown");
 public record UnassignedReferralRow(string PcName, string Category, long AmountCents, string Notes, CommissionDetail Detail);
 public record SalaryReport(List<UserSalaryGroup> Groups, List<UnassignedReferralRow> UnassignedReferrals);
 public record UserSalaryGroup(int PersonId, string FullName, List<SalarySessionRow> Sessions, List<SalaryCsRow> CsReviews, List<CommissionRow> Commissions)
@@ -66,6 +66,65 @@ public record UserSalaryGroup(int PersonId, string FullName, List<SalarySessionR
             map[c.Currency] = map.GetValueOrDefault(c.Currency) + c.PaymentCents;
         return map;
     }
+
+    /// <summary>Per-currency breakdown into Auditing+CSSolo, CSing, Commission. Approved & non-free only.</summary>
+    public Dictionary<string, SalaryBreakdown> BreakdownByCurrency()
+    {
+        var rows = AllRowsForBreakdown(orgFilter: null);
+        return BuildBreakdown(rows);
+    }
+
+    /// <summary>Per-org → per-currency breakdown. Orgs sorted: Haifa, Riga, then alphabetical.</summary>
+    public IEnumerable<(int OrgId, string OrgName, Dictionary<string, SalaryBreakdown> ByCurrency)> BreakdownByOrg()
+    {
+        var orgs = Sessions.Where(s => s.IsApproved && !s.IsFree).Select(s => (s.OrgId, s.OrgName))
+            .Concat(CsReviews.Where(c => c.IsApproved && !c.IsFree).Select(c => (c.OrgId, c.OrgName)))
+            .Concat(Commissions.Select(c => (c.OrgId, c.OrgName)))
+            .Distinct()
+            .OrderBy(o => o.OrgName == "Haifa" ? 0 : o.OrgName == "Riga" ? 1 : 2)
+            .ThenBy(o => o.OrgName);
+
+        foreach (var (orgId, orgName) in orgs)
+        {
+            var rows = AllRowsForBreakdown(orgFilter: orgId);
+            yield return (orgId, orgName, BuildBreakdown(rows));
+        }
+    }
+
+    private IEnumerable<(string Currency, long Auditing, long CsSolo, long Csing, long Commission)>
+        AllRowsForBreakdown(int? orgFilter)
+    {
+        foreach (var s in Sessions.Where(s => s.IsApproved && !s.IsFree))
+            if (orgFilter is null || s.OrgId == orgFilter)
+                yield return (s.Currency, s.PaymentCents, 0, 0, 0);
+        foreach (var c in CsReviews.Where(c => c.IsApproved && !c.IsFree))
+            if (orgFilter is null || c.OrgId == orgFilter)
+                yield return (c.Currency, 0, c.IsSolo ? c.PaymentCents : 0, c.IsSolo ? 0 : c.PaymentCents, 0);
+        foreach (var k in Commissions)
+            if (orgFilter is null || k.OrgId == orgFilter)
+                yield return (k.Currency, 0, 0, 0, k.AmountCents);
+    }
+
+    private static Dictionary<string, SalaryBreakdown> BuildBreakdown(
+        IEnumerable<(string Currency, long Auditing, long CsSolo, long Csing, long Commission)> rows)
+    {
+        var map = new Dictionary<string, SalaryBreakdown>();
+        foreach (var r in rows)
+        {
+            var existing = map.GetValueOrDefault(r.Currency);
+            map[r.Currency] = new SalaryBreakdown(
+                existing.AuditingPlusCsSolo + r.Auditing + r.CsSolo,
+                existing.Csing + r.Csing,
+                existing.Commission + r.Commission);
+        }
+        return map;
+    }
+}
+
+public record struct SalaryBreakdown(long AuditingPlusCsSolo, long Csing, long Commission)
+{
+    public bool HasAny => AuditingPlusCsSolo != 0 || Csing != 0 || Commission != 0;
+    public long Total => AuditingPlusCsSolo + Csing + Commission;
 }
 public record StaffMessage(int Id, int FromId, string FromName, int ToId, string ToName, string MsgText, string CreatedAt, string? AcknowledgedAt);
 
@@ -3597,7 +3656,7 @@ public class DashboardService
         // ── Step A: Qualifying in-range payments ──
         var payments = new List<(int PaymentMethodId, int PurchaseId, int Amount, string MethodType,
             int PcId, int? RegistrarId, int? ReferralId, string? Notes, string PcName,
-            string PurchaseDate, string PaymentDate)>();
+            string PurchaseDate, string PaymentDate, string Currency, int OrgId, string OrgName)>();
         var purchaseIds = new HashSet<int>();
 
         using (var cmd = conn.CreateCommand())
@@ -3606,10 +3665,14 @@ public class DashboardService
                 SELECT pm.PaymentMethodId, pm.PurchaseId, pm.Amount, pm.MethodType,
                        p.PcId, p.RegistrarId, p.ReferralId, p.Notes,
                        TRIM(pc.FirstName || ' ' || COALESCE(NULLIF(pc.LastName,''), '')) AS PcName,
-                       p.PurchaseDate, COALESCE(pm.PaymentDate,'')
+                       p.PurchaseDate, COALESCE(pm.PaymentDate,''),
+                       COALESCE(p.Currency, 'ILS') AS Currency,
+                       COALESCE(pc.Org, 0) AS OrgId,
+                       COALESCE(o.Name, 'Unknown') AS OrgName
                 FROM fin_payment_methods pm
                 JOIN fin_purchases p ON pm.PurchaseId = p.PurchaseId
                 JOIN core_persons pc ON pc.PersonId = p.PcId
+                LEFT JOIN lkp_organizations o ON o.OrgId = pc.Org
                 WHERE pm.IsMoneyInBank = 1
                   AND pm.MoneyInBankDate >= @from AND pm.MoneyInBankDate <= @to
                   AND pm.MethodType NOT IN ('Credit', 'ToBePaid')
@@ -3627,7 +3690,8 @@ public class DashboardService
                     r.IsDBNull(5) ? null : r.GetInt32(5),
                     r.IsDBNull(6) ? null : r.GetInt32(6),
                     r.IsDBNull(7) ? null : r.GetString(7),
-                    r.GetString(8), r.GetString(9), r.GetString(10)));
+                    r.GetString(8), r.GetString(9), r.GetString(10),
+                    r.GetString(11), r.GetInt32(12), r.GetString(13)));
                 purchaseIds.Add(pid);
             }
         }
@@ -3705,12 +3769,12 @@ public class DashboardService
         }
 
         // ── Helper to emit a commission ──
-        void Emit(int personId, string pcName, string role, string category, decimal netBase, double pct, CommissionDetail detail)
+        void Emit(int personId, string pcName, string role, string category, decimal netBase, double pct, CommissionDetail detail, string currency, int orgId, string orgName)
         {
             var cents = ToCents(netBase * (decimal)pct / 100m);
             if (cents == 0) return;
             if (!commByUser.ContainsKey(personId)) commByUser[personId] = new();
-            commByUser[personId].Add(new CommissionRow(pcName, role, category, cents, detail with { CommissionPct = pct }));
+            commByUser[personId].Add(new CommissionRow(pcName, role, category, cents, detail with { CommissionPct = pct }, currency, orgId, orgName));
         }
 
         void EmitUnassigned(string pcName, string category, decimal netBase, double pct, string? notes, CommissionDetail detail)
@@ -3773,13 +3837,13 @@ public class DashboardService
                     // Academy Instructor Start — always on in-range payments
                     foreach (var instr in academyInstructors)
                         if (instr.PersonId > 0)
-                            Emit(instr.PersonId, pmt.PcName, "Acad. Start", category, calc.NetBase, instr.StartCommPct, detail);
+                            Emit(instr.PersonId, pmt.PcName, "Acad. Start", category, calc.NetBase, instr.StartCommPct, detail, pmt.Currency, pmt.OrgId, pmt.OrgName);
 
                     // Academy Instructor Finish — only if finished BEFORE this period
                     if (finishedBefore)
                         foreach (var instr in academyInstructors)
                             if (instr.PersonId > 0)
-                                Emit(instr.PersonId, pmt.PcName, "Acad. Finish", category, calc.NetBase, instr.FinishCommPct, detail);
+                                Emit(instr.PersonId, pmt.PcName, "Acad. Finish", category, calc.NetBase, instr.FinishCommPct, detail, pmt.Currency, pmt.OrgId, pmt.OrgName);
                 }
                 else if (item.ItemType == "Course" && CourseTypes.IsAdvanced(item.CourseType))
                 {
@@ -3796,20 +3860,20 @@ public class DashboardService
                     if (finishedBefore)
                     {
                         if (enr.InstructorId is > 0)
-                            Emit(enr.InstructorId.Value, pmt.PcName, "OT Instructor", category, calc.NetBase, cfg.InstructorOtPct, detail);
+                            Emit(enr.InstructorId.Value, pmt.PcName, "OT Instructor", category, calc.NetBase, cfg.InstructorOtPct, detail, pmt.Currency, pmt.OrgId, pmt.OrgName);
                         if (enr.CsId is > 0)
-                            Emit(enr.CsId.Value, pmt.PcName, "OT CS", category, calc.NetBase, cfg.CsOtPct, detail);
+                            Emit(enr.CsId.Value, pmt.PcName, "OT CS", category, calc.NetBase, cfg.CsOtPct, detail, pmt.Currency, pmt.OrgId, pmt.OrgName);
                     }
                 }
                 else continue; // unknown type
 
                 // Registrar (all categories)
                 if (pmt.RegistrarId is > 0)
-                    Emit(pmt.RegistrarId.Value, pmt.PcName, "Registrar", category, calc.NetBase, regPct, detail);
+                    Emit(pmt.RegistrarId.Value, pmt.PcName, "Registrar", category, calc.NetBase, regPct, detail, pmt.Currency, pmt.OrgId, pmt.OrgName);
 
                 // Referral (all categories)
                 if (pmt.ReferralId is > 0)
-                    Emit(pmt.ReferralId.Value, pmt.PcName, "Referral", category, calc.NetBase, refPct, detail);
+                    Emit(pmt.ReferralId.Value, pmt.PcName, "Referral", category, calc.NetBase, refPct, detail, pmt.Currency, pmt.OrgId, pmt.OrgName);
                 else if (pmt.ReferralId == -1)
                     EmitUnassigned(pmt.PcName, category, calc.NetBase, refPct, pmt.Notes, detail);
             }
@@ -3904,18 +3968,31 @@ public class DashboardService
                     var courseItem = citems.FirstOrDefault(i => i.ItemType == "Course" && i.CourseId == fc.CourseId);
                     if (courseItem.AmountPaid <= 0) continue; // negative/zero amounts → no commission
 
-                    // Load PC name + purchase date for this purchase
-                    string pcName = "", purchaseDate = "";
+                    // Load PC name + purchase date + currency + org for this purchase
+                    string pcName = "", purchaseDate = "", purchCurrency = "ILS", purchOrgName = "Unknown";
+                    int    purchOrgId = 0;
                     using (var cmd = conn.CreateCommand())
                     {
                         cmd.CommandText = @"
-                            SELECT TRIM(pc.FirstName || ' ' || COALESCE(NULLIF(pc.LastName,''), '')), p.PurchaseDate
+                            SELECT TRIM(pc.FirstName || ' ' || COALESCE(NULLIF(pc.LastName,''), '')),
+                                   p.PurchaseDate,
+                                   COALESCE(p.Currency, 'ILS'),
+                                   COALESCE(pc.Org, 0),
+                                   COALESCE(o.Name, 'Unknown')
                             FROM fin_purchases p
                             JOIN core_persons pc ON pc.PersonId = p.PcId
+                            LEFT JOIN lkp_organizations o ON o.OrgId = pc.Org
                             WHERE p.PurchaseId = @pid";
                         cmd.Parameters.AddWithValue("@pid", cpid);
                         using var r = cmd.ExecuteReader();
-                        if (r.Read()) { pcName = r.GetString(0); purchaseDate = r.GetString(1); }
+                        if (r.Read())
+                        {
+                            pcName        = r.GetString(0);
+                            purchaseDate  = r.GetString(1);
+                            purchCurrency = r.GetString(2);
+                            purchOrgId    = r.GetInt32(3);
+                            purchOrgName  = r.GetString(4);
+                        }
                     }
 
                     // Get ALL "in the bank" payments for this purchase (no date filter)
@@ -3952,14 +4029,14 @@ public class DashboardService
                         {
                             foreach (var instr in academyInstructors)
                                 if (instr.PersonId > 0)
-                                    Emit(instr.PersonId, pcName, "Acad. Finish", "PC Course", calc.NetBase, instr.FinishCommPct, detail);
+                                    Emit(instr.PersonId, pcName, "Acad. Finish", "PC Course", calc.NetBase, instr.FinishCommPct, detail, purchCurrency, purchOrgId, purchOrgName);
                         }
                         else if (CourseTypes.IsAdvanced(fc.CourseType))
                         {
                             if (fc.InstructorId is > 0)
-                                Emit(fc.InstructorId.Value, pcName, "OT Instructor", "OT Course", calc.NetBase, cfg.InstructorOtPct, detail);
+                                Emit(fc.InstructorId.Value, pcName, "OT Instructor", "OT Course", calc.NetBase, cfg.InstructorOtPct, detail, purchCurrency, purchOrgId, purchOrgName);
                             if (fc.CsId is > 0)
-                                Emit(fc.CsId.Value, pcName, "OT CS", "OT Course", calc.NetBase, cfg.CsOtPct, detail);
+                                Emit(fc.CsId.Value, pcName, "OT CS", "OT Course", calc.NetBase, cfg.CsOtPct, detail, purchCurrency, purchOrgId, purchOrgName);
                         }
                     }
                 }
@@ -3991,10 +4068,13 @@ public class DashboardService
                    s.VerifiedStatus,
                    COALESCE(w.Currency, 'ILS') AS Currency,
                    COALESCE(s.IsFreeSession, 0) AS IsFreeSession,
-                   COALESCE(s.Name, '') AS Name
+                   COALESCE(s.Name, '') AS Name,
+                   COALESCE(pc.Org, 0) AS OrgId,
+                   COALESCE(o.Name, 'Unknown') AS OrgName
             FROM sess_sessions s
             JOIN core_persons pc ON pc.PersonId = s.PcId
             LEFT JOIN fin_wallets w ON w.WalletId = s.WalletId
+            LEFT JOIN lkp_organizations o ON o.OrgId = pc.Org
             WHERE s.AuditorId IS NOT NULL
               AND SUBSTR(s.CreatedAt,1,10) >= @from AND SUBSTR(s.CreatedAt,1,10) <= @to
               AND COALESCE(s.IsImported,0) = 0
@@ -4016,10 +4096,12 @@ public class DashboardService
                 var currency   = r.IsDBNull(8) ? "ILS" : r.GetString(8);
                 var isFree     = r.GetInt32(9) == 1;
                 var sessName   = r.GetString(10);
+                var orgId      = r.GetInt32(11);
+                var orgName    = r.GetString(12);
                 var payment    = isApproved && !isFree ? (long)rateCents * chargeSec / 3600L : 0L;
                 var row = new SalarySessionRow(
                     r.GetString(3), sessionId, pcId, r.GetString(4), sessName,
-                    chargeSec, rateCents, payment, isApproved, isFree, currency);
+                    chargeSec, rateCents, payment, isApproved, isFree, currency, orgId, orgName);
                 if (!sessionsByUser.ContainsKey(audId)) sessionsByUser[audId] = new();
                 sessionsByUser[audId].Add(row);
             }
@@ -4040,11 +4122,14 @@ public class DashboardService
                    COALESCE(cr.Notes, ''),
                    COALESCE(w.Currency, 'ILS') AS Currency,
                    s.AuditorId,
-                   COALESCE(s.Name, '') AS Name
+                   COALESCE(s.Name, '') AS Name,
+                   COALESCE(pc.Org, 0) AS OrgId,
+                   COALESCE(o.Name, 'Unknown') AS OrgName
             FROM cs_reviews cr
             JOIN sess_sessions s  ON s.SessionId  = cr.SessionId
             JOIN core_persons  pc ON pc.PersonId  = s.PcId
             LEFT JOIN fin_wallets w ON w.WalletId = cr.WalletId
+            LEFT JOIN lkp_organizations o ON o.OrgId = pc.Org
             WHERE SUBSTR(s.CreatedAt,1,10) >= @from AND SUBSTR(s.CreatedAt,1,10) <= @to
               AND COALESCE(s.IsImported,0) = 0
             ORDER BY cr.CsId, s.CreatedAt";
@@ -4071,9 +4156,11 @@ public class DashboardService
                 var payment    = isApproved && !isFree ? (long)rateCents * durSec / 3600L : 0L;
                 var currency   = r.IsDBNull(10) ? "ILS" : r.GetString(10);
                 var sessName   = r.GetString(12);
+                var orgId      = r.GetInt32(13);
+                var orgName    = r.GetString(14);
                 var row = new SalaryCsRow(
                     r.GetString(4), csReviewId, sessionId, pcId, r.GetString(5), isSolo, sessName,
-                    durSec, rateCents, payment, isApproved, isFree, currency);
+                    durSec, rateCents, payment, isApproved, isFree, currency, orgId, orgName);
                 if (!csByUser.ContainsKey(csId)) csByUser[csId] = new();
                 csByUser[csId].Add(row);
             }

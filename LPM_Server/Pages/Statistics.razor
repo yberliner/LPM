@@ -8,6 +8,8 @@
 @inject PdfService PdfService
 @inject SessionManagerLauncher SmLauncher
 @inject IJSRuntime JS
+@inject AuthenticationStateProvider AuthState
+@inject NavigationManager Nav
 @implements IDisposable
 
 <style>
@@ -207,11 +209,132 @@
     .stat-tt-count { font-size: 0.8rem; color: #6b7280; }
     .stat-tt-sum   { font-size: 1rem; font-weight: 800; color: #111827; font-variant-numeric: tabular-nums; }
 
+    /* ── Per-org grouping inside tooltip ── */
+    .stat-tooltip-table tbody tr.stat-tt-org-header > td {
+        padding: 10px 12px 8px;
+        background: linear-gradient(90deg, #eef2ff 0%, #faf5ff 100%);
+        border-top: 1px solid #e0e7ff;
+        border-bottom: 1px solid #e0e7ff;
+        animation: statTtOrgIn 360ms cubic-bezier(.2,.9,.25,1.0) both;
+        animation-delay: calc(60ms + var(--g-i, 0) * 70ms);
+    }
+    .stat-tooltip-table tbody tr.stat-tt-org-header:first-child > td { border-top: none; }
+    .stat-tt-org-name {
+        font-size: 0.78rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
+        color: #4338ca;
+        display: inline-flex; align-items: center; gap: 8px;
+    }
+    .stat-tt-org-name::before {
+        content: ''; display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+        background: linear-gradient(135deg, #6366f1, #a855f7);
+        box-shadow: 0 0 0 3px rgba(99,102,241,0.18);
+    }
+    .stat-tt-org-count {
+        margin-left: 10px; font-size: 0.72rem; color: #6b7280; font-weight: 600;
+    }
+    .stat-tooltip-table tbody tr.stat-tt-org-sub > td {
+        background: #f9fafb;
+        border-top: 1px dashed #e5e7eb;
+        border-bottom: 2px solid #e5e7eb;
+        padding: 8px 10px 10px;
+    }
+    .stat-tt-org-sub-label {
+        font-size: 0.78rem; color: #6b7280; font-style: italic; font-weight: 600;
+        text-align: right;
+    }
+    .stat-tt-org-sub-val {
+        font-size: 0.92rem; font-weight: 800; color: #312e81;
+        font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap;
+    }
+
+    /* ── Grand total band (replaces small footer) ── */
+    .stat-tt-grand {
+        display: flex; align-items: center; justify-content: space-between; gap: 14px;
+        margin: 12px 14px 14px;
+        padding: 14px 18px;
+        border-radius: 14px;
+        background: linear-gradient(135deg, rgba(99,102,241,0.14) 0%, rgba(168,85,247,0.18) 60%, rgba(236,72,153,0.14) 100%);
+        border: 1.5px solid rgba(99,102,241,0.32);
+        box-shadow: 0 6px 18px -10px rgba(99,102,241,0.45);
+        animation: statTtGrandIn 480ms cubic-bezier(.2,.9,.25,1.0) 220ms both;
+    }
+    .stat-tt-grand-label {
+        display: flex; flex-direction: column; gap: 2px;
+        font-size: 0.78rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+        color: #4338ca;
+    }
+    .stat-tt-grand-label > span:nth-child(2) { font-size: 0.86rem; }
+    .stat-tt-grand-sigma {
+        display: inline-block; font-family: serif; font-size: 1.05rem; line-height: 1;
+        margin-right: 6px; color: #6366f1;
+    }
+    .stat-tt-grand-meta {
+        font-size: 0.66rem; font-weight: 600; letter-spacing: 0.04em; text-transform: none;
+        color: #6b7280; margin-top: 2px;
+    }
+    .stat-tt-grand-value {
+        font-size: 1.85rem; font-weight: 900;
+        background: linear-gradient(135deg, #4338ca 0%, #6366f1 50%, #a855f7 100%);
+        -webkit-background-clip: text; background-clip: text; color: transparent;
+        font-variant-numeric: tabular-nums; letter-spacing: -0.01em;
+        text-shadow: 0 1px 0 rgba(255,255,255,0.4);
+        line-height: 1;
+    }
+
+    @@keyframes statTtOrgIn {
+        from { opacity: 0; transform: translateX(-12px); }
+        to   { opacity: 1; transform: translateX(0); }
+    }
+    @@keyframes statTtGrandIn {
+        from { opacity: 0; transform: translateY(10px) scale(0.96); }
+        to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
     @@media (max-width: 540px) {
         .stat-tooltip { width: min(520px, calc(100vw - 16px)); }
         .stat-tooltip-header { padding: 12px 14px 10px; }
         .stat-tooltip-footer { padding: 10px 14px; }
         .stat-tt-date { width: 76px; font-size: 0.78rem; }
+        .stat-tt-grand { margin: 10px 12px 12px; padding: 12px 14px; }
+        .stat-tt-grand-value { font-size: 1.5rem; }
+    }
+
+    /* ── TOTAL footer row inside week/month leaderboards ── */
+    .stat-total-row > td {
+        background: linear-gradient(90deg, #eef2ff 0%, #faf5ff 50%, #fdf2f8 100%);
+        border-top: 2px solid #c7d2fe !important;
+        border-bottom: none !important;
+        padding-top: 12px !important;
+        padding-bottom: 12px !important;
+        position: relative;
+    }
+    .stat-total-row-month > td {
+        background: linear-gradient(90deg, #f5f3ff 0%, #ede9fe 50%, #fae8ff 100%);
+        border-top: 2px solid #a5b4fc !important;
+    }
+    .stat-total-row > td.stat-total-cell { cursor: pointer; transition: background 0.18s; }
+    .stat-total-row > td.stat-total-cell:hover {
+        background: linear-gradient(90deg, #e0e7ff 0%, #ede9fe 50%, #fce7f3 100%);
+    }
+    .stat-total-label {
+        font-size: 0.78rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+        color: #4338ca;
+    }
+    .stat-total-meta { font-size: 0.7rem; color: #6b7280; font-weight: 600; letter-spacing: 0.04em; margin-left: 6px; }
+    .stat-total-badge {
+        font-size: 0.85rem !important; font-weight: 800 !important;
+        padding: 6px 10px !important;
+        box-shadow: 0 2px 6px -2px rgba(67,56,202,0.3);
+    }
+    .stat-total-grand {
+        font-size: 1.1rem; font-weight: 900;
+        background: linear-gradient(135deg, #4338ca 0%, #6366f1 50%, #a855f7 100%);
+        -webkit-background-clip: text; background-clip: text; color: transparent;
+        font-variant-numeric: tabular-nums;
+    }
+    .stat-total-grand-month {
+        background: linear-gradient(135deg, #6d28d9 0%, #a855f7 50%, #ec4899 100%);
+        -webkit-background-clip: text; background-clip: text; color: transparent;
     }
 
     .stat-card-gradient-purple { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
@@ -493,6 +616,45 @@
                                         </tr>
                                         wRank++;
                                     }
+                                    @if (wkSorted.Count > 0)
+                                    {
+                                    var wkAuditTotal  = wkSorted.Sum(x => x.AuditSec);
+                                    var wkCsoloTotal  = wkSorted.Sum(x => x.SoloCsSec);
+                                    var wkCsTotal     = wkSorted.Sum(x => x.CsSec);
+                                    var wkEffortTotal = wkSorted.Sum(x => x.EffortSec);
+                                    var wkGrandTotal  = wkSorted.Sum(x => x.TotalSec);
+                                    var wkStartStr    = _weekStart.ToString("yyyy-MM-dd");
+                                    var wkEndStr      = _weekStart.AddDays(6).ToString("yyyy-MM-dd");
+                                    <tr class="stat-total-row">
+                                        <td class="ps-3 align-middle stat-total-label">
+                                            <i class="ri-archive-stack-line me-1"></i>TOTAL
+                                            <span class="stat-total-meta d-none d-md-inline">· @wkSorted.Count staff</span>
+                                        </td>
+                                        <td class="text-center align-middle stat-cell stat-total-cell" data-stat-metric="audit" data-stat-staff-id="0" data-stat-staff-name="All staff" data-stat-start="@wkStartStr" data-stat-end="@wkEndStr">
+                                            @if (wkAuditTotal > 0)
+                                            { <span class="badge rounded-pill badge-time stat-total-badge">@Fmt(wkAuditTotal)</span> }
+                                            else { <span class="text-muted small">–</span> }
+                                        </td>
+                                        <td class="text-center align-middle stat-cell stat-total-cell" data-stat-metric="csolo" data-stat-staff-id="0" data-stat-staff-name="All staff" data-stat-start="@wkStartStr" data-stat-end="@wkEndStr">
+                                            @if (wkCsoloTotal > 0)
+                                            { <span class="badge rounded-pill badge-orange stat-total-badge">@Fmt(wkCsoloTotal)</span> }
+                                            else { <span class="text-muted small">–</span> }
+                                        </td>
+                                        <td class="text-center align-middle stat-cell stat-total-cell" data-stat-metric="cs" data-stat-staff-id="0" data-stat-staff-name="All staff" data-stat-start="@wkStartStr" data-stat-end="@wkEndStr">
+                                            @if (wkCsTotal > 0)
+                                            { <span class="badge rounded-pill badge-cs stat-total-badge">@Fmt(wkCsTotal)</span> }
+                                            else { <span class="text-muted small">–</span> }
+                                        </td>
+                                        <td class="text-center align-middle stat-cell stat-total-cell" data-stat-metric="effort" data-stat-staff-id="0" data-stat-staff-name="All staff" data-stat-start="@wkStartStr" data-stat-end="@wkEndStr">
+                                            @if (wkEffortTotal > 0)
+                                            { <span class="badge rounded-pill stat-total-badge" style="background:#cffafe;color:#0e7490;border:1px solid #06b6d4;">@Fmt(wkEffortTotal)</span> }
+                                            else { <span class="text-muted small">–</span> }
+                                        </td>
+                                        <td class="text-center align-middle pe-3 stat-cell stat-total-cell" data-stat-metric="total" data-stat-staff-name="All staff" data-stat-audit="@wkAuditTotal" data-stat-csolo="@wkCsoloTotal" data-stat-cs="@wkCsTotal" data-stat-effort="@wkEffortTotal" data-stat-total="@wkGrandTotal">
+                                            <span class="stat-total-grand">@Fmt(wkGrandTotal)</span>
+                                        </td>
+                                    </tr>
+                                    }
                                 </tbody>
                             </table>
                         </div>
@@ -610,6 +772,44 @@
                                         </tr>
                                         mRank++;
                                     }
+                                    @{
+                                        var moAuditTotal  = moSorted.Sum(x => x.AuditSec);
+                                        var moCsoloTotal  = moSorted.Sum(x => x.SoloCsSec);
+                                        var moCsTotal     = moSorted.Sum(x => x.CsSec);
+                                        var moEffortTotal = moSorted.Sum(x => x.EffortSec);
+                                        var moGrandTotal  = moSorted.Sum(x => x.TotalSec);
+                                        var moStartStr    = _monthStart.ToString("yyyy-MM-dd");
+                                        var moEndStr      = _monthEnd.ToString("yyyy-MM-dd");
+                                    }
+                                    <tr class="stat-total-row stat-total-row-month">
+                                        <td class="ps-3 align-middle stat-total-label">
+                                            <i class="ri-archive-stack-line me-1"></i>TOTAL
+                                            <span class="stat-total-meta d-none d-md-inline">· @moSorted.Count staff</span>
+                                        </td>
+                                        <td class="text-center align-middle stat-cell stat-total-cell" data-stat-metric="audit" data-stat-staff-id="0" data-stat-staff-name="All staff" data-stat-start="@moStartStr" data-stat-end="@moEndStr">
+                                            @if (moAuditTotal > 0)
+                                            { <span class="badge rounded-pill badge-time stat-total-badge">@Fmt(moAuditTotal)</span> }
+                                            else { <span class="text-muted small">–</span> }
+                                        </td>
+                                        <td class="text-center align-middle stat-cell stat-total-cell" data-stat-metric="csolo" data-stat-staff-id="0" data-stat-staff-name="All staff" data-stat-start="@moStartStr" data-stat-end="@moEndStr">
+                                            @if (moCsoloTotal > 0)
+                                            { <span class="badge rounded-pill badge-orange stat-total-badge">@Fmt(moCsoloTotal)</span> }
+                                            else { <span class="text-muted small">–</span> }
+                                        </td>
+                                        <td class="text-center align-middle stat-cell stat-total-cell" data-stat-metric="cs" data-stat-staff-id="0" data-stat-staff-name="All staff" data-stat-start="@moStartStr" data-stat-end="@moEndStr">
+                                            @if (moCsTotal > 0)
+                                            { <span class="badge rounded-pill badge-cs stat-total-badge">@Fmt(moCsTotal)</span> }
+                                            else { <span class="text-muted small">–</span> }
+                                        </td>
+                                        <td class="text-center align-middle stat-cell stat-total-cell" data-stat-metric="effort" data-stat-staff-id="0" data-stat-staff-name="All staff" data-stat-start="@moStartStr" data-stat-end="@moEndStr">
+                                            @if (moEffortTotal > 0)
+                                            { <span class="badge rounded-pill stat-total-badge" style="background:#cffafe;color:#0e7490;border:1px solid #06b6d4;">@Fmt(moEffortTotal)</span> }
+                                            else { <span class="text-muted small">–</span> }
+                                        </td>
+                                        <td class="text-center align-middle pe-3 stat-cell stat-total-cell" data-stat-metric="total" data-stat-staff-name="All staff" data-stat-audit="@moAuditTotal" data-stat-csolo="@moCsoloTotal" data-stat-cs="@moCsTotal" data-stat-effort="@moEffortTotal" data-stat-total="@moGrandTotal">
+                                            <span class="stat-total-grand stat-total-grand-month">@Fmt(moGrandTotal)</span>
+                                        </td>
+                                    </tr>
                                 </tbody>
                             </table>
                         </div>
@@ -1067,7 +1267,13 @@
         Grid = new Grid { BorderColor = "#1e3a5f" },
     };
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
+    {
+        if (await PermissionsLevels.RedirectIfRestricted(AuthState, Nav)) return;
+        InitWeekAndLoad();
+    }
+
+    void InitWeekAndLoad()
     {
         _weekStart = DashboardService.GetWeekStart(DateOnly.FromDateTime(DateTime.Today));
 

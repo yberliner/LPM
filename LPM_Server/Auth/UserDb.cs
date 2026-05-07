@@ -460,7 +460,7 @@ public class UserDb
 
     // ── Login Flags ─────────────────────────────────────────────────────────
 
-    public record LoginFlags(int UserId, string Username, bool MustChangePassword, List<string> Roles, string StaffRole, int PersonId);
+    public record LoginFlags(int UserId, string Username, bool MustChangePassword, List<string> Roles, string StaffRole, int PersonId, int PermissionsLevel = 0);
 
     /// <summary>Returns login flags for a user by username. Call only after ValidateUser succeeds.</summary>
     public LoginFlags? GetLoginFlags(string username)
@@ -469,7 +469,7 @@ public class UserDb
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            SELECT u.Id, u.Username, u.MustChangePassword, u.UserType, u.StaffRole, u.PersonId
+            SELECT u.Id, u.Username, u.MustChangePassword, u.UserType, u.StaffRole, u.PersonId, u.PermissionsLevel
             FROM core_users u
             WHERE u.Username = @u COLLATE NOCASE AND u.IsActive = 1 LIMIT 1";
         cmd.Parameters.AddWithValue("@u", username);
@@ -480,7 +480,7 @@ public class UserDb
         var roles = new List<string>();
         if (userType == "Admin")       roles.Add("Admin");
         else if (staffRole != StaffRoles.Solo)  roles.Add("Customer");
-        return new LoginFlags(r.GetInt32(0), r.GetString(1), r.GetInt32(2) == 1, roles, staffRole, r.GetInt32(5));
+        return new LoginFlags(r.GetInt32(0), r.GetString(1), r.GetInt32(2) == 1, roles, staffRole, r.GetInt32(5), r.GetInt32(6));
     }
 
     /// <summary>Same as GetLoginFlags but looks up by UserId (core_users.Id).</summary>
@@ -490,7 +490,7 @@ public class UserDb
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            SELECT u.Id, u.Username, u.MustChangePassword, u.UserType, u.StaffRole, u.PersonId
+            SELECT u.Id, u.Username, u.MustChangePassword, u.UserType, u.StaffRole, u.PersonId, u.PermissionsLevel
             FROM core_users u
             WHERE u.Id = @id AND u.IsActive = 1 LIMIT 1";
         cmd.Parameters.AddWithValue("@id", userId);
@@ -501,7 +501,7 @@ public class UserDb
         var roles = new List<string>();
         if (userType == "Admin") roles.Add("Admin");
         else if (staffRole != StaffRoles.Solo) roles.Add("Customer");
-        return new LoginFlags(r.GetInt32(0), r.GetString(1), r.GetInt32(2) == 1, roles, staffRole, r.GetInt32(5));
+        return new LoginFlags(r.GetInt32(0), r.GetString(1), r.GetInt32(2) == 1, roles, staffRole, r.GetInt32(5), r.GetInt32(6));
     }
 
     /// <summary>Sets or clears the per-user Require2FA flag (admin use).</summary>
@@ -934,7 +934,7 @@ public class UserDb
         conn.Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            SELECT u.Id, u.Username, u.MustChangePassword, u.UserType, u.StaffRole, u.PersonId
+            SELECT u.Id, u.Username, u.MustChangePassword, u.UserType, u.StaffRole, u.PersonId, u.PermissionsLevel
             FROM core_users u
             WHERE u.PersonId = @pid AND u.IsActive = 1
             ORDER BY CASE WHEN u.StaffRole = 'Solo' THEN 1 ELSE 0 END
@@ -947,7 +947,7 @@ public class UserDb
         var roles = new List<string>();
         if (userType == "Admin") roles.Add("Admin");
         else if (staffRole != StaffRoles.Solo) roles.Add("Customer");
-        return new LoginFlags(r.GetInt32(0), r.GetString(1), r.GetInt32(2) == 1, roles, staffRole, r.GetInt32(5));
+        return new LoginFlags(r.GetInt32(0), r.GetString(1), r.GetInt32(2) == 1, roles, staffRole, r.GetInt32(5), r.GetInt32(6));
     }
 
     // ── Passkeys ─────────────────────────────────────────────────────────────

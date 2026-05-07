@@ -514,6 +514,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        if (await PermissionsLevels.RedirectIfRestricted(AuthStateProvider, Navigation)) return;
         var authState = await AuthStateProvider.GetAuthenticationStateAsync();
         if (!authState.User.IsInRole("Admin"))
         {

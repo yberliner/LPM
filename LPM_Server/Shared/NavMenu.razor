@@ -571,6 +571,9 @@
             .Where(item => item.RequiredRole == null ||
                            item.RequiredRole.Split(',').Any(r => user.IsInRole(r.Trim())))
             .ToList();
+
+        if (PermissionsLevels.IsRestrictedAuditor(PermissionsLevels.FromClaims(user)))
+            menuVal = menuVal.Where(i => i.Path == "/Home" || i.Path == "/logout").ToList();
         await Random(menuVal);
            
 		configurations = new  WMBOSConfigurations {};

@@ -105,24 +105,63 @@
           </div>`;
     }
 
+    // Group items into [{orgName, items, totalSec}, …] preserving server order.
+    // Server sorts by orgName ASC (Unknown last), so a single linear pass produces
+    // contiguous groups.
+    function groupByOrg(items) {
+        const groups = [];
+        let cur = null;
+        for (const it of (items || [])) {
+            const org = (it.orgName && String(it.orgName).trim()) || 'Unknown';
+            if (!cur || cur.orgName !== org) {
+                cur = { orgName: org, items: [], totalSec: 0 };
+                groups.push(cur);
+            }
+            cur.items.push(it);
+            cur.totalSec += (it.seconds | 0);
+        }
+        return groups;
+    }
+
     function buildTipHtml(metric, staffName, rangeLabel, data) {
         const meta = LABEL[metric] || { title: 'Breakdown', badgeClass: '' };
-        const rows = (data.items || []).map((it, i) => {
-            const sid = (it.sessionId != null && it.sessionId > 0) ? it.sessionId : 0;
-            const clickAttrs = sid > 0
-                ? ` class="stat-tt-clickable" data-session-id="${sid}" title="Open session ${sid} in Session Manager"`
-                : '';
-            return `
-            <tr${clickAttrs}>
-                <td class="stat-tt-idx">${i + 1}</td>
-                <td class="stat-tt-pc">${esc(it.pcName)}</td>
-                <td class="stat-tt-date">${fmtDate(it.date)}</td>
-                <td class="stat-tt-dur">${fmt(it.seconds)}</td>
-            </tr>`;
-        }).join('');
-        const empty = (data.items && data.items.length)
-            ? ''
-            : `<tr><td colspan="4" class="stat-tt-empty">No matching records in this range.</td></tr>`;
+        const items = data.items || [];
+        const groups = groupByOrg(items);
+        const totalSec = data.totalSec || 0;
+
+        let bodyRows = '';
+        if (groups.length === 0) {
+            bodyRows = `<tr><td colspan="4" class="stat-tt-empty">No matching records in this range.</td></tr>`;
+        } else {
+            groups.forEach((g, gi) => {
+                bodyRows += `
+                <tr class="stat-tt-org-header" style="--g-i:${gi}">
+                  <td colspan="4">
+                    <span class="stat-tt-org-name">${esc(g.orgName)}</span>
+                    <span class="stat-tt-org-count">${g.items.length} item${g.items.length === 1 ? '' : 's'}</span>
+                  </td>
+                </tr>`;
+                g.items.forEach((it, i) => {
+                    const sid = (it.sessionId != null && it.sessionId > 0) ? it.sessionId : 0;
+                    const clickAttrs = sid > 0
+                        ? ` class="stat-tt-clickable" data-session-id="${sid}" title="Open session ${sid} in Session Manager"`
+                        : '';
+                    bodyRows += `
+                    <tr${clickAttrs}>
+                        <td class="stat-tt-idx">${i + 1}</td>
+                        <td class="stat-tt-pc">${esc(it.pcName)}</td>
+                        <td class="stat-tt-date">${fmtDate(it.date)}</td>
+                        <td class="stat-tt-dur">${fmt(it.seconds)}</td>
+                    </tr>`;
+                });
+                bodyRows += `
+                <tr class="stat-tt-org-sub">
+                  <td colspan="3" class="stat-tt-org-sub-label">Subtotal · ${esc(g.orgName)}</td>
+                  <td class="stat-tt-org-sub-val">Σ ${fmt(g.totalSec)}</td>
+                </tr>`;
+            });
+        }
+
         return `
           <div class="stat-tooltip-inner">
             <div class="stat-tooltip-header ${meta.badgeClass}">
@@ -139,12 +178,16 @@
                     <th class="stat-tt-dur">Duration</th>
                   </tr>
                 </thead>
-                <tbody>${rows}${empty}</tbody>
+                <tbody>${bodyRows}</tbody>
               </table>
-            </div>
-            <div class="stat-tooltip-footer">
-              <span class="stat-tt-count">${(data.items || []).length} item${(data.items || []).length === 1 ? '' : 's'}</span>
-              <span class="stat-tt-sum">Σ ${fmt(data.totalSec || 0)}</span>
+              <div class="stat-tt-grand">
+                <div class="stat-tt-grand-label">
+                  <span class="stat-tt-grand-sigma">Σ</span>
+                  <span>Grand total</span>
+                  <span class="stat-tt-grand-meta">${items.length} item${items.length === 1 ? '' : 's'} · ${groups.length} org${groups.length === 1 ? '' : 's'}</span>
+                </div>
+                <div class="stat-tt-grand-value">${fmt(totalSec)}</div>
+              </div>
             </div>
           </div>`;
     }

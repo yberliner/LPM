@@ -9,7 +9,7 @@ namespace LPM.Services;
 public record AuditorListItem(int AuditorId, string FullName, string StaffRole, bool IsActive, string? GradeCode, string Username = "");
 public record GradeItem(int GradeId, string Code);
 public record AuditorDetail(int AuditorId, string FirstName, string LastName,
-    string StaffRole, bool IsActive, int? CurrentGradeId, string? GradeCode, bool IsAdmin, string Username = "", bool AllowAll = false, bool SendSms = false);
+    string StaffRole, bool IsActive, int? CurrentGradeId, string? GradeCode, bool IsAdmin, string Username = "", bool AllowAll = false, bool SendSms = false, int PermissionsLevel = 0);
 public record AuditorSmsInfo(bool SendSms, string Phone, string AuditorName);
 public record AuditorStats(int TotalSessions, int FreeSessions, long TotalSec, string? LastSessionDate);
 public record SoloPermissionViolation(string FullName, string Username, bool BadAllowAll, bool BadUserType);
@@ -67,7 +67,7 @@ public class AuditorService(IConfiguration config, UserDb userDb)
         using var cmd = conn.CreateCommand();
         cmd.CommandText = $@"
             SELECT u.PersonId, p.FirstName, COALESCE(p.LastName,''),
-                   u.StaffRole, u.IsActive, u.GradeId, g.Code, u.UserType, u.Username, u.AllowAll, u.SendSms
+                   u.StaffRole, u.IsActive, u.GradeId, g.Code, u.UserType, u.Username, u.AllowAll, u.SendSms, u.PermissionsLevel
             FROM core_users u
             JOIN core_persons p ON p.PersonId = u.PersonId
             LEFT JOIN lkp_grades g ON g.GradeId = u.GradeId
@@ -84,11 +84,12 @@ public class AuditorService(IConfiguration config, UserDb userDb)
             r.IsDBNull(7) ? false : r.GetString(7) == "Admin",
             r.IsDBNull(8) ? "" : r.GetString(8),
             r.IsDBNull(9) ? false : r.GetInt32(9) != 0,
-            r.IsDBNull(10) ? false : r.GetInt32(10) != 0);
+            r.IsDBNull(10) ? false : r.GetInt32(10) != 0,
+            r.IsDBNull(11) ? 0 : r.GetInt32(11));
     }
 
     public void UpdateAuditor(int auditorId, string firstName, string lastName,
-        int? gradeId, string staffRole, bool isActive, bool isAdmin, bool allowAll, bool sendSms = false)
+        int? gradeId, string staffRole, bool isActive, bool isAdmin, bool allowAll, bool sendSms = false, int permissionsLevel = 0)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -102,7 +103,7 @@ public class AuditorService(IConfiguration config, UserDb userDb)
 
         using var uCmd = conn.CreateCommand();
         uCmd.CommandText = $@"
-            UPDATE core_users SET GradeId=@gid, StaffRole=@role, IsActive=@active, UserType=@ut, AllowAll=@aa, SendSms=@sms
+            UPDATE core_users SET GradeId=@gid, StaffRole=@role, IsActive=@active, UserType=@ut, AllowAll=@aa, SendSms=@sms, PermissionsLevel=@pl
             WHERE PersonId=@id AND StaffRole IN {StaffRoles.SqlInAuditorCS()}";
         uCmd.Parameters.AddWithValue("@gid",    gradeId.HasValue ? (object)gradeId.Value : DBNull.Value);
         uCmd.Parameters.AddWithValue("@role",   staffRole);
@@ -110,9 +111,10 @@ public class AuditorService(IConfiguration config, UserDb userDb)
         uCmd.Parameters.AddWithValue("@ut",     isAdmin ? "Admin" : "Standard");
         uCmd.Parameters.AddWithValue("@aa",     allowAll ? 1 : 0);
         uCmd.Parameters.AddWithValue("@sms",    sendSms ? 1 : 0);
+        uCmd.Parameters.AddWithValue("@pl",     permissionsLevel);
         uCmd.Parameters.AddWithValue("@id",     auditorId);
         uCmd.ExecuteNonQuery();
-        Console.WriteLine($"[AuditorService] Updated auditor {auditorId} isAdmin={isAdmin} allowAll={allowAll} sendSms={sendSms}");
+        Console.WriteLine($"[AuditorService] Updated auditor {auditorId} isAdmin={isAdmin} allowAll={allowAll} sendSms={sendSms} permLevel={permissionsLevel}");
     }
 
     public record AuditorUsageInfo(int SessionCount, int CsReviewCount, int CompletionCount,

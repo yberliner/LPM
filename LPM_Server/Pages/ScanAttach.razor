@@ -519,6 +519,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        if (await PermissionsLevels.RedirectIfRestricted(AuthState, Nav)) return;
         var auth = await AuthState.GetAuthenticationStateAsync();
         _username = auth.User.Identity?.Name ?? "";
         var staffRole = auth.User.FindFirst("StaffRole")?.Value ?? "";

@@ -771,7 +771,7 @@
     @* ── New menu popover ── *@
     @* Hidden file input — always in DOM, triggered programmatically *@
     <InputFile id="pcf-upload-input" multiple OnChange="NewMenuUploadFile"
-               accept=".pdf,.doc,.docx,.odt,.rtf,.jpg,.jpeg,.png" style="display:none;" />
+               accept=".pdf,.doc,.docx,.odt,.rtf,.xls,.xlsx,.jpg,.jpeg,.png" style="display:none;" />
     @* Hidden file input for "Insert file above" in program pages *@
     <InputFile id="pcf-insert-input" accept=".pdf,.doc,.docx" OnChange="OnInsertFileSelected"
                style="display:none;" />
@@ -3873,11 +3873,11 @@
             </div>
             <div class="pcf-upload-err-hint">
                 <i class="ri-information-line"></i>
-                Accepted formats: <strong>PDF</strong>, <strong>DOC</strong>, <strong>DOCX</strong>, <strong>ODT</strong>, <strong>RTF</strong>, <strong>JPG</strong>, <strong>PNG</strong>
+                Accepted formats: <strong>PDF</strong>, <strong>DOC</strong>, <strong>DOCX</strong>, <strong>ODT</strong>, <strong>RTF</strong>, <strong>XLS</strong>, <strong>XLSX</strong>, <strong>JPG</strong>, <strong>PNG</strong>
             </div>
             <div class="pcf-upload-err-hint">
                 <i class="ri-lightbulb-line"></i>
-                Word &amp; ODT files are automatically converted to PDF on upload
+                Word &amp; ODT files are auto-converted to PDF; legacy XLS is auto-converted to XLSX
             </div>
         </div>
         <div class="pcf-upload-err-progress"></div>
@@ -8070,7 +8070,7 @@
     }
 
     static readonly HashSet<string> AllowedUploadExtensions = new(StringComparer.OrdinalIgnoreCase)
-        { ".pdf", ".doc", ".docx", ".odt", ".rtf", ".jpg", ".jpeg", ".png" };
+        { ".pdf", ".doc", ".docx", ".odt", ".rtf", ".xls", ".xlsx", ".jpg", ".jpeg", ".png" };
 
     async Task NewMenuUploadFile(InputFileChangeEventArgs e)
     {
@@ -8138,6 +8138,36 @@
                     FolderSvc.SaveSectionFileToPath(PcId, parentFolder, file.Name, rawBytes, solo: Solo, enforcePdf: false);
                     ActivitySvc.RecordActivity(_loginUsername, $"Uploaded file '{file.Name}' to {parentFolder} for: {_pcName}", "folder");
                 }
+            }
+            else if (ext.Equals(".xlsx", StringComparison.OrdinalIgnoreCase))
+            {
+                // Save xlsx as-is so it remains editable in the in-browser Excel viewer.
+                if (FolderSvc.SectionFileExistsAtPath(PcId, parentFolder, file.Name, Solo, enforcePdf: false))
+                {
+                    var staged = StageUploadTempFile(rawBytes);
+                    _uploadPendingFiles.Add((file.Name, staged, false));
+                    _uploadDuplicateNames.Add(file.Name);
+                }
+                else if (ShouldRedirectToProgram(file.Name, parentFolder))
+                {
+                    SaveToProgram(file.Name, rawBytes, enforcePdf: false);
+                }
+                else
+                {
+                    Console.WriteLine($"[PcFolder] Uploaded xlsx '{file.Name}' to '{parentFolder}' by '{_userName}' — PC {PcId}");
+                    FolderSvc.SaveSectionFileToPath(PcId, parentFolder, file.Name, rawBytes, solo: Solo, enforcePdf: false);
+                    ActivitySvc.RecordActivity(_loginUsername, $"Uploaded file '{file.Name}' to {parentFolder} for: {_pcName}", "folder");
+                }
+            }
+            else if (ext.Equals(".xls", StringComparison.OrdinalIgnoreCase))
+            {
+                // Convert legacy .xls → .xlsx so the Excel viewer can open it (ClosedXML can't read .xls).
+                var toast = new ConversionToast(Guid.NewGuid(), file.Name);
+                _conversionToasts.Add(toast);
+                var capturedName = file.Name;
+                var capturedBytes = rawBytes;
+                var capturedParent = parentFolder;
+                _ = RunXlsConversionAsync(toast, capturedBytes, capturedName, capturedParent);
             }
         }
 
@@ -8226,6 +8256,49 @@
         catch (Exception ex)
         {
             Console.WriteLine($"[PcFolder] Conversion error for '{originalName}': {ex.Message}");
+            toast.Status = ConvStatus.Failed;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    async Task RunXlsConversionAsync(ConversionToast toast, byte[] xlsBytes, string originalName, string parentFolder)
+    {
+        var xlsxName = Path.GetFileNameWithoutExtension(originalName) + ".xlsx";
+        try
+        {
+            var xlsxBytes = await Task.Run(() => FolderSvc.ConvertXlsToXlsx(xlsBytes, originalName));
+            if (xlsxBytes == null)
+            {
+                toast.Status = ConvStatus.Failed;
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+
+            if (ShouldRedirectToProgram(xlsxName, parentFolder))
+            {
+                SaveToProgram(xlsxName, xlsxBytes, enforcePdf: false);
+                _showProgramRedirect = true;
+                _ = AutoDismissProgramRedirect();
+            }
+            else
+            {
+                var overwrite = FolderSvc.SectionFileExistsAtPath(PcId, parentFolder, xlsxName, Solo, enforcePdf: false);
+                FolderSvc.SaveSectionFileToPath(PcId, parentFolder, xlsxName, xlsxBytes, overwrite, Solo, enforcePdf: false);
+                Console.WriteLine($"[PcFolder] Converted+saved '{xlsxName}' to '{parentFolder}' by '{_userName}' — PC {PcId}");
+                ActivitySvc.RecordActivity(_loginUsername, $"Uploaded file '{originalName}' (converted to XLSX) to {parentFolder} for: {_pcName}", "folder");
+            }
+
+            toast.Status = ConvStatus.Done;
+            RefreshFolder();
+            await InvokeAsync(StateHasChanged);
+
+            await Task.Delay(3000);
+            _conversionToasts.Remove(toast);
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[PcFolder] Xls→Xlsx error for '{originalName}': {ex.Message}");
             toast.Status = ConvStatus.Failed;
             await InvokeAsync(StateHasChanged);
         }

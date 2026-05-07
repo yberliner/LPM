@@ -3,6 +3,8 @@
 @using LPM.Services
 @inject MeetingService MeetingSvc
 @inject IJSRuntime JS
+@inject AuthenticationStateProvider AuthState
+@inject NavigationManager Nav
 @implements IAsyncDisposable
 
 <div class="sched-page">
@@ -99,6 +101,11 @@
 <SpkScheduleMeetingModal @ref="_modal" OnSaved="OnMeetingSaved" />
 
 @code {
+    protected override async Task OnInitializedAsync()
+    {
+        if (await PermissionsLevels.RedirectIfRestricted(AuthState, Nav)) return;
+    }
+
     SpkScheduleMeetingModal? _modal;
     DotNetObjectReference<Schedule>? _dotnetRef;
 

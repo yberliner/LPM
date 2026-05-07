@@ -3,6 +3,8 @@
 @inject LPM.Services.AcademyService AcademySvc
 @inject LPM.Services.PcService PcSvc
 @inject LPM.Services.DashboardService DashSvc
+@inject AuthenticationStateProvider AuthState
+@inject NavigationManager Nav
 @using Microsoft.AspNetCore.Authorization
 @using LPM.Services
 
@@ -329,8 +331,9 @@
         else { _sortBy = col; _sortAsc = col == "name"; }
     }
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
+        if (await PermissionsLevels.RedirectIfRestricted(AuthState, Nav)) return;
         _members   = AcademySvc.GetAllMembersForAdmin();
         _soloPcIds = DashSvc.GetSoloPcIds();
     }

@@ -4,6 +4,7 @@
 @inject EffortService EffortSvc
 @inject DashboardService DashSvc
 @inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Nav
 @inject IJSRuntime JS
 @implements IDisposable
 
@@ -243,6 +244,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        if (await PermissionsLevels.RedirectIfRestricted(AuthStateProvider, Nav)) return;
         var auth = await AuthStateProvider.GetAuthenticationStateAsync();
         _username = auth.User.Identity?.Name ?? "";
         _isAdmin  = auth.User.IsInRole("Admin");

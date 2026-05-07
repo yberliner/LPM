@@ -5,6 +5,7 @@
 @inject PdfService PdfService
 @inject IJSRuntime JS
 @inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Nav
 @using LPM.Services
 @using Microsoft.AspNetCore.Authorization
 @using System.Globalization
@@ -1300,6 +1301,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        if (await PermissionsLevels.RedirectIfRestricted(AuthStateProvider, Nav)) return;
         var auth = await AuthStateProvider.GetAuthenticationStateAsync();
         _username = auth.User.Identity?.Name ?? "";
         _allPersons = AcademySvc.GetAllPersons();

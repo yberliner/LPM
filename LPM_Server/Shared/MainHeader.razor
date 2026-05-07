@@ -372,7 +372,7 @@
                     <ul class="header-content-right list-unstyled">
 
                         <!-- Start::header-element new-pc -->
-                        @if (!_isSoloUser)
+                        @if (!_isSoloUser && !_isRestrictedAud)
                         {
                         <li class="header-element me-1">
                             <button class="hdr-action-btn hdr-ab-green" title="@LS.T("pcs.newPc")"
@@ -385,7 +385,7 @@
                         <!-- End::header-element new-pc -->
 
                         <!-- Start::header-element assign-pc -->
-                        @if (!_isSoloUser)
+                        @if (!_isSoloUser && !_isRestrictedAud)
                         {
                         <li class="header-element me-1">
                             <button class="hdr-action-btn hdr-ab-amber" title="@LS.T("actions.assignPc")"
@@ -408,6 +408,8 @@
                         <!-- End::header-element open-folder -->
 
                         <!-- Start::header-element import-session -->
+                        @if (!_isRestrictedAud)
+                        {
                         <li class="header-element me-1">
                             <button id="btn-add-session" class="hdr-action-btn hdr-ab-blue" title="@LS.T("actions.addSession")"
                                     @onclick="OpenImportSession">
@@ -415,6 +417,7 @@
                                 <span class="hdr-ab-label">@LS.T("actions.addSession")</span>
                             </button>
                         </li>
+                        }
                         <!-- End::header-element import-session -->
 
                         <!-- Start::header-element actions -->
@@ -446,7 +449,7 @@
                                             <i class="ri-sticky-note-line" style="color:#ec4899;"></i>@LS.T("actions.addMemo")
                                         </a>
                                     </li>
-                                    @if (!_isSoloUser)
+                                    @if (!_isSoloUser && !_isRestrictedAud)
                                     {
                                     <li>
                                         <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
@@ -454,6 +457,9 @@
                                             <i class="ri-timer-line" style="color:#06b6d4;"></i>Add Effort Log
                                         </a>
                                     </li>
+                                    }
+                                    @if (!_isSoloUser)
+                                    {
                                     <li>
                                         <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
                                            @onclick="OpenNcWizard">
@@ -461,7 +467,7 @@
                                         </a>
                                     </li>
                                     }
-                                    @if (!_isSoloUser)
+                                    @if (!_isSoloUser && !_isRestrictedAud)
                                     {
                                     <li>
                                         <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
@@ -7389,6 +7395,7 @@
     private bool _isSoloUser;   // true when logged-in user has StaffRole = "Solo"
     private bool _isAllowAll;   // true when logged-in user has AllowAll = 1 in core_users
     private bool _isSeniorCS;  // true when logged-in user has StaffRole = 'SeniorCS'
+    private bool _isRestrictedAud;  // true when logged-in user has core_users.PermissionsLevel = 1 (RestrictedAuditor)
     private string? _impersonatingAs;  // non-null when Yaniv is impersonating another user
 
     // ── Add PC state ──
@@ -7401,6 +7408,7 @@
 
     void OpenEffortLogModal()
     {
+        if (_isRestrictedAud) return;
         _effortEditingId = null;
         _effortModalOpen = true;
     }
@@ -8423,6 +8431,7 @@
 
     void OpenUploadFrontCover()
     {
+        if (_isRestrictedAud) return;
         var soloPcIds = DashSvc.GetSoloPcIds();
         _ufcAllPcs  = DashSvc.GetAllPcs().Where(pc => !soloPcIds.Contains(pc.PcId)).ToList();
         _ufcPcId            = 0;
@@ -8504,6 +8513,7 @@
 
     void OpenImportSession()
     {
+        if (_isRestrictedAud) return;
         if (!_msgUserId.HasValue) return;
         _approvedPcs = DashSvc.GetSessionablePcsForUser(_msgUserId.Value, _logUsername);
         _importAuditorFullName = DashSvc.GetPersonName(_msgUserId.Value);
@@ -9746,7 +9756,11 @@
 
     // ── Schedule meeting ──
     SpkScheduleMeetingModal? _meetingModal;
-    async Task OpenScheduleMeeting() => await (_meetingModal?.Show(meetingType: "Academy") ?? Task.CompletedTask);
+    async Task OpenScheduleMeeting()
+    {
+        if (_isRestrictedAud) return;
+        await (_meetingModal?.Show(meetingType: "Academy") ?? Task.CompletedTask);
+    }
 
     // ── Actions state ──
     bool   _showActionOpenFolder;
@@ -9806,6 +9820,7 @@ string _actionPcSearch = "";
         _isSeniorCS   = apcStaffRole == StaffRoles.SeniorCS;
         _apcIsAuditor = StaffRoles.IsAuditorOrCS(apcStaffRole) || auth.User.IsInRole("Admin");
         _apcIsCS      = StaffRoles.IsCS(apcStaffRole)          || auth.User.IsInRole("Admin");
+        _isRestrictedAud = PermissionsLevels.IsRestrictedAuditor(PermissionsLevels.FromClaims(auth.User));
 
         // Load existing PC names for duplicate detection
         _existingPcNames = new HashSet<string>(
@@ -9981,6 +9996,7 @@ string _actionPcSearch = "";
 
     void OpenSessionManager()
     {
+        if (_isRestrictedAud) return;
         if (!_msgUserId.HasValue) return;
         LoadAllPcs();
         _smPcId = 0; _smPcName = ""; _smPage = 0; _smTotal = 0;
@@ -10371,6 +10387,14 @@ string _actionPcSearch = "";
                     Directory.CreateDirectory(Path.Combine(soloDir, "Back_Cover"));
                     Directory.CreateDirectory(Path.Combine(soloDir, "WorkSheets"));
                 }
+                else
+                {
+                    // Brand-new PC may not yet have a folder on disk. Without this, the loop
+                    // below would fail every iteration (FindPcFolder returns null → save returns
+                    // false → 100 attempts later, "Could not save session PDF" is thrown).
+                    var pcDir = FolderSvc.GetOrCreatePcFolderPath(_smAddPcId);
+                    Directory.CreateDirectory(Path.Combine(pcDir, "WorkSheets"));
+                }
 
                 // Pick the first index whose file doesn't yet exist AND can actually be saved.
                 // The save is attempted with overwrite=false — if it fails (file appeared between
@@ -10620,6 +10644,7 @@ string _actionPcSearch = "";
 
     void OpenFileHistory()
     {
+        if (_isRestrictedAud) return;
         LoadAllPcs();
         _fhPcSearch = "";
         _fhPcId = null;
@@ -10925,6 +10950,7 @@ string _actionPcSearch = "";
     // ── Transfer Balance methods ──
     void OpenTransferModal()
     {
+        if (_isRestrictedAud) return;
         _showTransfer = true;
         _xferFromPcId = 0;
         _xferToPcId = 0;
@@ -11057,6 +11083,7 @@ string _actionPcSearch = "";
 
     void ShowAssignPcModal()
     {
+        if (_isRestrictedAud) return;
         if (_msgUserId == null) return;
         _apcUserId = _msgUserId.Value;
         ApcRefreshData();
@@ -11142,6 +11169,7 @@ string _actionPcSearch = "";
 
     void OpenCompletions()
     {
+        if (_isRestrictedAud) return;
         _completionAllPcs   = CompletionSvc.GetAllNonSoloPcs();
         _completionAuditors = CompletionSvc.GetActiveAuditors();
         _completionGrades   = CourseSvc.GetAllGrades();
@@ -12126,6 +12154,7 @@ string _actionPcSearch = "";
 
     async Task OpenShowStat()
     {
+        if (_isRestrictedAud) return;
         var staff = DashSvc.GetNonSoloStaffWithRoles()
             .Where(s => !s.FullName.Equals("BBB", StringComparison.OrdinalIgnoreCase))
             .ToList();
@@ -12511,6 +12540,7 @@ string _actionPcSearch = "";
 
     void OpenPrintAllStaff()
     {
+        if (_isRestrictedAud) return;
         var allStaff = DashSvc.GetNonSoloStaffMembers();
         _psaList = new List<PsaEntry>
         {

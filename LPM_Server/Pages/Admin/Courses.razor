@@ -1,6 +1,8 @@
 @page "/Admin/Courses"
 @attribute [Authorize(Roles = "Admin,Customer")]
 @inject LPM.Services.CourseService CourseSvc
+@inject AuthenticationStateProvider AuthState
+@inject NavigationManager Nav
 @using Microsoft.AspNetCore.Authorization
 @using LPM.Services
 
@@ -571,7 +573,11 @@
     int? _editGradeId;
     string _editGradeCode = "";
 
-    protected override void OnInitialized() => Reload();
+    protected override async Task OnInitializedAsync()
+    {
+        if (await PermissionsLevels.RedirectIfRestricted(AuthState, Nav)) return;
+        Reload();
+    }
 
     void Reload()
     {
