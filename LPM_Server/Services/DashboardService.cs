@@ -4066,7 +4066,7 @@ public class DashboardService
     }
 
     // ── Salary Report ──────────────────────────────────────────────────────────
-    public SalaryReport GetSalaryReport(DateOnly from, DateOnly to)
+    public SalaryReport GetSalaryReport(DateOnly from, DateOnly to, int? orgId = null)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -4115,12 +4115,12 @@ public class DashboardService
                 var currency   = r.IsDBNull(8) ? "ILS" : r.GetString(8);
                 var isFree     = r.GetInt32(9) == 1;
                 var sessName   = r.GetString(10);
-                var orgId      = r.GetInt32(11);
+                var rowOrgId   = r.GetInt32(11);
                 var orgName    = r.GetString(12);
                 var payment    = isApproved && !isFree ? (long)rateCents * chargeSec / 3600L : 0L;
                 var row = new SalarySessionRow(
                     r.GetString(3), sessionId, pcId, r.GetString(4), sessName,
-                    chargeSec, rateCents, payment, isApproved, isFree, currency, orgId, orgName);
+                    chargeSec, rateCents, payment, isApproved, isFree, currency, rowOrgId, orgName);
                 if (!sessionsByUser.ContainsKey(audId)) sessionsByUser[audId] = new();
                 sessionsByUser[audId].Add(row);
             }
@@ -4175,11 +4175,11 @@ public class DashboardService
                 var payment    = isApproved && !isFree ? (long)rateCents * durSec / 3600L : 0L;
                 var currency   = r.IsDBNull(10) ? "ILS" : r.GetString(10);
                 var sessName   = r.GetString(12);
-                var orgId      = r.GetInt32(13);
+                var rowOrgId   = r.GetInt32(13);
                 var orgName    = r.GetString(14);
                 var row = new SalaryCsRow(
                     r.GetString(4), csReviewId, sessionId, pcId, r.GetString(5), isSolo, sessName,
-                    durSec, rateCents, payment, isApproved, isFree, currency, orgId, orgName);
+                    durSec, rateCents, payment, isApproved, isFree, currency, rowOrgId, orgName);
                 if (!csByUser.ContainsKey(csId)) csByUser[csId] = new();
                 csByUser[csId].Add(row);
             }
@@ -4232,6 +4232,25 @@ public class DashboardService
             var name = nameCmd.ExecuteScalar()?.ToString() ?? $"Person #{pid}";
             result.Add(new UserSalaryGroup(pid, name, new(), new(),
                 commByUser.GetValueOrDefault(pid) ?? new()));
+        }
+
+        // Org filter — keep only staff whose own core_persons.Org matches.
+        // Each row inside a kept group stays intact (so a Haifa auditor's session for a
+        // Riga PC still shows under that Haifa auditor). Staff with NULL/0 Org are
+        // excluded when a specific org is requested — same convention as Statistics.
+        if (orgId.HasValue && result.Count > 0)
+        {
+            var personIds = result.Select(g => g.PersonId).Distinct().ToList();
+            var personOrgs = new Dictionary<int, int>();
+            using (var orgCmd = conn.CreateCommand())
+            {
+                orgCmd.CommandText =
+                    $"SELECT PersonId, COALESCE(Org, 0) FROM core_persons WHERE PersonId IN ({string.Join(",", personIds)})";
+                using var r = orgCmd.ExecuteReader();
+                while (r.Read())
+                    personOrgs[r.GetInt32(0)] = r.GetInt32(1);
+            }
+            result = result.Where(g => personOrgs.GetValueOrDefault(g.PersonId, 0) == orgId.Value).ToList();
         }
 
         return new SalaryReport(result, unassignedReferrals);

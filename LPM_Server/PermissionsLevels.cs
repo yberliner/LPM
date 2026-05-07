@@ -11,8 +11,10 @@ public static class PermissionsLevels
 {
     public const int Standard          = 0;
     public const int RestrictedAuditor = 1;
+    public const int SalaryRigaOnly    = 2;
 
     public static bool IsRestrictedAuditor(int level) => level == RestrictedAuditor;
+    public static bool IsSalaryRigaOnly(int level)    => level == SalaryRigaOnly;
 
     /// <summary>Reads the per-login PermissionsLevel claim. Returns 0 if missing/unparsable.</summary>
     public static int FromClaims(System.Security.Claims.ClaimsPrincipal user)

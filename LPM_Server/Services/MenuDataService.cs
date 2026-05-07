@@ -100,7 +100,7 @@ public class MenuDataService
             path: "/Import",
             type: "link",
             title: "Import",
-            requiredRole: "Admin,Customer",
+            requiredRole: "Admin",
             icon: "",
             svg: "<svg height='24pt' width='30pt' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'><rect x='10' y='8' width='32' height='44' rx='4' fill='#42a5f5'/><rect x='14' y='14' width='24' height='3' rx='1' fill='#bbdefb'/><rect x='14' y='20' width='18' height='3' rx='1' fill='#bbdefb'/><rect x='14' y='26' width='22' height='3' rx='1' fill='#bbdefb'/><path d='M46 32l8-8v6h6v4h-6v6z' fill='#66bb6a'/></svg>",
             selected: false,

@@ -1,5 +1,8 @@
 @page "/Admin/Salary"
-@attribute [Authorize(Roles = "Admin")]
+@* Authorization is intentionally permissive here ([Authorize] = any logged-in user). The
+   real gate is in OnInitializedAsync: Admin OR PermissionsLevel == SalaryRigaOnly; everyone
+   else is redirected to /Home before any data load. *@
+@attribute [Authorize]
 @using LPM.Services
 @using Microsoft.AspNetCore.Authorization
 @inject DashboardService DashSvc
@@ -58,6 +61,28 @@
                 }
                 Calculate
             </button>
+
+            @* Org filter — chip group, mirrors Statistics tab. For SalaryRigaOnly users
+               (yulia), buttons are disabled and Riga is forced. *@
+            <div class="d-flex align-items-center gap-2 flex-wrap" style="margin-left:8px;">
+                <span class="fw-semibold" style="font-size:0.8rem;color:#6b7280;">
+                    <i class="ri-filter-3-line me-1"></i>Org:
+                </span>
+                <div class="btn-group" role="group" aria-label="Organization filter">
+                    <button type="button"
+                            class="btn btn-sm rounded-pill me-1 @(_selOrg == 0 ? "btn-primary" : "btn-outline-primary")"
+                            @onclick="() => SelectOrg(0)" disabled="@(_loading || _orgLocked)"
+                            title="@(_orgLocked ? "View locked to Riga" : null)">All</button>
+                    <button type="button"
+                            class="btn btn-sm rounded-pill me-1 @(_selOrg == 1 ? "btn-primary" : "btn-outline-primary")"
+                            @onclick="() => SelectOrg(1)" disabled="@(_loading || _orgLocked)"
+                            title="@(_orgLocked ? "View locked to Riga" : null)">Haifa</button>
+                    <button type="button"
+                            class="btn btn-sm rounded-pill @(_selOrg == 2 ? "btn-primary" : "btn-outline-primary")"
+                            @onclick="() => SelectOrg(2)" disabled="@(_loading || _orgLocked)"
+                            title="@(_orgLocked ? "View locked to Riga" : null)">Riga</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -1127,13 +1152,41 @@
     protected override async Task OnInitializedAsync()
     {
         var auth = await AuthStateProvider.GetAuthenticationStateAsync();
-        if (!auth.User.IsInRole("Admin"))
+        var isAdmin = auth.User.IsInRole("Admin");
+        var permLevel = PermissionsLevels.FromClaims(auth.User);
+        var isSalaryRigaOnly = PermissionsLevels.IsSalaryRigaOnly(permLevel);
+
+        // Two paths in: Admin (full access) or SalaryRigaOnly (restricted to Riga).
+        // Anyone else gets bounced before any data is loaded.
+        if (!isAdmin && !isSalaryRigaOnly)
         {
             Navigation.NavigateTo("/Home");
             return;
         }
+
+        if (isSalaryRigaOnly)
+        {
+            _orgLocked = true;
+            _selOrg    = 2;     // Riga — UI shows the chip group with all 3 buttons disabled
+        }
+
         LoadFinancialConfig();
         InitPeriod();
+        await Calculate();
+    }
+
+    // ── Organization filter (mirrors Statistics / Sessions / Purchases / Payments) ──
+    private int  _selOrg;
+    private bool _orgLocked;
+    private int? OrgFilter => _selOrg == 0 ? (int?)null : _selOrg;
+
+    private async Task SelectOrg(int org)
+    {
+        // Server-side guard for SalaryRigaOnly users — even if the disabled attribute is
+        // bypassed via DOM tampering, the request gets ignored. Admin clicks always pass.
+        if (_orgLocked) return;
+        if (_selOrg == org) return;
+        _selOrg = org;
         await Calculate();
     }
 
@@ -1305,7 +1358,7 @@
 
         try
         {
-            var report = DashSvc.GetSalaryReport(from, to);
+            var report = DashSvc.GetSalaryReport(from, to, OrgFilter);
             _groups = report.Groups;
             _unassigned = report.UnassignedReferrals;
             _soloPcIds = DashSvc.GetSoloPcIds();

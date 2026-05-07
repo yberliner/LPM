@@ -567,12 +567,22 @@
     {
         var authState = await _authStateProvider.GetAuthenticationStateAsync();
         var user = authState.User;
+        var permLevel = PermissionsLevels.FromClaims(user);
+
+        // Base role filter, with one ADD-ON: SalaryRigaOnly users (e.g. yulia) get
+        // /Admin/Salary force-included even though it requires Admin. They also get the
+        // "Administration" section header so the Salary link visually appears under it
+        // (not appended after the last Management-section item). Order is preserved (the
+        // Where clause iterates the unfiltered MenuData in its natural order).
         menuVal = MenuDataService.GetMenuData()
-            .Where(item => item.RequiredRole == null ||
-                           item.RequiredRole.Split(',').Any(r => user.IsInRole(r.Trim())))
+            .Where(item =>
+                (item.RequiredRole == null ||
+                 item.RequiredRole.Split(',').Any(r => user.IsInRole(r.Trim())))
+                || (PermissionsLevels.IsSalaryRigaOnly(permLevel) &&
+                    (item.Path == "/Admin/Salary" || item.MenuTitle == "Administration")))
             .ToList();
 
-        if (PermissionsLevels.IsRestrictedAuditor(PermissionsLevels.FromClaims(user)))
+        if (PermissionsLevels.IsRestrictedAuditor(permLevel))
             menuVal = menuVal.Where(i => i.Path == "/Home" || i.Path == "/logout").ToList();
         await Random(menuVal);
            
