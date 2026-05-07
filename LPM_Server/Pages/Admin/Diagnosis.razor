@@ -591,6 +591,15 @@
                             {
                                 <input type="text" class="form-control form-control-sm" @bind="_userEditVals[cc]" @bind:event="oninput" />
                             }
+                            @* Legend for PermissionsLevel — keep in sync with PermissionsLevels.cs constants. *@
+                            @if (cc == "PermissionsLevel")
+                            {
+                                <small class="text-muted d-block mt-1" style="font-size:0.68rem;line-height:1.35;">
+                                    <strong>0</strong> = Standard (no restrictions)<br/>
+                                    <strong>1</strong> = Restricted Auditor (limited UI)<br/>
+                                    <strong>2</strong> = Salary Riga Only (Salary tab only, locked to Riga)
+                                </small>
+                            }
                         </div>
                     }
                 </div>

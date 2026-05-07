@@ -1703,11 +1703,14 @@ public List<PcListItem> GetAllPcs()
                    p.CreatedAt,
                    COALESCE(items.TotalAmount, 0),
                    COALESCE(items.TotalHours, 0),
-                   COALESCE(p.Currency,'ILS')
+                   COALESCE(p.Currency,'ILS'),
+                   p.WalletId,
+                   w.Name AS WalletName
             FROM fin_purchases p
             JOIN core_persons per ON per.PersonId = p.PcId
             LEFT JOIN core_persons ap ON ap.PersonId = p.ApprovedByPersonId
             LEFT JOIN core_persons cr ON cr.PersonId = p.CreatedByPersonId
+            LEFT JOIN fin_wallets w ON w.WalletId = p.WalletId
             LEFT JOIN (
                 SELECT PurchaseId, SUM(AmountPaid) AS TotalAmount, SUM(HoursBought) AS TotalHours
                 FROM fin_purchase_items GROUP BY PurchaseId
@@ -1727,7 +1730,9 @@ public List<PcListItem> GetAllPcs()
                 r.IsDBNull(8) ? null : r.GetString(8).Trim(),
                 r.GetString(9),
                 r.GetDouble(10), r.GetDouble(11),
-                Currency: r.GetString(12)));
+                Currency:   r.GetString(12),
+                WalletId:   r.IsDBNull(13) ? null : (int?)r.GetInt32(13),
+                WalletName: r.IsDBNull(14) ? null : r.GetString(14)));
         return list;
     }
 

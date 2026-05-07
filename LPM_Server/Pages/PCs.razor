@@ -746,6 +746,7 @@
                                     <th class="small ps-3">@LS.T("pcs.date")</th>
                                     <th class="small text-center">@LS.T("pcs.hoursBought")</th>
                                     <th class="small text-center">Amount</th>
+                                    <th class="small text-center">Wallet</th>
                                     <th class="small text-center">@LS.T("common.status")</th>
                                     <th class="small text-center" style="white-space:nowrap;">@LS.T("pcs.editPurchase")</th>
                                 </tr>
@@ -757,6 +758,7 @@
                                         <td class="small ps-3">@FormatDate(ap.Date)</td>
                                         <td class="small text-center fw-semibold">@(ap.HoursBought < 0 ? "-" : "")@FormatHoursMinutes(ap.HoursBought)</td>
                                         <td class="small text-center">@(ap.Amount != 0 ? $"{CurrSym(ap.Currency)}{(int)Math.Round(ap.Amount)}" : "\u2014")</td>
+                                        <td class="small text-center">@(string.IsNullOrEmpty(ap.WalletName) ? "\u2014" : ap.WalletName)</td>
                                         <td class="small text-center">
                                             @{
                                                 var (apCls, apLbl) = ap.Status switch {
@@ -791,7 +793,7 @@
                                         }
                                         @(auditGroups.Count > 0 ? string.Join(" + ", auditGroups) : "\u2014")
                                     </td>
-                                    <td colspan="2"></td>
+                                    <td colspan="3"></td>
                                 </tr>
                             </tfoot>
                         </table>
@@ -4848,7 +4850,7 @@
 
     // Auditing purchases display
     List<AuditingPurchaseDisplay> _auditingPurchases = new();
-    record AuditingPurchaseDisplay(int PurchaseId, string Date, double HoursBought, double Amount, string Status, string Currency = "ILS");
+    record AuditingPurchaseDisplay(int PurchaseId, string Date, double HoursBought, double Amount, string Status, string Currency = "ILS", string? WalletName = null);
     List<CompletionService.PcCompletionDetail> _pcCompletions = [];
 
     class PurchaseItemModel
@@ -5225,7 +5227,7 @@
                         if (!_latestAuditingPurchaseId.HasValue)
                             _latestAuditingPurchaseId = p.PurchaseId;
                         _auditingPurchases.Add(new AuditingPurchaseDisplay(
-                            p.PurchaseId, p.PurchaseDate, item.HoursBought, item.AmountPaid, p.ApprovedStatus, p.Currency));
+                            p.PurchaseId, p.PurchaseDate, item.HoursBought, item.AmountPaid, p.ApprovedStatus, p.Currency, p.WalletName));
                     }
                 }
             }

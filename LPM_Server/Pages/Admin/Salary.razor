@@ -385,7 +385,9 @@
                                                 <td class="text-end sal-payment">@if (s.IsFree) { <span style="color:#dc2626;font-weight:600;">@SalCurrSym(s.Currency) 0</span> } else if (s.IsApproved) { @($"{SalCurrSym(s.Currency)} {FormatShekel(s.PaymentCents)}") } else { <span class="sal-pending-dash">—</span> }</td>
                                                 <td class="text-center">@if (s.IsFree) { <span class="sal-free-tag">Free session</span> } else if (s.IsApproved) { <span class="sal-badge-approved">Approved</span> } else { <span class="sal-badge-pending">Pending</span> }</td>
                                                 <td class="text-center sal-action-cell">
-                                                    <button type="button" class="sal-action-btn" title="Edit session"
+                                                    <button type="button" class="sal-action-btn"
+                                                            title="@(_isReadOnly ? "View-only — editing disabled" : "Edit session")"
+                                                            disabled="@_isReadOnly"
                                                             @onclick="() => OpenInSessionManager(s.SessionId)">
                                                         <i class="ri-database-2-line"></i>
                                                     </button>
@@ -454,7 +456,9 @@
                                                 <td class="text-end sal-payment">@if (c.IsFree) { <span style="color:#dc2626;font-weight:600;">@SalCurrSym(c.Currency) 0</span> } else if (c.IsApproved) { @($"{SalCurrSym(c.Currency)} {FormatShekel(c.PaymentCents)}") } else { <span class="sal-pending-dash">—</span> }</td>
                                                 <td class="text-center">@if (c.IsFree) { <span class="sal-free-tag">Free session</span> } else if (c.IsApproved) { <span class="sal-badge-approved">Approved</span> } else { <span class="sal-badge-pending">Pending</span> }</td>
                                                 <td class="text-center sal-action-cell">
-                                                    <button type="button" class="sal-action-btn" title="Edit session / CS review"
+                                                    <button type="button" class="sal-action-btn"
+                                                            title="@(_isReadOnly ? "View-only — editing disabled" : "Edit session / CS review")"
+                                                            disabled="@_isReadOnly"
                                                             @onclick="() => OpenInSessionManager(c.SessionId)">
                                                         <i class="ri-database-2-line"></i>
                                                     </button>
@@ -1168,6 +1172,7 @@
         {
             _orgLocked = true;
             _selOrg    = 2;     // Riga — UI shows the chip group with all 3 buttons disabled
+            _isReadOnly = true; // disable Edit-session buttons; salary view is read-only
         }
 
         LoadFinancialConfig();
@@ -1178,6 +1183,7 @@
     // ── Organization filter (mirrors Statistics / Sessions / Purchases / Payments) ──
     private int  _selOrg;
     private bool _orgLocked;
+    private bool _isReadOnly;   // SalaryRigaOnly users — disable Edit-session buttons
     private int? OrgFilter => _selOrg == 0 ? (int?)null : _selOrg;
 
     private async Task SelectOrg(int org)
