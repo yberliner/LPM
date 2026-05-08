@@ -82,6 +82,17 @@
                             @onclick="() => SelectOrg(2)" disabled="@(_loading || _orgLocked)"
                             title="@(_orgLocked ? "View locked to Riga" : null)">Riga</button>
                 </div>
+
+                @* Include-solo-PCs toggle — when off, drops Solo-PC rows AND their amounts from totals *@
+                <div class="form-check form-switch mb-0 ms-3" style="user-select:none;">
+                    <input class="form-check-input" type="checkbox" id="sal-include-solo"
+                           checked="@_includeSoloPcs" disabled="@_loading"
+                           @onchange="ToggleIncludeSoloPcs" />
+                    <label class="form-check-label" for="sal-include-solo"
+                           style="font-size:0.82rem;color:#6b7280;cursor:pointer;">
+                        Include Solo PCs
+                    </label>
+                </div>
             </div>
         </div>
     </div>
@@ -1196,6 +1207,15 @@
         await Calculate();
     }
 
+    // Include-Solo-PCs filter — default true so existing behavior is unchanged.
+    private bool _includeSoloPcs = true;
+
+    private async Task ToggleIncludeSoloPcs(ChangeEventArgs e)
+    {
+        _includeSoloPcs = e.Value is bool b ? b : true;
+        await Calculate();
+    }
+
     // Salary period for month M = all Thursday→Wednesday weeks whose Wednesday falls in M.
     // From = Thursday 6 days before the first Wednesday of M; To = last Wednesday of M.
     (DateOnly From, DateOnly To) ComputePeriod(int year, int month)
@@ -1364,7 +1384,7 @@
 
         try
         {
-            var report = DashSvc.GetSalaryReport(from, to, OrgFilter);
+            var report = DashSvc.GetSalaryReport(from, to, OrgFilter, _includeSoloPcs);
             _groups = report.Groups;
             _unassigned = report.UnassignedReferrals;
             _soloPcIds = DashSvc.GetSoloPcIds();

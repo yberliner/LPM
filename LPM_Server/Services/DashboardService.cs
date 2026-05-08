@@ -3654,7 +3654,7 @@ public class DashboardService
     private static long ToCents(decimal shekels) => (long)Math.Round(shekels * 100m);
 
     private (Dictionary<int, List<CommissionRow>>, List<UnassignedReferralRow>)
-        GetCommissionData(SqliteConnection conn, string fromStr, string toStr, int? orgId = null)
+        GetCommissionData(SqliteConnection conn, string fromStr, string toStr, int? orgId = null, bool includeSoloPcs = true)
     {
         var commByUser = new Dictionary<int, List<CommissionRow>>();
         var unassigned = new List<UnassignedReferralRow>();
@@ -3702,9 +3702,12 @@ public class DashboardService
                   AND pm.MethodType NOT IN ('Credit', 'ToBePaid')
                   AND p.IsDeleted = 0
                   AND p.TransferPurchaseId IS NULL
-                  AND p.ApprovedStatus = 'Approved'";
+                  AND p.ApprovedStatus = 'Approved'
+                  AND (@includeSolo = 1 OR pc.PersonId NOT IN
+                       (SELECT PersonId FROM core_users WHERE StaffRole = 'Solo' AND IsActive = 1))";
             cmd.Parameters.AddWithValue("@from", fromStr);
             cmd.Parameters.AddWithValue("@to", toStr);
+            cmd.Parameters.AddWithValue("@includeSolo", includeSoloPcs ? 1 : 0);
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
@@ -3921,9 +3924,12 @@ public class DashboardService
                          AND sc.CourseId = latest.CourseId
                          AND sc.DateFinished = latest.MDF
                 JOIN lkp_courses lc ON lc.CourseId = sc.CourseId
-                WHERE sc.DateFinished >= @from AND sc.DateFinished <= @to";
+                WHERE sc.DateFinished >= @from AND sc.DateFinished <= @to
+                  AND (@includeSolo = 1 OR sc.PersonId NOT IN
+                       (SELECT PersonId FROM core_users WHERE StaffRole = 'Solo' AND IsActive = 1))";
             cmd.Parameters.AddWithValue("@from", fromStr);
             cmd.Parameters.AddWithValue("@to", toStr);
+            cmd.Parameters.AddWithValue("@includeSolo", includeSoloPcs ? 1 : 0);
             using var r = cmd.ExecuteReader();
             while (r.Read())
                 finishingCourses.Add((r.GetInt32(0), r.GetInt32(1),
@@ -4084,7 +4090,7 @@ public class DashboardService
     }
 
     // ── Salary Report ──────────────────────────────────────────────────────────
-    public SalaryReport GetSalaryReport(DateOnly from, DateOnly to, int? orgId = null)
+    public SalaryReport GetSalaryReport(DateOnly from, DateOnly to, int? orgId = null, bool includeSoloPcs = true)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -4116,10 +4122,13 @@ public class DashboardService
               AND SUBSTR(s.CreatedAt,1,10) >= @from AND SUBSTR(s.CreatedAt,1,10) <= @to
               AND COALESCE(s.IsImported,0) = 0
               AND (@org IS NULL OR COALESCE(pc.Org,0) = @org)
+              AND (@includeSolo = 1 OR pc.PersonId NOT IN
+                   (SELECT PersonId FROM core_users WHERE StaffRole = 'Solo' AND IsActive = 1))
             ORDER BY s.AuditorId, s.CreatedAt, s.SequenceInDay";
         sessCmd.Parameters.AddWithValue("@from", fromStr);
         sessCmd.Parameters.AddWithValue("@to",   toStr);
         sessCmd.Parameters.AddWithValue("@org",  orgId.HasValue ? (object)orgId.Value : DBNull.Value);
+        sessCmd.Parameters.AddWithValue("@includeSolo", includeSoloPcs ? 1 : 0);
 
         var sessionsByUser = new Dictionary<int, List<SalarySessionRow>>();
         using (var r = sessCmd.ExecuteReader())
@@ -4172,10 +4181,13 @@ public class DashboardService
             WHERE SUBSTR(s.CreatedAt,1,10) >= @from AND SUBSTR(s.CreatedAt,1,10) <= @to
               AND COALESCE(s.IsImported,0) = 0
               AND (@org IS NULL OR COALESCE(pc.Org,0) = @org)
+              AND (@includeSolo = 1 OR pc.PersonId NOT IN
+                   (SELECT PersonId FROM core_users WHERE StaffRole = 'Solo' AND IsActive = 1))
             ORDER BY cr.CsId, s.CreatedAt";
         csCmd.Parameters.AddWithValue("@from", fromStr);
         csCmd.Parameters.AddWithValue("@to",   toStr);
         csCmd.Parameters.AddWithValue("@org",  orgId.HasValue ? (object)orgId.Value : DBNull.Value);
+        csCmd.Parameters.AddWithValue("@includeSolo", includeSoloPcs ? 1 : 0);
 
         var csByUser = new Dictionary<int, List<SalaryCsRow>>();
         using (var r = csCmd.ExecuteReader())
@@ -4208,7 +4220,7 @@ public class DashboardService
         }
 
         // Commission calculation
-        var (commByUser, unassignedReferrals) = GetCommissionData(conn, fromStr, toStr, orgId);
+        var (commByUser, unassignedReferrals) = GetCommissionData(conn, fromStr, toStr, orgId, includeSoloPcs);
 
         // Load non-solo staff users who appear in sessions, CS reviews, OR commissions
         var allPersonIds = sessionsByUser.Keys.Union(csByUser.Keys).Union(commByUser.Keys).ToHashSet();
