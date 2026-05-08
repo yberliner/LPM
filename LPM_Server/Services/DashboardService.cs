@@ -456,7 +456,12 @@ public class DashboardService
         return result is null ? null : Convert.ToInt32(result);
     }
 
-    public int CreateImportedSession(int pcId, int auditorId, string sessionName,
+    /// <summary>
+    /// Creates a session originated by the Add-Session wizard ("Go" button in MainHeader).
+    /// NOT the same as actual file-import — that path goes through <see cref="CreateImportedSessionWithDate"/>.
+    /// Sets OriginSource='Wizard' so Diagnosis → Session Origin can filter correctly.
+    /// </summary>
+    public int CreateWizardSession(int pcId, int auditorId, string sessionName,
         int lengthSeconds = 0, int adminSeconds = 0, bool isFreeSession = false, bool isSolo = false,
         string? sessionDate = null, int? walletId = null, int? createdByUserId = null)
     {
@@ -492,7 +497,7 @@ public class DashboardService
         cmd.CommandText = @"
             INSERT INTO sess_sessions
                 (PcId, AuditorId, SessionDate, SequenceInDay, LengthSeconds, AdminSeconds, IsFreeSession, Name, CreatedByUserId, WalletId, CreatedAt, OriginSource)
-            VALUES (@pc, @aud, @dt, @seq, @len, @admin, @free, @name, @creator, @wallet, datetime('now', 'localtime'), 'Import');
+            VALUES (@pc, @aud, @dt, @seq, @len, @admin, @free, @name, @creator, @wallet, datetime('now', 'localtime'), 'Wizard');
             SELECT last_insert_rowid();";
         cmd.Parameters.AddWithValue("@pc", pcId);
         cmd.Parameters.AddWithValue("@aud", audParam);
@@ -3649,7 +3654,7 @@ public class DashboardService
     private static long ToCents(decimal shekels) => (long)Math.Round(shekels * 100m);
 
     private (Dictionary<int, List<CommissionRow>>, List<UnassignedReferralRow>)
-        GetCommissionData(SqliteConnection conn, string fromStr, string toStr)
+        GetCommissionData(SqliteConnection conn, string fromStr, string toStr, int? orgId = null)
     {
         var commByUser = new Dictionary<int, List<CommissionRow>>();
         var unassigned = new List<UnassignedReferralRow>();
@@ -4062,6 +4067,19 @@ public class DashboardService
             }
         }
 
+        // Row-level org filter — only keep commissions whose PC matches the requested org.
+        // Step E pulls payments for in-range purchases; Step F pulls catch-up purchases without
+        // an org filter, so we post-filter here to keep both code paths consistent.
+        if (orgId.HasValue)
+        {
+            foreach (var key in commByUser.Keys.ToList())
+            {
+                var filtered = commByUser[key].Where(r => r.OrgId == orgId.Value).ToList();
+                if (filtered.Count == 0) commByUser.Remove(key);
+                else                     commByUser[key] = filtered;
+            }
+        }
+
         return (commByUser, unassigned);
     }
 
@@ -4097,9 +4115,11 @@ public class DashboardService
             WHERE s.AuditorId IS NOT NULL
               AND SUBSTR(s.CreatedAt,1,10) >= @from AND SUBSTR(s.CreatedAt,1,10) <= @to
               AND COALESCE(s.IsImported,0) = 0
+              AND (@org IS NULL OR COALESCE(pc.Org,0) = @org)
             ORDER BY s.AuditorId, s.CreatedAt, s.SequenceInDay";
         sessCmd.Parameters.AddWithValue("@from", fromStr);
         sessCmd.Parameters.AddWithValue("@to",   toStr);
+        sessCmd.Parameters.AddWithValue("@org",  orgId.HasValue ? (object)orgId.Value : DBNull.Value);
 
         var sessionsByUser = new Dictionary<int, List<SalarySessionRow>>();
         using (var r = sessCmd.ExecuteReader())
@@ -4151,9 +4171,11 @@ public class DashboardService
             LEFT JOIN lkp_organizations o ON o.OrgId = pc.Org
             WHERE SUBSTR(s.CreatedAt,1,10) >= @from AND SUBSTR(s.CreatedAt,1,10) <= @to
               AND COALESCE(s.IsImported,0) = 0
+              AND (@org IS NULL OR COALESCE(pc.Org,0) = @org)
             ORDER BY cr.CsId, s.CreatedAt";
         csCmd.Parameters.AddWithValue("@from", fromStr);
         csCmd.Parameters.AddWithValue("@to",   toStr);
+        csCmd.Parameters.AddWithValue("@org",  orgId.HasValue ? (object)orgId.Value : DBNull.Value);
 
         var csByUser = new Dictionary<int, List<SalaryCsRow>>();
         using (var r = csCmd.ExecuteReader())
@@ -4186,7 +4208,7 @@ public class DashboardService
         }
 
         // Commission calculation
-        var (commByUser, unassignedReferrals) = GetCommissionData(conn, fromStr, toStr);
+        var (commByUser, unassignedReferrals) = GetCommissionData(conn, fromStr, toStr, orgId);
 
         // Load non-solo staff users who appear in sessions, CS reviews, OR commissions
         var allPersonIds = sessionsByUser.Keys.Union(csByUser.Keys).Union(commByUser.Keys).ToHashSet();
@@ -4234,24 +4256,13 @@ public class DashboardService
                 commByUser.GetValueOrDefault(pid) ?? new()));
         }
 
-        // Org filter — keep only staff whose own core_persons.Org matches.
-        // Each row inside a kept group stays intact (so a Haifa auditor's session for a
-        // Riga PC still shows under that Haifa auditor). Staff with NULL/0 Org are
-        // excluded when a specific org is requested — same convention as Statistics.
-        if (orgId.HasValue && result.Count > 0)
-        {
-            var personIds = result.Select(g => g.PersonId).Distinct().ToList();
-            var personOrgs = new Dictionary<int, int>();
-            using (var orgCmd = conn.CreateCommand())
-            {
-                orgCmd.CommandText =
-                    $"SELECT PersonId, COALESCE(Org, 0) FROM core_persons WHERE PersonId IN ({string.Join(",", personIds)})";
-                using var r = orgCmd.ExecuteReader();
-                while (r.Read())
-                    personOrgs[r.GetInt32(0)] = r.GetInt32(1);
-            }
-            result = result.Where(g => personOrgs.GetValueOrDefault(g.PersonId, 0) == orgId.Value).ToList();
-        }
+        // Row-level org filter is applied at the SQL/commission level above. Here we just
+        // drop staff who ended up with zero rows after filtering — they have nothing to show.
+        // (The All-orgs case never produces empty groups since a staff is only loaded when
+        // they appear in at least one of the three dicts.)
+        result = result.Where(g => g.Sessions.Count > 0
+                                || g.CsReviews.Count > 0
+                                || g.Commissions.Count > 0).ToList();
 
         return new SalaryReport(result, unassignedReferrals);
     }

@@ -1409,6 +1409,35 @@ app.MapGet("/api/text-ann/list", (int pcId, string path,
     return Results.Json(rows);
 }).RequireAuthorization();
 
+// ── Client-side error reporter ────────────────────────────────────────────
+// Browser-side JS errors (uncaught + unhandled rejections) get POSTed here so
+// they show up in the same log as server errors. JS-side filters strip extension
+// noise and throttle to ≤1/2s; server-side just stamps a single Console.WriteLine.
+app.MapPost("/api/client-error", async (HttpContext ctx) =>
+{
+    try
+    {
+        using var reader = new System.IO.StreamReader(ctx.Request.Body);
+        var json = await reader.ReadToEndAsync();
+        if (string.IsNullOrWhiteSpace(json) || json.Length > 8192)
+            return Results.BadRequest();
+
+        var user = ctx.User?.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "(anon)";
+        var ip   = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        // Single-line log with everything inline. Stack trace newlines are escaped so
+        // the log line stays on one row (easier to grep / tail).
+        var safe = json.Replace('\n', ' ').Replace('\r', ' ');
+        Console.WriteLine($"[ClientError] user='{user}' ip={ip} payload={safe}");
+        return Results.Ok();
+    }
+    catch (Exception ex)
+    {
+        // Never let the reporter itself surface an exception to the user.
+        Console.WriteLine($"[ClientError] handler failed: {ex.Message}");
+        return Results.Ok();
+    }
+}).RequireAuthorization();
+
 app.MapPost("/api/pc-file-save", async (HttpContext ctx, LPM.Services.FolderService svc,
     LPM.Services.DashboardService dashSvc) =>
 {

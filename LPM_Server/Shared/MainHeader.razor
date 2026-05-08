@@ -9158,7 +9158,7 @@
                     Task.Run(async () =>
                     {
                         // Create session with total length/admin, earliest date
-                        sessionId = DashSvc.CreateImportedSession(capturedPcId, capturedUserId, sessionName,
+                        sessionId = DashSvc.CreateWizardSession(capturedPcId, capturedUserId, sessionName,
                             totalLengthSec, totalAdminSec, capturedFreeSession, isSolo: true, sessionDate: earliestDate,
                             createdByUserId: capturedCoreUserId);
 
@@ -9531,7 +9531,7 @@
                             System.Globalization.DateTimeStyles.None, out var _pd)
                             ? DateOnly.FromDateTime(_pd).ToString("yyyy-MM-dd")
                             : null;
-                        sessionId = DashSvc.CreateImportedSession(capturedPcId, capturedUserId, sessionName,
+                        sessionId = DashSvc.CreateWizardSession(capturedPcId, capturedUserId, sessionName,
                             sessionLenSec, adminSec, capturedFreeSession, isSolo: capturedIsSolo, sessionDate: dbDate,
                             createdByUserId: capturedCoreUserId);
                         var arfData = new PdfService.ArfData

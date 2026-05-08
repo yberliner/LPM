@@ -5,6 +5,7 @@
 @using Microsoft.AspNetCore.Authorization
 @using System.Globalization
 @inject DashboardService DashSvc
+@inject LPM.Services.PcService PcSvc
 @inject UserDb UserDb
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
@@ -233,18 +234,21 @@
                     @if (pcTotal > 1)
                     {
                         <div class="d-flex align-items-center gap-3 px-4 py-2 sa-pc-header flex-wrap">
-                            <div class="d-flex align-items-center gap-2">
-                                <div class="sa-pc-dot @(isNewPc ? "sa-pc-dot-new" : "")"></div>
-                                <span class="fw-semibold @(isNewPc ? "sa-pc-name-new" : "sa-pc-name")">@pcGroup.PcName</span>
-                                @if (isNewPc)
-                                {
-                                    <span class="sa-pc-new-badge" title="This auditor has never had an approved session for this PC. Set Rate and Salary before approving.">
-                                        <i class="ri-sparkling-2-fill"></i>
-                                        <span>* new PC</span>
-                                    </span>
-                                }
-                                @if (pcDraft > 0)    { <span class="badge rounded-pill sa-badge-pending">@pcDraft @LS.T("sessions.pending")</span> }
-                                @if (pcApproved > 0) { <span class="badge rounded-pill sa-badge-approved-sm">@pcApproved @LS.T("sessions.approved")</span> }
+                            <div class="d-flex flex-column gap-1">
+                                <div class="d-flex align-items-center gap-2">
+                                    <div class="sa-pc-dot @(isNewPc ? "sa-pc-dot-new" : "")"></div>
+                                    <span class="fw-semibold @(isNewPc ? "sa-pc-name-new" : "sa-pc-name")">@pcGroup.PcName</span>
+                                    @if (isNewPc)
+                                    {
+                                        <span class="sa-pc-new-badge" title="This auditor has never had an approved session for this PC. Set Rate and Salary before approving.">
+                                            <i class="ri-sparkling-2-fill"></i>
+                                            <span>* new PC</span>
+                                        </span>
+                                    }
+                                    @if (pcDraft > 0)    { <span class="badge rounded-pill sa-badge-pending">@pcDraft @LS.T("sessions.pending")</span> }
+                                    @if (pcApproved > 0) { <span class="badge rounded-pill sa-badge-approved-sm">@pcApproved @LS.T("sessions.approved")</span> }
+                                </div>
+                                @RenderLastRate(pcGroup.PcId)
                             </div>
                             <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
                                 <span class="sa-input-label" style="color:#6b7280;">Set all:</span>
@@ -323,6 +327,7 @@
                                                         </span>
                                                     }
                                                 </div>
+                                                @RenderLastRate(pcGroup.PcId)
                                             }
                                             <span class="fw-semibold sa-date">@FormatDate(s.CreatedAt)</span>
                                         </td>
@@ -490,11 +495,14 @@
                     firstCsPc = false;
 
                     <div class="d-flex align-items-center gap-3 px-4 py-2 sa-pc-header flex-wrap">
-                        <div class="d-flex align-items-center gap-2">
-                            <div class="sa-pc-dot sa-pc-dot-cs"></div>
-                            <span class="fw-semibold sa-pc-name">@pcGroup.PcName</span>
-                            @if (csPcNotDone > 0) { <span class="badge rounded-pill sa-badge-pending">@csPcNotDone @LS.T("sessions.pending")</span> }
-                            @if (csPcDone > 0)    { <span class="badge rounded-pill sa-badge-approved-sm">@csPcDone @LS.T("sessions.approved")</span> }
+                        <div class="d-flex flex-column gap-1">
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="sa-pc-dot sa-pc-dot-cs"></div>
+                                <span class="fw-semibold sa-pc-name">@pcGroup.PcName</span>
+                                @if (csPcNotDone > 0) { <span class="badge rounded-pill sa-badge-pending">@csPcNotDone @LS.T("sessions.pending")</span> }
+                                @if (csPcDone > 0)    { <span class="badge rounded-pill sa-badge-approved-sm">@csPcDone @LS.T("sessions.approved")</span> }
+                            </div>
+                            @RenderLastRate(pcGroup.PcId)
                         </div>
                         <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
                             <span class="sa-input-label" style="color:#6b7280;">Set all:</span>
@@ -690,6 +698,31 @@
             <button type="button" class="sa-ctx-item" @onclick="ToggleFreeBill">
                 <i class="ri-swap-line me-2"></i>@(_ctxIsFree ? "Mark as Billable" : "Mark as Free")
             </button>
+        </div>
+    }
+
+    @* ── "Last auditing purchase" detail popup ── *@
+    @if (_lastPurchaseDetail != null)
+    {
+        <div class="sa-lp-overlay" @onclick="CloseLastPurchase"></div>
+        <div class="sa-lp-card">
+            <div class="sa-lp-head">
+                <i class="ri-receipt-line me-2"></i>
+                <span>Last auditing purchase</span>
+                <span class="sa-lp-pcname">— @_lastPurchasePcName</span>
+                <button type="button" class="sa-lp-close" @onclick="CloseLastPurchase" title="Close">
+                    <i class="ri-close-line"></i>
+                </button>
+            </div>
+            <div class="sa-lp-body">
+                <div class="sa-lp-row"><span class="sa-lp-lbl">Date</span><span class="sa-lp-val">@_lastPurchaseDetail.PurchaseDate</span></div>
+                <div class="sa-lp-row"><span class="sa-lp-lbl">Hours bought</span><span class="sa-lp-val">@_lastPurchaseDetail.Hours.ToString("0.##")</span></div>
+                <div class="sa-lp-row"><span class="sa-lp-lbl">Amount paid</span><span class="sa-lp-val">@CurrencySymbolFromCode(_lastPurchaseDetail.Currency)@_lastPurchaseDetail.Amount.ToString("0.##")</span></div>
+                <div class="sa-lp-row"><span class="sa-lp-lbl">Rate</span><span class="sa-lp-val sa-lp-rate">@CurrencySymbolFromCode(_lastPurchaseDetail.Currency)@(_lastPurchaseDetail.RateCentsPerHour / 100)/hr</span></div>
+                <div class="sa-lp-row"><span class="sa-lp-lbl">Currency</span><span class="sa-lp-val">@_lastPurchaseDetail.Currency</span></div>
+                <div class="sa-lp-row"><span class="sa-lp-lbl">Wallet</span><span class="sa-lp-val">@(string.IsNullOrEmpty(_lastPurchaseDetail.WalletName) ? "—" : _lastPurchaseDetail.WalletName)</span></div>
+                <div class="sa-lp-row"><span class="sa-lp-lbl">Status</span><span class="sa-lp-val">@_lastPurchaseDetail.Status</span></div>
+            </div>
         </div>
     }
 
@@ -1180,7 +1213,61 @@
     @@media (max-width: 480px) {
         .sa-quick-nav-chip    { font-size: .78rem; padding: 10px 12px; min-height: 44px; }
     }
+
+    /* ── Last-rate inline label under PC name ── */
+    .sa-pc-rate-line {
+        display: inline-flex; align-items: center; gap: 6px;
+        font-size: 0.95rem; color: #6b7280; line-height: 1.25;
+        white-space: nowrap;
+    }
+    .sa-pc-rate-line .sa-pc-rate-val { font-weight: 700; color: #1e3a5f; font-size: 1rem; }
+    .sa-pc-rate-btn {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 28px; height: 28px; padding: 0;
+        background: transparent; border: 1px solid transparent; border-radius: 6px;
+        color: #6366f1; cursor: pointer; font-size: 1.15rem; line-height: 1;
+    }
+    .sa-pc-rate-btn:hover { background: #eef2ff; border-color: #c7d2fe; }
+
+    /* ── Last auditing purchase detail card ── */
+    .sa-lp-overlay { position: fixed; inset: 0; z-index: 1050; background: rgba(15,23,42,.35); }
+    .sa-lp-card {
+        position: fixed; z-index: 1051;
+        top: 50%; left: 50%; transform: translate(-50%, -50%);
+        width: min(420px, calc(100vw - 32px));
+        background: #fff; border-radius: 12px;
+        box-shadow: 0 12px 36px rgba(15,23,42,.35);
+        overflow: hidden;
+        animation: sa-lp-in .18s ease-out;
+    }
+    @@keyframes sa-lp-in {
+        from { opacity: 0; transform: translate(-50%, -48%) scale(.96); }
+        to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    }
+    .sa-lp-head {
+        display: flex; align-items: center; gap: 4px;
+        padding: 10px 14px;
+        background: linear-gradient(135deg, #4338ca 0%, #6366f1 100%);
+        color: #fff; font-weight: 700; font-size: .92rem;
+    }
+    .sa-lp-pcname { font-weight: 500; opacity: .9; flex: 1; }
+    .sa-lp-close {
+        background: rgba(255,255,255,.18); border: 0; color: #fff;
+        width: 24px; height: 24px; border-radius: 6px; cursor: pointer;
+        display: inline-flex; align-items: center; justify-content: center;
+    }
+    .sa-lp-close:hover { background: rgba(255,255,255,.32); }
+    .sa-lp-body { padding: 14px 18px; }
+    .sa-lp-row {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 5px 0; border-bottom: 1px solid #f1f5f9; font-size: .85rem;
+    }
+    .sa-lp-row:last-child { border-bottom: 0; }
+    .sa-lp-lbl { color: #6b7280; }
+    .sa-lp-val { color: #111827; font-weight: 600; font-variant-numeric: tabular-nums; }
+    .sa-lp-rate { color: #4338ca; font-size: .95rem; }
 </style>
+
 
 
 @code {
@@ -1200,6 +1287,50 @@
     private Dictionary<(int aud, int pc), int> _pcTopWallet   = new();
     // Top-row wallet selection per (CS, PC) group
     private Dictionary<(int cs,  int pc), int> _csTopWallet   = new();
+
+    // Last auditing purchase per PC — populated once per LoadData. Key = PcId.
+    private Dictionary<int, LPM.Services.LastAuditingPurchase> _pcLastPurchase = new();
+
+    // Currently-shown last-purchase popup
+    private LPM.Services.LastAuditingPurchase? _lastPurchaseDetail;
+    private string _lastPurchasePcName = "";
+
+    void ShowLastPurchase(int pcId)
+    {
+        if (!_pcLastPurchase.TryGetValue(pcId, out var lp)) return;
+        _lastPurchaseDetail = lp;
+        _lastPurchasePcName = _groups.SelectMany(g => g.PcGroups).FirstOrDefault(pg => pg.PcId == pcId)?.PcName
+                              ?? _csGroups.SelectMany(g => g.PcGroups).FirstOrDefault(pg => pg.PcId == pcId)?.PcName
+                              ?? $"PC {pcId}";
+    }
+
+    void CloseLastPurchase() { _lastPurchaseDetail = null; }
+
+    // Inline "Last rate: …" line shown beneath each PC name. Reused at all 3 render sites
+    // (auditor multi-session header, auditor single-session row, CS reviews header).
+    RenderFragment RenderLastRate(int pcId) => @<div class="sa-pc-rate-line">
+        @if (_pcLastPurchase.TryGetValue(pcId, out var __lp))
+        {
+            <span>Last rate:</span>
+            <span class="sa-pc-rate-val">@CurrencySymbolFromCode(__lp.Currency)@(__lp.RateCentsPerHour / 100)/hr</span>
+            <button type="button" class="sa-pc-rate-btn" @onclick="() => ShowLastPurchase(pcId)"
+                    title="Show last auditing purchase details">
+                <i class="ri-information-line"></i>
+            </button>
+        }
+        else
+        {
+            <span>Last rate: —</span>
+        }
+    </div>;
+
+    static string CurrencySymbolFromCode(string code) => code switch
+    {
+        "USD" => "$",
+        "EUR" => "€",
+        "GBP" => "£",
+        _     => "₪",
+    };
 
     // Organization filter — 0=All, 1=Haifa, 2=Riga (mirrors Statistics tab)
     private int    _selOrg;
@@ -1497,6 +1628,14 @@
                 }
             }
         }
+
+        // ── Last auditing purchase per PC (one batched query for the whole view) ──
+        _pcLastPurchase.Clear();
+        var allPcIds = _groups.SelectMany(g => g.PcGroups).Select(pg => pg.PcId)
+            .Concat(_csGroups.SelectMany(g => g.PcGroups).Select(pg => pg.PcId))
+            .Distinct().ToList();
+        if (allPcIds.Count > 0)
+            _pcLastPurchase = PcSvc.GetLastAuditingPurchasePerPc(allPcIds);
 
         _loading = false;
     }

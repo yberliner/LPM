@@ -395,7 +395,8 @@ window.interop = {
   },
   updateScrollVisibility : function(dotnetHelper) {
     window.onscroll = function() {
-        var scrollHeight = window.scrollY;
+        // .NET expects int — high-DPI / browser-zoom can yield fractional pixels (147.5 etc).
+        var scrollHeight = Math.round(window.scrollY);
         dotnetHelper.invokeMethodAsync('UpdateScrollVisibility', scrollHeight);
     }
   },
@@ -409,13 +410,13 @@ window.interop = {
   _headerScrollHandler: null,
   registerScrollListener: function (dotnetHelper) {
       interop._scrollHandler = function () {
-          var scrollY = window.scrollY || window.pageYOffset;
+          var scrollY = Math.round(window.scrollY || window.pageYOffset);
           dotnetHelper.invokeMethodAsync("SetStickyClass", scrollY);
       };
       window.addEventListener('scroll', interop._scrollHandler);
 
     // Trigger initial check
-    var scrollY = window.scrollY || window.pageYOffset;
+    var scrollY = Math.round(window.scrollY || window.pageYOffset);
     dotnetHelper.invokeMethodAsync("SetStickyClass", scrollY);
   },
   unregisterScrollListener: function () {
@@ -426,13 +427,13 @@ window.interop = {
   },
   registerheaderScrollListener: function (dotnetHelper) {
       interop._headerScrollHandler = function () {
-          var scrollY = window.scrollY || window.pageYOffset;
+          var scrollY = Math.round(window.scrollY || window.pageYOffset);
           dotnetHelper.invokeMethodAsync("SetStickyClass1", scrollY);
       };
       window.addEventListener('scroll', interop._headerScrollHandler);
 
     // Trigger initial check
-    var scrollY = window.scrollY || window.pageYOffset;
+    var scrollY = Math.round(window.scrollY || window.pageYOffset);
     dotnetHelper.invokeMethodAsync("SetStickyClass1", scrollY);
   },
   unregisterheaderScrollListener: function () {

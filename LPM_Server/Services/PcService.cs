@@ -31,6 +31,12 @@ public record PurchaseDetail(int PurchaseId, int PcId, string PcName, string Pur
 public record PurchasePaymentMethodInfo(int PaymentMethodId, string MethodType,
     int Amount, string? PaymentDate, bool IsMoneyInBank, string? MoneyInBankDate, int Installments = 1);
 
+/// <summary>Compact summary of a PC's most recent auditing purchase. Used by Work Review's
+/// "Last rate" inline display.</summary>
+public record LastAuditingPurchase(
+    int PurchaseId, string PurchaseDate, double Hours, double Amount,
+    int RateCentsPerHour, string Currency, string? WalletName, string Status);
+
 // ── Hard-delete preview records ──
 public record PurchaseDeleteFkTable(string Table, List<string> Cols, List<List<string>> Rows);
 public record PurchaseDeletePurchaseRow(int PurchaseId, List<string> Cols, List<string> Values);
@@ -984,6 +990,50 @@ public List<PcListItem> GetAllPcs()
 
         // 3. No prior data
         return 0;
+    }
+
+    /// <summary>Last auditing-purchase summary per PC (across the given PC IDs). One round-trip.
+    /// "Last" = most recent by PurchaseDate DESC, PurchaseId DESC. Auditing items in a single
+    /// purchase are summed (so multi-line auditing purchases yield one combined row).</summary>
+    public Dictionary<int, LastAuditingPurchase> GetLastAuditingPurchasePerPc(IEnumerable<int> pcIds)
+    {
+        var ids = pcIds.Distinct().ToList();
+        var result = new Dictionary<int, LastAuditingPurchase>();
+        if (ids.Count == 0) return result;
+
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $@"
+            SELECT p.PcId, p.PurchaseId, p.PurchaseDate,
+                   SUM(pi.HoursBought)  AS Hours,
+                   SUM(pi.AmountPaid)   AS Amount,
+                   COALESCE(p.Currency, 'ILS') AS Currency,
+                   w.Name               AS WalletName,
+                   p.ApprovedStatus
+            FROM fin_purchases p
+            JOIN fin_purchase_items pi ON pi.PurchaseId = p.PurchaseId
+            LEFT JOIN fin_wallets w ON w.WalletId = p.WalletId
+            WHERE p.PcId IN ({string.Join(",", ids)})
+              AND COALESCE(p.IsDeleted, 0) = 0
+              AND pi.ItemType = 'Auditing'
+            GROUP BY p.PurchaseId
+            ORDER BY p.PurchaseDate DESC, p.PurchaseId DESC";
+
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            var pcId = r.GetInt32(0);
+            if (result.ContainsKey(pcId)) continue; // first row per PC = latest
+            // SUM returns NULL only when every input row is NULL — defensive against bad data.
+            var hours  = r.IsDBNull(3) ? 0 : r.GetDouble(3);
+            var amount = r.IsDBNull(4) ? 0 : r.GetDouble(4);
+            var rateCents = Math.Abs(hours) > 0 ? (int)Math.Round(Math.Abs(amount / hours) * 100) : 0;
+            result[pcId] = new LastAuditingPurchase(
+                r.GetInt32(1), r.GetString(2), hours, amount, rateCents,
+                r.GetString(5), r.IsDBNull(6) ? null : r.GetString(6), r.GetString(7));
+        }
+        return result;
     }
 
     public string GetLastPurchaseCurrencyForPc(int pcId)
