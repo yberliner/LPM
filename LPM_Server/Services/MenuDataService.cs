@@ -96,17 +96,6 @@ public class MenuDataService
             active: false,
             dirChange: false
         ),
-        new MainMenuItems(
-            path: "/Import",
-            type: "link",
-            title: "Import",
-            requiredRole: "Admin",
-            icon: "",
-            svg: "<svg height='24pt' width='30pt' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'><rect x='10' y='8' width='32' height='44' rx='4' fill='#42a5f5'/><rect x='14' y='14' width='24' height='3' rx='1' fill='#bbdefb'/><rect x='14' y='20' width='18' height='3' rx='1' fill='#bbdefb'/><rect x='14' y='26' width='22' height='3' rx='1' fill='#bbdefb'/><path d='M46 32l8-8v6h6v4h-6v6z' fill='#66bb6a'/></svg>",
-            selected: false,
-            active: false,
-            dirChange: false
-        ),
         new MainMenuItems (
             path: "/Schedule",
             type: "link",
@@ -134,6 +123,65 @@ public class MenuDataService
             requiredRole: "Admin"
         ),
         new MainMenuItems(
+            path: "/Admin/StaffPermissions",
+            type: "link",
+            title: "Staff Permissions",
+            icon: "",
+            svg: "<svg height='24pt' width='30pt' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'><path d='M32 4L8 16v16c0 14.4 10.24 27.84 24 32 13.76-4.16 24-17.6 24-32V16z' fill='#66bb6a'/><path d='M32 4v48c13.76-4.16 24-17.6 24-32V16z' fill='#43a047'/><path d='M28 32l-6-6 3-3 3 3 9-9 3 3z' fill='#fff'/></svg>",
+            selected: false,
+            active: false,
+            dirChange: false,
+            requiredRole: "Admin"
+        ),
+        new MainMenuItems(
+            path: "/Admin/Backup",
+            type: "link",
+            title: "Backup",
+            icon: "",
+            svg: "<svg height='24pt' width='30pt' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'><rect x='10' y='20' width='44' height='32' rx='4' fill='#5c6bc0'/><rect x='14' y='24' width='36' height='24' rx='2' fill='#3949ab'/><path d='M32 28v12M26 36l6 6 6-6' stroke='#e8eaf6' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/><path d='M20 14h24l4 6H16z' fill='#7986cb'/></svg>",
+            selected: false,
+            active: false,
+            dirChange: false,
+            requiredRole: "Admin"
+        ),
+        new MainMenuItems(
+            path: "/Import",
+            type: "link",
+            title: "Import",
+            requiredRole: "Admin",
+            icon: "",
+            svg: "<svg height='24pt' width='30pt' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'><rect x='10' y='8' width='32' height='44' rx='4' fill='#42a5f5'/><rect x='14' y='14' width='24' height='3' rx='1' fill='#bbdefb'/><rect x='14' y='20' width='18' height='3' rx='1' fill='#bbdefb'/><rect x='14' y='26' width='22' height='3' rx='1' fill='#bbdefb'/><path d='M46 32l8-8v6h6v4h-6v6z' fill='#66bb6a'/></svg>",
+            selected: false,
+            active: false,
+            dirChange: false
+        ),
+        new MainMenuItems (
+            path: "/Admin/Auditors",
+            type: "link",
+            title: "Auditors",
+            requiredRole: "Admin",
+            icon: "",
+            svg: "<svg height='24pt' width='30pt' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'><circle cx='32' cy='18' r='12' fill='#ffa726'/><circle cx='32' cy='18' r='8' fill='#ffb74d'/><path d='M12 56c0-11.046 8.954-20 20-20s20 8.954 20 20v2H12v-2z' fill='#ab47bc'/><path d='M28 8l4-4 4 4' stroke='#ffa726' stroke-width='2' fill='none' stroke-linecap='round'/><path d='M24 44h16v14H24z' fill='#7b1fa2'/><path d='M30 44h4v8h-4z' fill='#e1bee7'/></svg>",
+            selected: false,
+            active: false,
+            dirChange: false
+        ),
+        new MainMenuItems(
+            path: "/Admin/Diagnosis",
+            type: "link",
+            title: "Diagnosis",
+            icon: "",
+            svg: "<svg height='24pt' width='30pt' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'><ellipse cx='32' cy='20' rx='20' ry='8' fill='#5c6bc0'/><path d='M12 20v24c0 4.4 8.95 8 20 8s20-3.6 20-8V20' fill='#3949ab'/><path d='M12 32c0 4.4 8.95 8 20 8s20-3.6 20-8' fill='none' stroke='#7986cb' stroke-width='1.5'/><line x1='32' y1='36' x2='32' y2='46' stroke='#e8eaf6' stroke-width='2.5' stroke-linecap='round'/><line x1='27' y1='41' x2='37' y2='41' stroke='#e8eaf6' stroke-width='2.5' stroke-linecap='round'/></svg>",
+            selected: false,
+            active: false,
+            dirChange: false,
+            requiredRole: "Admin"
+        ),
+        new MainMenuItems(
+            menuTitle: "Finance",
+            requiredRole: "Admin"
+        ),
+        new MainMenuItems(
             path: "/Admin/Purchases",
             type: "link",
             title: "Purchases",
@@ -156,55 +204,11 @@ public class MenuDataService
             requiredRole: "Admin"
         ),
         new MainMenuItems(
-            path: "/Admin/StaffPermissions",
-            type: "link",
-            title: "Staff Permissions",
-            icon: "",
-            svg: "<svg height='24pt' width='30pt' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'><path d='M32 4L8 16v16c0 14.4 10.24 27.84 24 32 13.76-4.16 24-17.6 24-32V16z' fill='#66bb6a'/><path d='M32 4v48c13.76-4.16 24-17.6 24-32V16z' fill='#43a047'/><path d='M28 32l-6-6 3-3 3 3 9-9 3 3z' fill='#fff'/></svg>",
-            selected: false,
-            active: false,
-            dirChange: false,
-            requiredRole: "Admin"
-        ),
-        new MainMenuItems(
             path: "/Admin/Salary",
             type: "link",
             title: "Salary",
             icon: "",
             svg: "<svg height='24pt' width='30pt' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'><rect x='12' y='8' width='40' height='50' rx='4' fill='#6366f1'/><rect x='12' y='8' width='40' height='14' rx='4' fill='#4338ca'/><rect x='18' y='26' width='28' height='3' rx='1.5' fill='#c7d2fe'/><rect x='18' y='33' width='20' height='3' rx='1.5' fill='#c7d2fe'/><rect x='18' y='40' width='14' height='3' rx='1.5' fill='#c7d2fe'/><circle cx='44' cy='48' r='10' fill='#10b981'/><text x='44' y='53' text-anchor='middle' font-size='13' font-weight='bold' fill='#fff'>₪</text></svg>",
-            selected: false,
-            active: false,
-            dirChange: false,
-            requiredRole: "Admin"
-        ),
-        new MainMenuItems(
-            path: "/Admin/Backup",
-            type: "link",
-            title: "Backup",
-            icon: "",
-            svg: "<svg height='24pt' width='30pt' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'><rect x='10' y='20' width='44' height='32' rx='4' fill='#5c6bc0'/><rect x='14' y='24' width='36' height='24' rx='2' fill='#3949ab'/><path d='M32 28v12M26 36l6 6 6-6' stroke='#e8eaf6' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'/><path d='M20 14h24l4 6H16z' fill='#7986cb'/></svg>",
-            selected: false,
-            active: false,
-            dirChange: false,
-            requiredRole: "Admin"
-        ),
-        new MainMenuItems (
-            path: "/Admin/Auditors",
-            type: "link",
-            title: "Auditors",
-            requiredRole: "Admin",
-            icon: "",
-            svg: "<svg height='24pt' width='30pt' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'><circle cx='32' cy='18' r='12' fill='#ffa726'/><circle cx='32' cy='18' r='8' fill='#ffb74d'/><path d='M12 56c0-11.046 8.954-20 20-20s20 8.954 20 20v2H12v-2z' fill='#ab47bc'/><path d='M28 8l4-4 4 4' stroke='#ffa726' stroke-width='2' fill='none' stroke-linecap='round'/><path d='M24 44h16v14H24z' fill='#7b1fa2'/><path d='M30 44h4v8h-4z' fill='#e1bee7'/></svg>",
-            selected: false,
-            active: false,
-            dirChange: false
-        ),
-        new MainMenuItems(
-            path: "/Admin/Diagnosis",
-            type: "link",
-            title: "Diagnosis",
-            icon: "",
-            svg: "<svg height='24pt' width='30pt' viewBox='0 0 64 64' xmlns='http://www.w3.org/2000/svg'><ellipse cx='32' cy='20' rx='20' ry='8' fill='#5c6bc0'/><path d='M12 20v24c0 4.4 8.95 8 20 8s20-3.6 20-8V20' fill='#3949ab'/><path d='M12 32c0 4.4 8.95 8 20 8s20-3.6 20-8' fill='none' stroke='#7986cb' stroke-width='1.5'/><line x1='32' y1='36' x2='32' y2='46' stroke='#e8eaf6' stroke-width='2.5' stroke-linecap='round'/><line x1='27' y1='41' x2='37' y2='41' stroke='#e8eaf6' stroke-width='2.5' stroke-linecap='round'/></svg>",
             selected: false,
             active: false,
             dirChange: false,

@@ -1,6 +1,7 @@
 {
   "menu.Main": "ראשי",
   "menu.Administration": "ניהול",
+  "menu.Finance": "כספים",
   "menu.Dashboard": "לוח בקרה",
   "menu.PCs": "לקוחות",
   "menu.Auditors": "אודיטורים",
