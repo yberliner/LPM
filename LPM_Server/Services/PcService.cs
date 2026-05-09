@@ -20,7 +20,7 @@ public record PcListItemEx(int PcId, string FullName, string Nick, long RemainSe
 public record PurchaseListItem(int PurchaseId, int PcId, string PcName, string PurchaseDate,
     string? Notes, string ApprovedStatus, string? ApprovedByName, string? ApprovedAt,
     string? CreatedByName, string CreatedAt, double TotalAmount, double TotalHours, bool IsDeleted = false, string Currency = "ILS", int? TransferPurchaseId = null,
-    int? WalletId = null, string? WalletName = null);
+    int? WalletId = null, string? WalletName = null, int OrgId = 0, string OrgName = "Unknown");
 public record PurchaseItemInfo(int PurchaseItemId, string ItemType, int? CourseId,
     string? CourseName, int? BookId, string? BookName, double HoursBought, double AmountPaid);
 public record PurchaseDetail(int PurchaseId, int PcId, string PcName, string PurchaseDate,
@@ -1575,12 +1575,15 @@ public List<PcListItem> GetAllPcs()
                    COALESCE(p.Currency,'ILS'),
                    p.TransferPurchaseId,
                    p.WalletId,
-                   w.Name AS WalletName
+                   w.Name AS WalletName,
+                   COALESCE(per.Org, 0)            AS OrgId,
+                   COALESCE(o.Name, 'Unknown')     AS OrgName
             FROM fin_purchases p
             JOIN core_persons per ON per.PersonId = p.PcId
             LEFT JOIN core_persons ap ON ap.PersonId = p.ApprovedByPersonId
             LEFT JOIN core_persons cr ON cr.PersonId = p.CreatedByPersonId
             LEFT JOIN fin_wallets w ON w.WalletId = p.WalletId
+            LEFT JOIN lkp_organizations o ON o.OrgId = per.Org
             LEFT JOIN (
                 SELECT PurchaseId, SUM(AmountPaid) AS TotalAmount, SUM(HoursBought) AS TotalHours
                 FROM fin_purchase_items GROUP BY PurchaseId
@@ -1603,7 +1606,9 @@ public List<PcListItem> GetAllPcs()
                 r.GetInt32(12) == 1, r.GetString(13),
                 r.IsDBNull(14) ? null : (int?)r.GetInt32(14),
                 WalletId:   r.IsDBNull(15) ? null : (int?)r.GetInt32(15),
-                WalletName: r.IsDBNull(16) ? null : r.GetString(16)));
+                WalletName: r.IsDBNull(16) ? null : r.GetString(16),
+                OrgId:      r.GetInt32(17),
+                OrgName:    r.GetString(18)));
         return list;
     }
 

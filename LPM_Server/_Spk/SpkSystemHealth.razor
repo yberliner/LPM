@@ -901,23 +901,40 @@
         if (_uptime < TimeSpan.Zero) _uptime = TimeSpan.Zero;
     }
 
+    // Track what we last pushed so we only re-serialize when the data actually changed.
+    // Without this, every render (≈1/sec) would allocate ~800 KB of JSON for the 10,080-entry
+    // samples ring → significant GC pressure for any user watching the System Health tab.
+    int    _lastPushedSampleCount  = -1;
+    string _lastPushedActiveHash   = "";
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        // Always push the JS-side sidecar data (memSamples + activeUsers) on every render so the
-        // chart tooltips never read stale or empty data on first hover. Cheap (≤672 entries).
         try
         {
-            var samples = _memHistory.Select(s => new
+            // Push samples only when the ring grew (or shrank — also rare). Fast int check
+            // skips the expensive Select+ToArray+JSON path when nothing changed.
+            if (_memHistory.Count != _lastPushedSampleCount)
             {
-                utc     = s.Utc.ToString("o"),
-                pct     = s.UsedPct,
-                usedMB  = s.UsedMB,
-                totalMB = s.TotalMB,
-                active  = s.ActiveCircuits,
-                disc    = s.DisconnectedCircuits,
-            }).ToArray();
-            await JS.InvokeVoidAsync("lpmHealth.setMemSamples",  samples);
-            await JS.InvokeVoidAsync("lpmHealth.setActiveUsers", _activeUsernames);
+                var samples = _memHistory.Select(s => new
+                {
+                    utc     = s.Utc.ToString("o"),
+                    pct     = s.UsedPct,
+                    usedMB  = s.UsedMB,
+                    totalMB = s.TotalMB,
+                    active  = s.ActiveCircuits,
+                    disc    = s.DisconnectedCircuits,
+                }).ToArray();
+                await JS.InvokeVoidAsync("lpmHealth.setMemSamples", samples);
+                _lastPushedSampleCount = _memHistory.Count;
+            }
+
+            // Push active-users list only when it changed (cheap content-equality via joined string).
+            var activeHash = string.Join('', _activeUsernames);
+            if (activeHash != _lastPushedActiveHash)
+            {
+                await JS.InvokeVoidAsync("lpmHealth.setActiveUsers", _activeUsernames);
+                _lastPushedActiveHash = activeHash;
+            }
         }
         catch (JSDisconnectedException) { /* circuit closing — ignore */ }
         catch (TaskCanceledException)   { /* circuit closing — ignore */ }

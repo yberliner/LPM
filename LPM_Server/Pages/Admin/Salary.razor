@@ -549,6 +549,7 @@
                              @onmouseleave="() => { if (_hoverGroup == group) _hoverGroup = null; }">
                             <div class="sal-summary-section-title">
                                 <i class="ri-money-dollar-circle-line me-1"></i>Total Summary — All Organizations
+                                <span class="sal-summary-section-name">· @group.FullName</span>
                             </div>
                             @if (allBd.Count == 0)
                             {
@@ -599,6 +600,7 @@
                             <div class="sal-summary-section">
                                 <div class="sal-summary-section-title">
                                     <i class="ri-building-line me-1"></i>By Organization
+                                    <span class="sal-summary-section-name">· @group.FullName</span>
                                 </div>
                                 @foreach (var org in orgBreakdowns)
                                 {
@@ -1778,6 +1780,15 @@
         margin-bottom: 8px;
         display: flex;
         align-items: center;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    .sal-summary-section-name {
+        color: #fbbf24;
+        font-weight: 800;
+        text-transform: none;
+        letter-spacing: 0;
+        font-size: .88rem;
     }
     .sal-summary-empty {
         font-size: .85rem; color: #64748b; font-style: italic; padding: 6px 4px;
