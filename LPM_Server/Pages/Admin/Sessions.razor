@@ -114,6 +114,77 @@
                                 @onclick="() => SelectOrg(2)" disabled="@_loading">Riga</button>
                     </div>
                 </div>
+
+                @* "Mismatched rates only" toggle + on-hover explainer popover *@
+                <div class="sa-filter-divider d-none d-sm-block"></div>
+                <div class="sa-mismatch-toggle">
+                    <div class="form-check form-switch d-flex align-items-center gap-2 m-0">
+                        <input type="checkbox" role="switch" id="sa-mismatch-only"
+                               class="form-check-input m-0" style="cursor:pointer;"
+                               checked="@_mismatchOnly"
+                               @onchange="e => _mismatchOnly = (bool)(e.Value ?? false)"
+                               disabled="@_loading" />
+                        <label for="sa-mismatch-only" class="form-check-label fw-semibold m-0"
+                               style="font-size:0.8rem;color:#6b7280;cursor:pointer;">
+                            <i class="ri-error-warning-line me-1" style="color:#f59e0b;"></i>Mismatched rates only
+                        </label>
+                    </div>
+
+                    @* Hover-only animated explainer card *@
+                    <div class="sa-mismatch-pop" role="tooltip" aria-hidden="true">
+                        <div class="sa-mp-arrow"></div>
+                        <div class="sa-mp-card">
+                            <div class="sa-mp-header">
+                                <span class="sa-mp-header-glow"></span>
+                                <i class="ri-magic-line"></i>
+                                <span class="sa-mp-title">Mismatched Rates Filter</span>
+                            </div>
+                            <div class="sa-mp-body">
+                                <p class="sa-mp-desc">
+                                    Hides PCs whose entered <strong>Rate/hr</strong> already matches the
+                                    <strong>last billed rate</strong>. Only PCs that need a second look stay on screen.
+                                </p>
+
+                                <div class="sa-mp-demo">
+                                    @* Match — would be filtered out *@
+                                    <div class="sa-mp-row sa-mp-row-match">
+                                        <div class="sa-mp-row-head">
+                                            <i class="ri-checkbox-circle-fill"></i>
+                                            <span class="sa-mp-row-label">Match</span>
+                                            <span class="sa-mp-pill sa-mp-pill-out">hidden</span>
+                                        </div>
+                                        <div class="sa-mp-rates">
+                                            <span class="sa-mp-chip">Rate <strong>₪150</strong>/hr</span>
+                                            <i class="ri-arrow-left-right-line sa-mp-arrow-i"></i>
+                                            <span class="sa-mp-chip sa-mp-chip-last">Last <strong>₪148</strong>/hr</span>
+                                        </div>
+                                        <div class="sa-mp-bar"><div class="sa-mp-bar-fill sa-mp-bar-fill-ok"></div></div>
+                                    </div>
+
+                                    @* Mismatch — kept *@
+                                    <div class="sa-mp-row sa-mp-row-bad">
+                                        <div class="sa-mp-row-head">
+                                            <i class="ri-error-warning-fill"></i>
+                                            <span class="sa-mp-row-label">Mismatch</span>
+                                            <span class="sa-mp-pill sa-mp-pill-keep">shown</span>
+                                        </div>
+                                        <div class="sa-mp-rates">
+                                            <span class="sa-mp-chip">Rate <strong>₪200</strong>/hr</span>
+                                            <i class="ri-arrow-left-right-line sa-mp-arrow-i sa-mp-arrow-bad"></i>
+                                            <span class="sa-mp-chip sa-mp-chip-last sa-mp-chip-glow">Last <strong>₪150</strong>/hr</span>
+                                        </div>
+                                        <div class="sa-mp-bar"><div class="sa-mp-bar-fill sa-mp-bar-fill-bad"></div></div>
+                                    </div>
+                                </div>
+
+                                <div class="sa-mp-footer">
+                                    <i class="ri-ruler-line"></i>
+                                    <span>Tolerance <strong>±5/hr</strong> · ignores tiny rounding</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -200,8 +271,15 @@
     {
         @foreach (var group in _groups)
         {
-            int gDraft    = group.PcGroups.Sum(pg => pg.Sessions.Count(s => s.VerifiedStatus != "Approved"));
-            int gApproved = group.PcGroups.Sum(pg => pg.Sessions.Count(s => s.VerifiedStatus == "Approved"));
+            // "Mismatched rates only": filter PcGroups to those flagged in _pcRateMismatch.
+            // Built once per auditor so the header counts and the loop body see the same set.
+            var visiblePcGroups = _mismatchOnly
+                ? group.PcGroups.Where(pg => _pcRateMismatch.ContainsKey(pg.PcId)).ToList()
+                : group.PcGroups;
+            if (visiblePcGroups.Count == 0) { continue; }
+
+            int gDraft    = visiblePcGroups.Sum(pg => pg.Sessions.Count(s => s.VerifiedStatus != "Approved"));
+            int gApproved = visiblePcGroups.Sum(pg => pg.Sessions.Count(s => s.VerifiedStatus == "Approved"));
             var audAvatar = _auditorAvatars.GetValueOrDefault(group.AuditorId);
 
             <div class="card border-0 shadow-sm mb-4 sa-auditor-card" id="sa-aud-@group.AuditorId">
@@ -211,7 +289,7 @@
                     <div class="text-white lh-sm">
                         <div class="fw-semibold" style="font-size:1rem;">@group.AuditorName</div>
                         <div style="font-size:0.71rem;opacity:.72;">
-                            @group.PcGroups.Count PC@(group.PcGroups.Count != 1 ? "s" : "")
+                            @visiblePcGroups.Count PC@(visiblePcGroups.Count != 1 ? "s" : "")
                             @if (gDraft > 0)    { <span> · @gDraft @LS.T("sessions.pending")</span> }
                             @if (gApproved > 0) { <span> · @gApproved @LS.T("sessions.approved")</span> }
                         </div>
@@ -219,7 +297,7 @@
                 </div>
 
                 @{ bool firstPc = true; }
-                @foreach (var pcGroup in group.PcGroups)
+                @foreach (var pcGroup in visiblePcGroups)
                 {
                     var pcKey      = (group.AuditorId, pcGroup.PcId);
                     var pcDef      = _pcDefaults[pcKey];
@@ -1329,6 +1407,231 @@
         50%      { filter: brightness(1.3) drop-shadow(0 0 6px rgba(245,158,11,.7)); }
     }
 
+    /* ───────────────────────────────────────────────────────────────────────
+       "Mismatched rates only" toggle — hover-only animated explainer popover
+       ─────────────────────────────────────────────────────────────────────── */
+    .sa-mismatch-toggle {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+    }
+    .sa-mismatch-toggle .form-check-input:checked {
+        background-color: #f59e0b;
+        border-color: #f59e0b;
+        box-shadow: 0 0 0 .15rem rgba(245,158,11,.18);
+    }
+
+    /* The popover container — invisible until parent is hovered */
+    .sa-mismatch-pop {
+        position: absolute;
+        top: calc(100% + 12px);
+        left: 0;
+        z-index: 5000;
+        width: 380px;
+        max-width: calc(100vw - 24px);
+        opacity: 0;
+        transform: translateY(10px) scale(.97);
+        transform-origin: top left;
+        pointer-events: none;
+        transition: opacity 240ms cubic-bezier(.2,.9,.25,1),
+                    transform 280ms cubic-bezier(.2,.9,.25,1);
+        will-change: opacity, transform;
+    }
+    .sa-mismatch-toggle:hover .sa-mismatch-pop,
+    .sa-mismatch-toggle:focus-within .sa-mismatch-pop {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+        pointer-events: auto;
+    }
+    .sa-mp-arrow {
+        position: absolute;
+        top: -7px;
+        left: 26px;
+        width: 14px; height: 14px;
+        background: linear-gradient(135deg, #f59e0b, #d97706);
+        transform: rotate(45deg);
+        border-radius: 2px;
+        box-shadow: -2px -2px 6px rgba(180,83,9,.18);
+    }
+
+    /* The card itself */
+    .sa-mp-card {
+        position: relative;
+        background: #ffffff;
+        border-radius: 14px;
+        box-shadow:
+            0 24px 60px rgba(15,23,42,.22),
+            0 6px 18px rgba(245,158,11,.18),
+            0 0 0 1px rgba(245,158,11,.30);
+        overflow: hidden;
+    }
+
+    /* Header — animated amber gradient with sweeping glow */
+    .sa-mp-header {
+        position: relative;
+        padding: 12px 14px;
+        display: flex; align-items: center; gap: 8px;
+        color: #fff7ed;
+        font-weight: 700;
+        background: linear-gradient(135deg, #f59e0b, #d97706 60%, #b45309);
+        background-size: 200% 200%;
+        animation: sa-mp-grad 6s ease infinite;
+        overflow: hidden;
+    }
+    .sa-mp-header > i { font-size: 1.1rem; filter: drop-shadow(0 0 4px rgba(255,255,255,.6)); }
+    .sa-mp-title { font-size: .92rem; letter-spacing: .2px; }
+    .sa-mp-header-glow {
+        position: absolute; inset: 0;
+        background: linear-gradient(120deg, transparent 0%, rgba(255,255,255,.35) 50%, transparent 100%);
+        transform: translateX(-120%);
+        animation: sa-mp-sweep 2.6s cubic-bezier(.4,0,.2,1) infinite;
+        pointer-events: none;
+    }
+    @@keyframes sa-mp-grad {
+        0%,100% { background-position: 0% 50%; }
+        50%     { background-position: 100% 50%; }
+    }
+    @@keyframes sa-mp-sweep {
+        0%   { transform: translateX(-120%); }
+        60%  { transform: translateX(120%); }
+        100% { transform: translateX(120%); }
+    }
+
+    .sa-mp-body { padding: 12px 14px 13px; }
+    .sa-mp-desc {
+        margin: 0 0 10px; font-size: .82rem; line-height: 1.45; color: #334155;
+    }
+    .sa-mp-desc strong { color: #b45309; }
+
+    /* Demo rows: stagger fade-up. Reset+replay on every hover via parent state. */
+    .sa-mp-demo { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
+    .sa-mp-row {
+        position: relative;
+        padding: 8px 10px;
+        border-radius: 9px;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    .sa-mismatch-toggle:hover .sa-mp-row,
+    .sa-mismatch-toggle:focus-within .sa-mp-row {
+        animation: sa-mp-row-in 360ms cubic-bezier(.2,.9,.25,1) forwards;
+    }
+    .sa-mismatch-toggle:hover .sa-mp-row-match,
+    .sa-mismatch-toggle:focus-within .sa-mp-row-match { animation-delay: 120ms; }
+    .sa-mismatch-toggle:hover .sa-mp-row-bad,
+    .sa-mismatch-toggle:focus-within .sa-mp-row-bad   { animation-delay: 220ms; }
+    @@keyframes sa-mp-row-in {
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .sa-mp-row-match { border-color: #bbf7d0; background: linear-gradient(135deg,#f0fdf4,#ecfdf5); }
+    .sa-mp-row-bad   { border-color: #fde68a; background: linear-gradient(135deg,#fffbeb,#fef3c7); }
+
+    .sa-mp-row-head {
+        display: flex; align-items: center; gap: 6px;
+        font-size: .75rem; font-weight: 700; margin-bottom: 6px;
+    }
+    .sa-mp-row-match .sa-mp-row-head { color: #15803d; }
+    .sa-mp-row-bad   .sa-mp-row-head { color: #b45309; }
+    .sa-mp-row-label { letter-spacing: .3px; text-transform: uppercase; font-size: .7rem; }
+
+    .sa-mp-pill {
+        margin-left: auto;
+        font-size: .65rem;
+        font-weight: 700;
+        padding: 2px 7px;
+        border-radius: 999px;
+        text-transform: uppercase;
+        letter-spacing: .4px;
+    }
+    .sa-mp-pill-out  { background: #dcfce7; color: #166534; }
+    .sa-mp-pill-keep {
+        background: #fef3c7; color: #92400e;
+        animation: sa-mp-pulse 1.6s ease-in-out infinite;
+    }
+    @@keyframes sa-mp-pulse {
+        0%,100% { box-shadow: 0 0 0 0 rgba(245,158,11,0); }
+        50%     { box-shadow: 0 0 0 5px rgba(245,158,11,.18); }
+    }
+
+    .sa-mp-rates {
+        display: flex; align-items: center; gap: 8px;
+        font-size: .8rem; color: #475569;
+    }
+    .sa-mp-chip {
+        background: #ffffff;
+        border: 1px solid #cbd5e1;
+        border-radius: 7px;
+        padding: 3px 8px;
+        font-weight: 500;
+        white-space: nowrap;
+    }
+    .sa-mp-chip strong { color: #0f172a; font-weight: 700; }
+    .sa-mp-chip-last { background: #f1f5f9; }
+    .sa-mp-chip-glow {
+        border-color: #f59e0b;
+        background: #fff7ed;
+    }
+    .sa-mp-chip-glow strong {
+        color: #b45309;
+        text-shadow: 0 0 6px rgba(245,158,11,.55), 0 0 12px rgba(245,158,11,.25);
+        animation: sa-rate-glow 2s ease-in-out infinite;
+    }
+    .sa-mp-arrow-i { color: #94a3b8; font-size: .95rem; }
+    .sa-mp-arrow-bad {
+        color: #d97706;
+        animation: sa-mp-shake 1.4s ease-in-out infinite;
+    }
+    @@keyframes sa-mp-shake {
+        0%,100% { transform: translateX(0); }
+        25%     { transform: translateX(-2px); }
+        75%     { transform: translateX(2px); }
+    }
+
+    /* Tolerance bar — fills to show "within band" vs "outside band" */
+    .sa-mp-bar {
+        position: relative;
+        height: 4px;
+        margin-top: 7px;
+        background: #e2e8f0;
+        border-radius: 999px;
+        overflow: hidden;
+    }
+    .sa-mp-bar-fill {
+        position: absolute; inset: 0;
+        width: 0%;
+        border-radius: 999px;
+    }
+    .sa-mismatch-toggle:hover .sa-mp-bar-fill,
+    .sa-mismatch-toggle:focus-within .sa-mp-bar-fill {
+        animation: sa-mp-fill 800ms cubic-bezier(.2,.9,.25,1) 280ms forwards;
+    }
+    .sa-mp-bar-fill-ok  { background: linear-gradient(90deg,#22c55e,#16a34a); --target-w: 18%; }
+    .sa-mp-bar-fill-bad { background: linear-gradient(90deg,#f59e0b,#dc2626); --target-w: 92%; }
+    @@keyframes sa-mp-fill {
+        to { width: var(--target-w); }
+    }
+
+    .sa-mp-footer {
+        display: flex; align-items: center; gap: 6px;
+        padding: 6px 9px;
+        background: #fffbeb;
+        border-radius: 7px;
+        font-size: .73rem;
+        color: #78350f;
+        border: 1px dashed #fcd34d;
+    }
+    .sa-mp-footer i { color: #d97706; font-size: .9rem; }
+    .sa-mp-footer strong { color: #b45309; }
+
+    /* On small screens, anchor the popover to the right so it stays on screen */
+    @@media (max-width: 575.98px) {
+        .sa-mismatch-pop { left: auto; right: 0; transform-origin: top right; }
+        .sa-mp-arrow     { left: auto; right: 26px; }
+    }
+
     /* ── Rate-mismatch hover card ── */
     .sa-rate-card {
         position: fixed;
@@ -1569,6 +1872,10 @@
     // Organization filter — 0=All, 1=Haifa, 2=Riga (mirrors Statistics tab)
     private int    _selOrg;
     private int?   OrgFilter => _selOrg == 0 ? (int?)null : _selOrg;
+
+    // "Mismatched rates only" toggle — when on, hide PCs whose entered rate matches the
+    // last billed rate (within the existing ±5/hr tolerance used by _pcRateMismatch).
+    private bool   _mismatchOnly;
 
     string PcWalletCurrency(int pcId)
     {
