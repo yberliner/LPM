@@ -1280,6 +1280,10 @@ public class FolderService
 
                 foreach (var ann in anns!)
                 {
+                    // Skip annotations with no text — nothing to render. Also satisfies the
+                    // null-check that the rest of this block assumes (ann.Text is non-null below).
+                    if (string.IsNullOrEmpty(ann.Text)) continue;
+
                     // Convert canvas-pixel coords → PDF points.
                     // Canvas Y: origin top-left, Y increases downward, ann.Y is the text baseline.
                     // PdfSharp XGraphics: same convention — origin top-left, Y increases downward.
