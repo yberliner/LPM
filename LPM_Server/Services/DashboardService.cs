@@ -1716,9 +1716,11 @@ public class DashboardService
         return newSessionId;
     }
 
-    /// <summary>Insert a free-session memo row into sess_sessions. Returns the new SessionId.</summary>
+    /// <summary>Insert a free-session memo row into sess_sessions. Returns the new SessionId.
+    /// <paramref name="source"/> attributes the row in the Sessions Origin tab — defaults to
+    /// "Wizard" so legacy callers don't need to change.</summary>
     public int AddMemoSession(int auditorId, int pcId, string name, DateOnly date, bool solo = false, int? createdByUserId = null,
-        int adminSeconds = 0, bool isFreeSession = true)
+        int adminSeconds = 0, bool isFreeSession = true, string source = "Wizard")
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -1746,7 +1748,7 @@ public class DashboardService
               (@pcId, @audId, @date, @seq,
                0, @adminSec, @free,
                0, 0,
-               @name, @creator, @wallet, datetime('now', 'localtime'), 'Wizard')";
+               @name, @creator, @wallet, datetime('now', 'localtime'), @origin)";
         cmd.Parameters.AddWithValue("@pcId",     pcId);
         cmd.Parameters.AddWithValue("@audId",    solo ? DBNull.Value : auditorId);
         cmd.Parameters.AddWithValue("@date",     dateStr);
@@ -1756,6 +1758,7 @@ public class DashboardService
         cmd.Parameters.AddWithValue("@name",     name);
         cmd.Parameters.AddWithValue("@creator",  createdByUserId.HasValue ? (object)createdByUserId.Value : DBNull.Value);
         cmd.Parameters.AddWithValue("@wallet",   walletId.HasValue ? (object)walletId.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("@origin",   source);
         cmd.ExecuteNonQuery();
 
         using var rowIdCmd2 = conn.CreateCommand();
@@ -4597,7 +4600,8 @@ public class DashboardService
 
     // ── Sessions Origin (Diagnosis tab) ──────────────────────────────────────
     public record SessionOriginRow(int SessionId, string SessionDate, string PcName,
-        string? AuditorName, bool IsSolo, string Origin, string CreatedAt);
+        string? AuditorName, bool IsSolo, string Origin, string CreatedAt,
+        int LengthSec, int AdminSec, string? CreatedByUser, string SessionName);
 
     /// <summary>Returns the latest sessions ordered by CreatedAt DESC, optionally filtered by Origin and limited.</summary>
     public List<SessionOriginRow> GetSessionsByOrigin(int? limit, string? originFilter = null)
@@ -4618,10 +4622,15 @@ public class DashboardService
                    END AS AuditorName,
                    CASE WHEN s.AuditorId IS NULL THEN 1 ELSE 0 END AS IsSolo,
                    COALESCE(s.OriginSource,'Unknown') AS Origin,
-                   s.CreatedAt
+                   s.CreatedAt,
+                   COALESCE(s.LengthSeconds,0) AS LengthSec,
+                   COALESCE(s.AdminSeconds,0)  AS AdminSec,
+                   cu.Username                 AS CreatedByUser,
+                   COALESCE(s.Name,'')         AS SessionName
             FROM sess_sessions s
             JOIN core_persons pc      ON pc.PersonId = s.PcId
             LEFT JOIN core_persons ap ON ap.PersonId = s.AuditorId
+            LEFT JOIN core_users cu   ON cu.Id       = s.CreatedByUserId
             {where}
             ORDER BY s.CreatedAt DESC
             {limitClause}";
@@ -4641,7 +4650,11 @@ public class DashboardService
                 r.IsDBNull(3) ? null : r.GetString(3),
                 r.GetInt32(4) == 1,
                 r.GetString(5),
-                r.GetString(6)));
+                r.GetString(6),
+                r.GetInt32(7),
+                r.GetInt32(8),
+                r.IsDBNull(9) ? null : r.GetString(9),
+                r.GetString(10)));
         }
         return list;
     }

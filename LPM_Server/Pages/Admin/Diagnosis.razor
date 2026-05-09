@@ -2115,6 +2115,12 @@
                                 class="btn @(_originFilter == "Wizard" ? "btn-primary" : "btn-outline-primary")"
                                 @onclick='() => SetOriginFilter("Wizard")'>Wizard</button>
                         <button type="button"
+                                class="btn @(_originFilter == "Memo" ? "btn-primary" : "btn-outline-primary")"
+                                @onclick='() => SetOriginFilter("Memo")'>Memo</button>
+                        <button type="button"
+                                class="btn @(_originFilter == "NextCs" ? "btn-primary" : "btn-outline-primary")"
+                                @onclick='() => SetOriginFilter("NextCs")'>Next C/S</button>
+                        <button type="button"
                                 class="btn @(_originFilter == "SessionManager" ? "btn-primary" : "btn-outline-primary")"
                                 @onclick='() => SetOriginFilter("SessionManager")'>Session Manager</button>
                         <button type="button"
@@ -2162,6 +2168,10 @@
                                 <th style="width:110px;">Date</th>
                                 <th>PC</th>
                                 <th>Auditor</th>
+                                <th>Session Name</th>
+                                <th class="text-end" style="width:90px;">Length</th>
+                                <th class="text-end" style="width:90px;">Admin</th>
+                                <th style="width:120px;">Created By</th>
                                 <th style="width:140px;">Origin</th>
                                 <th style="width:160px;">Created At</th>
                             </tr>
@@ -2174,6 +2184,10 @@
                                     <td>@row.SessionDate</td>
                                     <td class="fw-semibold">@row.PcName</td>
                                     <td>@(row.IsSolo ? "(Solo)" : (row.AuditorName ?? "—"))</td>
+                                    <td class="text-muted">@(string.IsNullOrEmpty(row.SessionName) ? "—" : row.SessionName)</td>
+                                    <td class="text-end font-monospace">@FmtSec(row.LengthSec)</td>
+                                    <td class="text-end font-monospace">@FmtSec(row.AdminSec)</td>
+                                    <td>@(row.CreatedByUser ?? "—")</td>
                                     <td>
                                         <span class="origin-badge origin-@row.Origin.ToLower()">@row.Origin</span>
                                     </td>
@@ -2192,6 +2206,8 @@
             border-radius: 8px; padding: 10px 14px; border: 1px solid #e2e8f0; background: #f8fafc;
         }
         .origin-count-card.origin-wizard         { border-color: #86efac; background: #f0fdf4; }
+        .origin-count-card.origin-memo           { border-color: #f9a8d4; background: #fdf2f8; }
+        .origin-count-card.origin-nextcs         { border-color: #5eead4; background: #f0fdfa; }
         .origin-count-card.origin-sessionmanager { border-color: #93c5fd; background: #eff6ff; }
         .origin-count-card.origin-import         { border-color: #cbd5e1; background: #f8fafc; }
         .origin-count-card.origin-unknown        { border-color: #fca5a5; background: #fef2f2; }
@@ -2202,6 +2218,8 @@
             letter-spacing: .03em;
         }
         .origin-badge.origin-wizard         { background: #dcfce7; color: #166534; }
+        .origin-badge.origin-memo           { background: #fce7f3; color: #9d174d; }
+        .origin-badge.origin-nextcs         { background: #ccfbf1; color: #115e59; }
         .origin-badge.origin-sessionmanager { background: #dbeafe; color: #1e40af; }
         .origin-badge.origin-import         { background: #f1f5f9; color: #475569; }
         .origin-badge.origin-unknown        { background: #fee2e2; color: #b91c1c; }
@@ -2320,6 +2338,16 @@
     {
         _originLimit = limit;
         LoadOriginData();
+    }
+
+    /// <summary>HH:MM:SS for non-zero, "—" for 0/negative. Used in Sessions Origin table.</summary>
+    static string FmtSec(int s)
+    {
+        if (s <= 0) return "—";
+        var h = s / 3600;
+        var m = (s % 3600) / 60;
+        var sec = s % 60;
+        return $"{h:D2}:{m:D2}:{sec:D2}";
     }
 
     async Task LoadDeletedFiles()

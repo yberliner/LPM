@@ -11690,7 +11690,8 @@ string _actionPcSearch = "";
                 var sessionId = DashSvc.AddMemoSession(capturedAudId, capturedPcId, savedName, capturedDate, capturedSolo,
                     createdByUserId: capturedCoreUserId,
                     adminSeconds: capturedBillAdminSec,
-                    isFreeSession: !capturedBillPc);
+                    isFreeSession: !capturedBillPc,
+                    source: "Memo");
                 DashSvc.NotifyDataChanged();
                 sDb.Status = 2;
                 await InvokeAsync(StateHasChanged);
@@ -11843,7 +11844,8 @@ string _actionPcSearch = "";
                 var sessionId = DashSvc.AddMemoSession(capturedAudId, capturedPcId, savedName, capturedDate, capturedSolo,
                     createdByUserId: capturedCoreUserId,
                     adminSeconds: capturedBillAdminSec,
-                    isFreeSession: !capturedBillPc);
+                    isFreeSession: !capturedBillPc,
+                    source: "Memo");
                 DashSvc.NotifyDataChanged();
                 sDb.Status = 2;
                 await InvokeAsync(StateHasChanged);
@@ -12107,7 +12109,7 @@ string _actionPcSearch = "";
                 // Step 3: Add session entry + save Next CS to DB
                 sDb.Status = 1;
                 await InvokeAsync(StateHasChanged);
-                var sessionId = DashSvc.AddMemoSession(capturedAudId, capturedPcId, savedName, capturedDate, capturedSolo, createdByUserId: capturedCoreUserId);
+                var sessionId = DashSvc.AddMemoSession(capturedAudId, capturedPcId, savedName, capturedDate, capturedSolo, createdByUserId: capturedCoreUserId, source: "NextCs");
                 if (!string.IsNullOrWhiteSpace(capturedBottomHtml))
                     DashSvc.SaveNextCs(sessionId, capturedBottomHtml);
                 DashSvc.NotifyDataChanged();

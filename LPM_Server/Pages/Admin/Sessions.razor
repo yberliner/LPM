@@ -441,6 +441,20 @@
     @* ══════════════════════════════════════════════════════════
        SECTION 2 — CS REVIEWS
        ══════════════════════════════════════════════════════════ *@
+
+    @* Animated violet divider — visually separates the auditor Sessions section
+       from the CS Reviews section below. Glows + arrows bounce to draw the eye. *@
+    <div class="sa-section-divider" role="separator" aria-label="Switching to CS Reviews section">
+        <span class="sa-section-divider-line"></span>
+        <span class="sa-section-divider-pill">
+            <i class="ri-arrow-down-line sa-section-divider-arrow"></i>
+            <i class="ri-user-star-line sa-section-divider-icon"></i>
+            <span class="sa-section-divider-text">Below — CS Reviews Section</span>
+            <i class="ri-arrow-down-line sa-section-divider-arrow"></i>
+        </span>
+        <span class="sa-section-divider-line"></span>
+    </div>
+
     <div class="sa-collapse-header sa-collapse-header-cs mt-5 mb-3" @onclick="() => _csCollapsed = !_csCollapsed">
         <div class="d-flex align-items-center gap-2">
             <i class="ri-arrow-down-s-line sa-chevron @(_csCollapsed ? "sa-chevron-collapsed" : "")"></i>
@@ -502,7 +516,8 @@
                                 @if (csPcNotDone > 0) { <span class="badge rounded-pill sa-badge-pending">@csPcNotDone @LS.T("sessions.pending")</span> }
                                 @if (csPcDone > 0)    { <span class="badge rounded-pill sa-badge-approved-sm">@csPcDone @LS.T("sessions.approved")</span> }
                             </div>
-                            @RenderLastRate(pcGroup.PcId)
+                            @* CS Reviews section — never glows on rate mismatch (mismatch is a Sessions-only concept) *@
+                            @RenderLastRate(pcGroup.PcId, checkMismatch: false)
                         </div>
                         <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
                             <span class="sa-input-label" style="color:#6b7280;">Set all:</span>
@@ -715,10 +730,10 @@
                 </button>
             </div>
             <div class="sa-lp-body">
-                <div class="sa-lp-row"><span class="sa-lp-lbl">Date</span><span class="sa-lp-val">@_lastPurchaseDetail.PurchaseDate</span></div>
+                <div class="sa-lp-row"><span class="sa-lp-lbl">Date</span><span class="sa-lp-val">@FormatDateShort(_lastPurchaseDetail.PurchaseDate)</span></div>
                 <div class="sa-lp-row"><span class="sa-lp-lbl">Hours bought</span><span class="sa-lp-val">@_lastPurchaseDetail.Hours.ToString("0.##")</span></div>
-                <div class="sa-lp-row"><span class="sa-lp-lbl">Amount paid</span><span class="sa-lp-val">@CurrencySymbolFromCode(_lastPurchaseDetail.Currency)@_lastPurchaseDetail.Amount.ToString("0.##")</span></div>
-                <div class="sa-lp-row"><span class="sa-lp-lbl">Rate</span><span class="sa-lp-val sa-lp-rate">@CurrencySymbolFromCode(_lastPurchaseDetail.Currency)@(_lastPurchaseDetail.RateCentsPerHour / 100)/hr</span></div>
+                <div class="sa-lp-row"><span class="sa-lp-lbl">Amount paid</span><span class="sa-lp-val">@CurrencySymbolFromCode(_lastPurchaseDetail.Currency)@Math.Round(_lastPurchaseDetail.Amount, MidpointRounding.AwayFromZero).ToString("0")</span></div>
+                <div class="sa-lp-row"><span class="sa-lp-lbl">Rate</span><span class="sa-lp-val sa-lp-rate">@CurrencySymbolFromCode(_lastPurchaseDetail.Currency)@RoundRateCents(_lastPurchaseDetail.RateCentsPerHour)/hr</span></div>
                 <div class="sa-lp-row"><span class="sa-lp-lbl">Currency</span><span class="sa-lp-val">@_lastPurchaseDetail.Currency</span></div>
                 <div class="sa-lp-row"><span class="sa-lp-lbl">Wallet</span><span class="sa-lp-val">@(string.IsNullOrEmpty(_lastPurchaseDetail.WalletName) ? "—" : _lastPurchaseDetail.WalletName)</span></div>
                 <div class="sa-lp-row"><span class="sa-lp-lbl">Status</span><span class="sa-lp-val">@_lastPurchaseDetail.Status</span></div>
@@ -759,8 +774,68 @@
         transition: background .2s, box-shadow .2s;
     }
     .sa-collapse-header:hover { background: linear-gradient(135deg, #163050 0%, #24507e 100%); box-shadow: 0 2px 8px rgba(0,0,0,.15); }
-    .sa-collapse-header-cs { background: linear-gradient(135deg, #2a5fa8 0%, #4a90d9 100%); border-color: #2a5fa8; }
-    .sa-collapse-header-cs:hover { background: linear-gradient(135deg, #1e4f90 0%, #3d7dc5 100%); }
+    .sa-collapse-header-cs { background: linear-gradient(135deg, #5b21b6 0%, #8b5cf6 100%); border-color: #5b21b6; }
+    .sa-collapse-header-cs:hover { background: linear-gradient(135deg, #4c1d95 0%, #7c3aed 100%); }
+
+    /* ── Animated divider between Sessions and CS Reviews sections ── */
+    .sa-section-divider {
+        display: flex; align-items: center; gap: 12px;
+        margin: 36px 0 18px;
+        animation: sa-section-divider-in 700ms cubic-bezier(.2,.9,.25,1) both;
+    }
+    .sa-section-divider-line {
+        flex-grow: 1; height: 2px;
+        background: linear-gradient(90deg, transparent, #c4b5fd 30%, #8b5cf6 50%, #c4b5fd 70%, transparent);
+        background-size: 200% 100%;
+        animation: sa-section-divider-shimmer 4s ease-in-out infinite;
+    }
+    .sa-section-divider-pill {
+        display: inline-flex; align-items: center; gap: 8px;
+        padding: 8px 18px;
+        background: linear-gradient(135deg, #5b21b6, #7c3aed, #a855f7);
+        background-size: 200% 200%;
+        animation: sa-section-divider-grad 6s ease-in-out infinite,
+                   sa-section-divider-pulse 2.4s ease-in-out infinite;
+        color: #fff; font-weight: 700; font-size: .82rem;
+        letter-spacing: .04em; text-transform: uppercase;
+        border-radius: 999px;
+        box-shadow: 0 4px 12px rgba(124,58,237,.35),
+                    0 0 0 1px rgba(255,255,255,.15) inset,
+                    0 0 24px rgba(168,85,247,.4);
+        white-space: nowrap;
+    }
+    .sa-section-divider-text { line-height: 1; }
+    .sa-section-divider-icon { font-size: 1rem; }
+    .sa-section-divider-arrow {
+        font-size: 1.05rem; line-height: 1;
+        animation: sa-section-divider-bounce 1.4s ease-in-out infinite;
+    }
+    .sa-section-divider-arrow:last-child { animation-delay: .2s; }
+
+    @@keyframes sa-section-divider-in {
+        from { opacity: 0; transform: translateY(-8px) scale(.96); }
+        to   { opacity: 1; transform: translateY(0)    scale(1); }
+    }
+    @@keyframes sa-section-divider-pulse {
+        0%, 100% { box-shadow: 0 4px 12px rgba(124,58,237,.35),
+                               0 0 0 1px rgba(255,255,255,.15) inset,
+                               0 0 24px rgba(168,85,247,.4); }
+        50%      { box-shadow: 0 6px 20px rgba(124,58,237,.5),
+                               0 0 0 1px rgba(255,255,255,.25) inset,
+                               0 0 36px rgba(168,85,247,.7); }
+    }
+    @@keyframes sa-section-divider-grad {
+        0%, 100% { background-position: 0% 50%; }
+        50%      { background-position: 100% 50%; }
+    }
+    @@keyframes sa-section-divider-shimmer {
+        0%, 100% { background-position: 200% 50%; }
+        50%      { background-position: 0%   50%; }
+    }
+    @@keyframes sa-section-divider-bounce {
+        0%, 100% { transform: translateY(0);   opacity: .85; }
+        50%      { transform: translateY(3px); opacity: 1;   }
+    }
 
     .sa-chevron { font-size: 1.2rem; transition: transform .25s ease; color: #fff; }
     .sa-chevron-collapsed { transform: rotate(-90deg); }
@@ -802,7 +877,7 @@
     .sa-auditor-card { border-radius: 14px; overflow: hidden; }
     .sa-auditor-card:hover { box-shadow: 0 6px 28px rgba(30,58,95,.13) !important; transition: box-shadow .25s; }
     .sa-auditor-header  { background: linear-gradient(135deg, #1e3a5f 0%, #2d6a9f 100%); }
-    .sa-cs-card-header  { background: linear-gradient(135deg, #2a5fa8 0%, #4a90d9 100%); }
+    .sa-cs-card-header  { background: linear-gradient(135deg, #5b21b6 0%, #8b5cf6 100%); }
 
     /* Avatars */
     .sa-avatar { width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,.15); border: 2px solid rgba(255,255,255,.3); color: #fff; font-size: 1.1rem; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
@@ -812,7 +887,7 @@
     .sa-pc-divider { height: 7px; background: linear-gradient(90deg, #2d6a9f 0%, #dce3f0 100%); margin: 0; }
     .sa-pc-header  { background: #f4f7fc; color: #212529; min-height: 54px; }
     .sa-pc-dot     { width: 8px; height: 8px; border-radius: 50%; background: #2d6a9f; flex-shrink: 0; }
-    .sa-pc-dot-cs  { background: #4a7fc1; }
+    .sa-pc-dot-cs  { background: #7c3aed; }
     .sa-pc-name    { font-size: 0.9rem; color: #1e3a5f; }
 
     /* ── New-PC indicator (auditor has never had an approved session for this PC) ── */
@@ -891,8 +966,8 @@
     .sa-table { font-size: 0.85rem; }
     .sa-thead tr { background: #eef1f8; color: #212529; }
     .sa-thead th { font-size: 0.69rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #6c757d; padding-top: 7px; padding-bottom: 7px; border-bottom: 1px solid #dce3f0; border-top: none; }
-    .sa-cs-thead tr { background: #e4ecf8; color: #212529; }
-    .sa-cs-thead th { font-size: 0.69rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #4a7fc1; padding-top: 6px; padding-bottom: 6px; border-bottom: 1px solid #c7d7f0; border-top: none; }
+    .sa-cs-thead tr { background: #f5f3ff; color: #212529; }
+    .sa-cs-thead th { font-size: 0.69rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #7c3aed; padding-top: 6px; padding-bottom: 6px; border-bottom: 1px solid #e9d5ff; border-top: none; }
 
     /* Row states */
     .sa-row-draft td     { border-bottom: 1px solid #f0f2f8; transition: background .12s; background: #f8f9fa; color: #212529; }
@@ -1229,6 +1304,113 @@
     }
     .sa-pc-rate-btn:hover { background: #eef2ff; border-color: #c7d2fe; }
 
+    /* ── Rate mismatch glow ── */
+    .sa-pc-rate-line.is-mismatch {
+        position: relative;
+        cursor: help;
+    }
+    .sa-pc-rate-line.is-mismatch .sa-pc-rate-val {
+        color: #b45309;
+        text-shadow: 0 0 8px rgba(245,158,11,.55), 0 0 16px rgba(245,158,11,.25);
+        animation: sa-rate-glow 2s ease-in-out infinite;
+    }
+    .sa-pc-rate-line.is-mismatch .sa-pc-rate-btn { color: #d97706; }
+    .sa-pc-rate-line.is-mismatch:hover .sa-pc-rate-val {
+        animation-play-state: paused;
+    }
+    .sa-pc-rate-warn {
+        color: #d97706;
+        font-size: 1rem;
+        animation: sa-rate-glow 2s ease-in-out infinite;
+        animation-delay: -1s;
+    }
+    @@keyframes sa-rate-glow {
+        0%, 100% { filter: brightness(1)   drop-shadow(0 0 0 rgba(245,158,11,0)); }
+        50%      { filter: brightness(1.3) drop-shadow(0 0 6px rgba(245,158,11,.7)); }
+    }
+
+    /* ── Rate-mismatch hover card ── */
+    .sa-rate-card {
+        position: fixed;
+        z-index: 10000;
+        width: 420px;
+        max-width: calc(100vw - 24px);
+        max-height: 70vh;
+        overflow: hidden;
+        background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+        border-radius: 14px;
+        box-shadow: 0 20px 50px rgba(180,83,9,.25), 0 4px 12px rgba(217,119,6,.18), 0 0 0 1px rgba(245,158,11,.35);
+        color: #422006;
+        opacity: 0;
+        transform: translateY(8px) scale(.96);
+        transform-origin: top left;
+        transition: opacity 220ms cubic-bezier(.2,.9,.25,1), transform 240ms cubic-bezier(.2,.9,.25,1);
+        pointer-events: auto;
+        will-change: opacity, transform;
+    }
+    .sa-rate-card.is-active { opacity: 1; transform: translateY(0) scale(1); }
+    .sa-rate-card-head {
+        background: linear-gradient(135deg, #d97706, #b45309);
+        background-size: 200% 200%;
+        animation: sa-rate-card-grad 5s ease infinite;
+        padding: 12px 16px;
+        color: #fff;
+        display: flex; align-items: center; gap: 8px;
+        font-weight: 700;
+    }
+    @@keyframes sa-rate-card-grad {
+        0%,100% { background-position: 0% 50%; }
+        50%     { background-position: 100% 50%; }
+    }
+    .sa-rate-card-head i { font-size: 1.2rem; }
+    .sa-rate-card-title { font-size: .92rem; }
+    .sa-rate-card-body { padding: 12px 16px; }
+    .sa-rate-card-section { margin-bottom: 12px; }
+    .sa-rate-card-section:last-of-type { margin-bottom: 8px; }
+    .sa-rate-card-label {
+        font-size: .68rem; text-transform: uppercase; letter-spacing: .04em;
+        color: #92400e; font-weight: 700; margin-bottom: 4px;
+    }
+    .sa-rate-card-bigval {
+        font-size: 1.45rem; font-weight: 800; color: #92400e;
+        font-variant-numeric: tabular-nums;
+    }
+    .sa-rate-card-row {
+        display: flex; align-items: center; gap: 8px;
+        padding: 6px 8px; margin-top: 4px;
+        border-radius: 6px;
+        background: rgba(217,119,6,.08);
+        border-left: 3px solid #d97706;
+        opacity: 0;
+        transform: translateX(-6px);
+        animation: sa-rate-row-in 280ms cubic-bezier(.2,.9,.25,1) forwards;
+        animation-delay: calc(var(--row-i, 0) * 80ms + 120ms);
+    }
+    @@keyframes sa-rate-row-in {
+        from { opacity: 0; transform: translateX(-6px); }
+        to   { opacity: 1; transform: translateX(0); }
+    }
+    .sa-rate-card-row-arrow { color: #d97706; font-size: 1rem; flex-shrink: 0; }
+    .sa-rate-card-row-rate  { font-weight: 700; color: #92400e; font-variant-numeric: tabular-nums; }
+    .sa-rate-card-row-count { font-size: .78rem; color: #78350f; flex-grow: 1; }
+    .sa-rate-card-row-date  { font-size: .72rem; color: #92400e; opacity: .75; font-variant-numeric: tabular-nums; }
+    .sa-rate-card-foot {
+        margin-top: 10px;
+        padding: 10px 12px;
+        background: rgba(255,255,255,.5);
+        border-radius: 8px;
+        font-size: .78rem; line-height: 1.5; color: #78350f;
+        border-left: 3px solid #f59e0b;
+        animation: sa-rate-foot-in 320ms ease forwards;
+        animation-delay: 320ms;
+        opacity: 0;
+    }
+    @@keyframes sa-rate-foot-in {
+        from { opacity: 0; transform: translateY(4px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+    .sa-rate-card-foot i { color: #6366f1; }
+
     /* ── Last auditing purchase detail card ── */
     .sa-lp-overlay { position: fixed; inset: 0; z-index: 1050; background: rgba(15,23,42,.35); }
     .sa-lp-card {
@@ -1308,15 +1490,67 @@
 
     // Inline "Last rate: …" line shown beneath each PC name. Reused at all 3 render sites
     // (auditor multi-session header, auditor single-session row, CS reviews header).
-    RenderFragment RenderLastRate(int pcId) => @<div class="sa-pc-rate-line">
+    // When the displayed sessions for this PC have rates that differ from the last-auditing-
+    // purchase rate, the line glows amber and hovering reveals an explanation card.
+    // Default overload — used by the Sessions-section call sites (mismatch glow ENABLED).
+    RenderFragment RenderLastRate(int pcId) => RenderLastRate(pcId, checkMismatch: true);
+
+    // Mismatch detection is computed only over Sessions-section rows, so the CS Reviews
+    // header passes checkMismatch:false to avoid glowing/popup'ing for the same PcId.
+    RenderFragment RenderLastRate(int pcId, bool checkMismatch) => @<div class="sa-pc-rate-line @((checkMismatch && _pcRateMismatch.ContainsKey(pcId)) ? "is-mismatch" : "")"
+                                                      @onmouseenter="(e) => { if (checkMismatch) OnRateMismatchEnter(e, pcId); }"
+                                                      @onmouseleave="OnRateMismatchLeave">
         @if (_pcLastPurchase.TryGetValue(pcId, out var __lp))
         {
             <span>Last rate:</span>
-            <span class="sa-pc-rate-val">@CurrencySymbolFromCode(__lp.Currency)@(__lp.RateCentsPerHour / 100)/hr</span>
+            <span class="sa-pc-rate-val">@CurrencySymbolFromCode(__lp.Currency)@RoundRateCents(__lp.RateCentsPerHour)/hr</span>
+            @if (checkMismatch && _pcRateMismatch.ContainsKey(pcId))
+            {
+                <i class="ri-alert-line sa-pc-rate-warn" title="Rate mismatch — hover for details"></i>
+            }
             <button type="button" class="sa-pc-rate-btn" @onclick="() => ShowLastPurchase(pcId)"
                     title="Show last auditing purchase details">
                 <i class="ri-information-line"></i>
             </button>
+            @* Per-line hover card — DOM-nested so cursor can move onto card without dismissing it.
+               Only shown when checkMismatch is true (Sessions section); CS Reviews never sees it. *@
+            @if (checkMismatch && _rateHoverPcId == pcId && _pcRateMismatch.TryGetValue(pcId, out var __mm))
+            {
+                <div class="sa-rate-card is-active"
+                     style="top:@(_rateHoverY + 18)px; left:min(@(_rateHoverX + 14)px, calc(100vw - 432px));">
+                    <div class="sa-rate-card-head">
+                        <i class="ri-alert-line"></i>
+                        <span class="sa-rate-card-title">Rate Mismatch — @__mm.PcName</span>
+                    </div>
+                    <div class="sa-rate-card-body">
+                        <div class="sa-rate-card-section">
+                            <div class="sa-rate-card-label">Last auditing purchase rate</div>
+                            <div class="sa-rate-card-bigval">
+                                @CurrencySymbolFromCode(__mm.Currency)@RoundRateCents(__mm.LastRateCents)<span style="font-size:.7rem;opacity:.7;">/hr</span>
+                            </div>
+                        </div>
+                        <div class="sa-rate-card-section">
+                            <div class="sa-rate-card-label">But sessions in this view are priced at</div>
+                            @{ int __ri = 0; }
+                            @foreach (var __b in __mm.MismatchBuckets)
+                            {
+                                var __i = __ri++;
+                                <div class="sa-rate-card-row" style="--row-i: @__i;">
+                                    <i class="ri-arrow-right-s-line sa-rate-card-row-arrow"></i>
+                                    <span class="sa-rate-card-row-rate">@CurrencySymbolFromCode(__mm.Currency)@RoundRateCents(__b.RateCents)<span style="font-size:.7rem;opacity:.65;">/hr</span></span>
+                                    <span class="sa-rate-card-row-count">@__b.Count session@(__b.Count == 1 ? "" : "s")</span>
+                                    <span class="sa-rate-card-row-date">first: @__b.FirstDate</span>
+                                </div>
+                            }
+                        </div>
+                        <div class="sa-rate-card-foot">
+                            Likely the rate was overridden manually when approving these sessions, or the
+                            most-recent purchase was created after the sessions were billed. Click the
+                            <i class="ri-information-line"></i> button to see the full purchase details.
+                        </div>
+                    </div>
+                </div>
+            }
         }
         else
         {
@@ -1637,8 +1871,56 @@
         if (allPcIds.Count > 0)
             _pcLastPurchase = PcSvc.GetLastAuditingPurchasePerPc(allPcIds);
 
+        // ── Rate-mismatch detection: per PC, find sessions whose ChargedRate differs from the
+        // last-auditing-purchase rate. Only count sessions with ChargedRate > 0 (free / pending
+        // sessions have rate 0 — that's "no rate yet", not a mismatch).
+        _pcRateMismatch.Clear();
+        foreach (var pg in _groups.SelectMany(g => g.PcGroups))
+        {
+            if (!_pcLastPurchase.TryGetValue(pg.PcId, out var lp)) continue;
+            int lastRate = lp.RateCentsPerHour;
+            var byRate = new Dictionary<int, RateBucket>();
+            foreach (var s in pg.Sessions)
+            {
+                if (s.ChargedRateCentsPerHour <= 0) continue;     // skip pending / free
+                // Tolerance: ±5 currency units (= 500 cents). Small differences are usually
+                // rounding or trivial overrides — not worth flagging as a mismatch.
+                if (Math.Abs(s.ChargedRateCentsPerHour - lastRate) <= 500) continue;
+                if (!byRate.TryGetValue(s.ChargedRateCentsPerHour, out var bucket))
+                    bucket = new RateBucket(s.ChargedRateCentsPerHour, 0, s.SessionDate);
+                bucket = bucket with { Count = bucket.Count + 1,
+                                       FirstDate = string.Compare(s.SessionDate, bucket.FirstDate, StringComparison.Ordinal) < 0
+                                                   ? s.SessionDate : bucket.FirstDate };
+                byRate[s.ChargedRateCentsPerHour] = bucket;
+            }
+            if (byRate.Count > 0)
+                _pcRateMismatch[pg.PcId] = new RateMismatchInfo(
+                    PcName: pg.PcName,
+                    LastRateCents: lastRate,
+                    Currency: lp.Currency,
+                    MismatchBuckets: byRate.Values.OrderBy(b => b.RateCents).ToList());
+        }
+
         _loading = false;
     }
+
+    // ── Rate-mismatch state ─────────────────────────────────────────────────
+    record RateBucket(int RateCents, int Count, string FirstDate);
+    record RateMismatchInfo(string PcName, int LastRateCents, string Currency, List<RateBucket> MismatchBuckets);
+    Dictionary<int, RateMismatchInfo> _pcRateMismatch = new();
+
+    // Hover state for the rate-mismatch tooltip
+    int?   _rateHoverPcId;
+    double _rateHoverX, _rateHoverY;
+
+    void OnRateMismatchEnter(Microsoft.AspNetCore.Components.Web.MouseEventArgs e, int pcId)
+    {
+        if (!_pcRateMismatch.ContainsKey(pcId)) return;
+        _rateHoverPcId = pcId;
+        _rateHoverX    = e.ClientX;
+        _rateHoverY    = e.ClientY;
+    }
+    void OnRateMismatchLeave() => _rateHoverPcId = null;
 
     // ── Session rate propagation (draft sessions only) ────────────
     private void PropagateRate(int auditorId, int pcId, double newRate, double newSalary)
@@ -1825,6 +2107,16 @@
 
     private static string FormatDate(string dateStr) =>
         DateOnly.TryParse(dateStr, out var d) ? d.ToString("dd/MM/yy") : dateStr;
+
+    // dd-M-yy format used in the Last-Purchase popup (no leading zero on month).
+    private static string FormatDateShort(string dateStr) =>
+        DateOnly.TryParse(dateStr, out var d) ? d.ToString("dd-M-yy") : dateStr;
+
+    // cents-per-hour → whole-currency display, rounded half-away-from-zero so 68996 → 690 (not 689).
+    // Plain integer division (cents / 100) silently truncates and was producing the off-by-one
+    // for any rate whose fractional part was ≥ 0.50 (e.g. €689.96/hr was showing as 689).
+    private static int RoundRateCents(int cents) =>
+        (int)Math.Round(cents / 100.0, MidpointRounding.AwayFromZero);
 
     private string CsStaffName(int csId) =>
         _csStaffList.FirstOrDefault(s => s.PersonId == csId).FullName ?? $"ID {csId}";
