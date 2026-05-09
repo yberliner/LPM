@@ -2666,13 +2666,14 @@
     }
 
     DotNetObjectReference<Home>? _dotNetRef;
+    long _csListenerKey; // returned by lpmInitCsListener; used to dispose the JS listener
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
             _dotNetRef = DotNetObjectReference.Create(this);
-            await JS.InvokeVoidAsync("lpmInitCsListener", _dotNetRef);
+            _csListenerKey = await JS.InvokeAsync<long>("lpmInitCsListener", _dotNetRef);
 
             // Subscribe to events before loading data so no notifications are missed.
             if (_userId.HasValue)
@@ -2721,6 +2722,14 @@
     {
         _refreshDebounce?.Cancel();
         _refreshDebounce?.Dispose();
+        // Unhook the JS visibilitychange + BroadcastChannel listeners BEFORE disposing the
+        // DotNetObjectReference — otherwise a focus event in the gap fires on a disposed ref
+        // and the user sees an unhandledrejection error in the browser console.
+        if (_csListenerKey != 0)
+        {
+            try { _ = JS.InvokeVoidAsync("lpmDisposeCsListener", _csListenerKey); }
+            catch { /* circuit may already be torn down — best-effort */ }
+        }
         _dotNetRef?.Dispose();
         if (_csNotifyKey != null)
             CsNotifySvc.Unsubscribe(_csNotifyKey);

@@ -408,8 +408,6 @@
                         <!-- End::header-element open-folder -->
 
                         <!-- Start::header-element import-session -->
-                        @if (!_isRestrictedAud)
-                        {
                         <li class="header-element me-1">
                             <button id="btn-add-session" class="hdr-action-btn hdr-ab-blue" title="@LS.T("actions.addSession")"
                                     @onclick="OpenImportSession">
@@ -417,7 +415,6 @@
                                 <span class="hdr-ab-label">@LS.T("actions.addSession")</span>
                             </button>
                         </li>
-                        }
                         <!-- End::header-element import-session -->
 
                         <!-- Start::header-element actions -->
@@ -8513,7 +8510,6 @@
 
     void OpenImportSession()
     {
-        if (_isRestrictedAud) return;
         if (!_msgUserId.HasValue) return;
         _approvedPcs = DashSvc.GetSessionablePcsForUser(_msgUserId.Value, _logUsername);
         _importAuditorFullName = DashSvc.GetPersonName(_msgUserId.Value);
@@ -9941,32 +9937,40 @@ string _actionPcSearch = "";
 
         if (firstRender)
         {
-            await AttachHeaderScrollListener();
-            // Auto-format HH:MM time inputs in real-time + on blur (1-2 digits = minutes)
-            await JSRuntime.InvokeVoidAsync("eval", @"
-                document.addEventListener('input', function(e) {
-                    if (!e.target.classList.contains('arf-time-input')) return;
-                    var raw = e.target.value.replace(/[^0-9]/g, '');
-                    if (raw.length > 4) raw = raw.slice(0, 4);
-                    if (raw.length > 2) {
-                        e.target.value = raw.slice(0, raw.length - 2) + ':' + raw.slice(-2);
-                    } else {
-                        e.target.value = raw;
-                    }
-                });
-                document.addEventListener('change', function(e) {
-                    if (!e.target.classList.contains('arf-time-input')) return;
-                    var v = e.target.value.trim();
-                    if (!v) return;
-                    var digits = v.replace(/[^0-9]/g, '');
-                    if (v.indexOf(':') === -1 && digits.length <= 2) {
-                        var m = parseInt(digits, 10);
-                        if (!isNaN(m) && m >= 0 && m <= 59) {
-                            e.target.value = '0:' + (m < 10 ? '0' : '') + m;
+            // JS interop during first render can race with circuit teardown (browser tab
+            // closed, network blip, fast nav). JSDisconnectedException + TaskCanceledException
+            // mean "circuit's gone, nothing to attach" — no-op is the correct response.
+            try
+            {
+                await AttachHeaderScrollListener();
+                // Auto-format HH:MM time inputs in real-time + on blur (1-2 digits = minutes)
+                await JSRuntime.InvokeVoidAsync("eval", @"
+                    document.addEventListener('input', function(e) {
+                        if (!e.target.classList.contains('arf-time-input')) return;
+                        var raw = e.target.value.replace(/[^0-9]/g, '');
+                        if (raw.length > 4) raw = raw.slice(0, 4);
+                        if (raw.length > 2) {
+                            e.target.value = raw.slice(0, raw.length - 2) + ':' + raw.slice(-2);
+                        } else {
+                            e.target.value = raw;
                         }
-                    }
-                });
-            ");
+                    });
+                    document.addEventListener('change', function(e) {
+                        if (!e.target.classList.contains('arf-time-input')) return;
+                        var v = e.target.value.trim();
+                        if (!v) return;
+                        var digits = v.replace(/[^0-9]/g, '');
+                        if (v.indexOf(':') === -1 && digits.length <= 2) {
+                            var m = parseInt(digits, 10);
+                            if (!isNaN(m) && m >= 0 && m <= 59) {
+                                e.target.value = '0:' + (m < 10 ? '0' : '') + m;
+                            }
+                        }
+                    });
+                ");
+            }
+            catch (JSDisconnectedException) { /* circuit closing — ignore */ }
+            catch (TaskCanceledException)   { /* same */ }
         }
     }
 

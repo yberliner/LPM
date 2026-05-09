@@ -269,7 +269,7 @@
         <script src="js/quill-interop.js"></script>
 
         @* Global client-side error reporter — load early so it catches errors from later scripts *@
-        <script src="js/client-error-reporter.js?v=4"></script>
+        <script src="js/client-error-reporter.js?v=5"></script>
 
         <script src="js/camera-interop.js"></script>
         <script src="js/passkey-interop.js"></script>
@@ -683,16 +683,50 @@
                 }
             });
 
-            // Cross-tab CS-done listener for Dashboard refresh
+            // Cross-tab CS-done listener for Dashboard refresh.
+            //
+            // Lifecycle: lpmInitCsListener registers a visibilitychange listener and a
+            // BroadcastChannel that both invoke methods on a DotNetObjectReference.
+            // CRITICAL: when the component disposes (user navigates away), the caller MUST
+            // call lpmDisposeCsListener(key) — otherwise the global handlers fire next time
+            // the tab gains focus, invoking on a disposed .NET ref → server exception →
+            // bubbles back as unhandledrejection on the client.
+            window._lpmCsListeners = window._lpmCsListeners || {};
+            window._lpmCsListenerSeq = window._lpmCsListenerSeq || 0;
+
             window.lpmInitCsListener = function(dotNetRef) {
+                var key = ++window._lpmCsListenerSeq;
+                var visHandler = function() {
+                    if (!document.hidden) {
+                        // .catch swallows the reject if the dotNetRef just got disposed in
+                        // the race window between dispose request and listener removal.
+                        try { dotNetRef.invokeMethodAsync('OnTabFocused').catch(function(){}); }
+                        catch(_) { /* dotNetRef synchronously disposed */ }
+                    }
+                };
+                var ch = null;
                 try {
-                    var ch = new BroadcastChannel('lpm-cs-done');
-                    ch.onmessage = function() { dotNetRef.invokeMethodAsync('OnCsDoneFromTab'); };
+                    ch = new BroadcastChannel('lpm-cs-done');
+                    ch.onmessage = function() {
+                        try { dotNetRef.invokeMethodAsync('OnCsDoneFromTab').catch(function(){}); }
+                        catch(_) { /* dotNetRef synchronously disposed */ }
+                    };
                     window._lpmCsCh = ch;
                 } catch(e) {}
-                document.addEventListener('visibilitychange', function() {
-                    if (!document.hidden) dotNetRef.invokeMethodAsync('OnTabFocused');
-                });
+                document.addEventListener('visibilitychange', visHandler);
+                window._lpmCsListeners[key] = { vis: visHandler, ch: ch };
+                return key;
+            };
+
+            window.lpmDisposeCsListener = function(key) {
+                var entry = window._lpmCsListeners[key];
+                if (!entry) return;
+                try { document.removeEventListener('visibilitychange', entry.vis); } catch(_) {}
+                if (entry.ch) {
+                    try { entry.ch.close(); } catch(_) {}
+                    if (window._lpmCsCh === entry.ch) window._lpmCsCh = null;
+                }
+                delete window._lpmCsListeners[key];
             };
         </script>
         <script src="js/folder-import.js"></script>

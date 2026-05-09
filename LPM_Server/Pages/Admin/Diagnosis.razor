@@ -94,7 +94,12 @@
     @* ── Tab Navigation ── *@
     <ul class="nav nav-tabs diag-tabs mb-4">
         <li class="nav-item">
-            <a class="nav-link @(_diagTab == "db" ? "active" : "")" @onclick='() => _diagTab = "db"' href="javascript:void(0)">
+            <a class="nav-link @(_diagTab == "users" ? "active" : "")" @onclick='() => _diagTab = "users"' href="javascript:void(0)">
+                <i class="ri-group-line me-1"></i>User Activity
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link @(_diagTab == "db" ? "active" : "")" @onclick="SwitchToDbTab" href="javascript:void(0)">
                 <i class="ri-database-2-line me-1"></i>Database
             </a>
         </li>
@@ -143,7 +148,7 @@
     {
         <SpkSystemHealth />
     }
-    else if (_diagTab == "db")
+    else if (_diagTab == "users")
     {
 
     @* ── User Activity Monitor ── *@
@@ -547,6 +552,10 @@
             }
         </div>
     </div>
+
+    } @* end _diagTab == "users" *@
+    else if (_diagTab == "db")
+    {
 
     @* ── User Editor ──────────────────────────────────────────────────────── *@
     <div class="diag-editor-card mb-4">
@@ -2713,7 +2722,8 @@
     List<TableData> _acadTables = [];
 
     // ── Tab ────────────────────────────────────────────────────────────────
-    string _diagTab = "db";
+    string _diagTab = "users";   // First-shown tab. Database tab loads on demand via SwitchToDbTab.
+    bool   _dbLoaded;            // True once the DB tab's heavy reads have been kicked off
 
     // ── Inline delete confirmation (sess_* / cs_* rows) ───────────────────
     (string Table, string PkVal)? _pendingDelete;
@@ -3042,17 +3052,15 @@
     // ── Init ───────────────────────────────────────────────────────────────
     protected override Task OnInitializedAsync()
     {
+        // Always-on: cheap in-memory user-activity polling drives the User Activity tab
+        // (the new default tab). Heavy DB reads moved to SwitchToDbTab so the page opens fast.
         _activityUsers = ActivitySvc.GetSummary();
         var ct = _cts.Token;
 
-        _ = Task.Run(() => { LoadUserList(); LoadPcsRows(); }, ct)
+        // Eager: tiny core_users read — feeds the always-visible Impersonate dropdown at the
+        // top of the page. Cannot be lazy-loaded behind the Database tab.
+        _ = Task.Run(LoadUserList, ct)
                 .ContinueWith(_ => { if (!ct.IsCancellationRequested) InvokeAsync(() => { _loadingUsers = false; StateHasChanged(); }); });
-
-        _ = Task.Run(() => LoadLiveTables(), ct)
-                .ContinueWith(_ => { if (!ct.IsCancellationRequested) InvokeAsync(() => { _loadingTables = false; StateHasChanged(); }); });
-
-        _ = Task.Run(LoadRecentFiles, ct)
-                .ContinueWith(_ => { if (!ct.IsCancellationRequested) InvokeAsync(() => { _loadingRecent = false; StateHasChanged(); }); });
 
         // Auto-refresh user activity every N seconds with countdown
         _ = Task.Run(async () =>
@@ -3071,6 +3079,25 @@
         }, ct);
 
         return Task.CompletedTask;
+    }
+
+    /// <summary>Lazy-load the Database tab: heavy DB reads (PC history, live tables,
+    /// recent files) only fire on first click — not on page open. The user list is
+    /// loaded eagerly in OnInitializedAsync because the impersonate dropdown needs it.</summary>
+    void SwitchToDbTab()
+    {
+        _diagTab = "db";
+        if (_dbLoaded) return;
+        _dbLoaded = true;
+        var ct = _cts.Token;
+
+        _ = Task.Run(LoadPcsRows, ct);
+
+        _ = Task.Run(() => LoadLiveTables(), ct)
+                .ContinueWith(_ => { if (!ct.IsCancellationRequested) InvokeAsync(() => { _loadingTables = false; StateHasChanged(); }); });
+
+        _ = Task.Run(LoadRecentFiles, ct)
+                .ContinueWith(_ => { if (!ct.IsCancellationRequested) InvokeAsync(() => { _loadingRecent = false; StateHasChanged(); }); });
     }
 
     public void Dispose()

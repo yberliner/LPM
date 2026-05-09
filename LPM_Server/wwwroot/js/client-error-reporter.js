@@ -26,7 +26,16 @@
         // was disposed (e.g. component unmounted on page navigation). Harmless — Blazor
         // catches it and the missed event would have been a no-op anyway.
         'There is no tracked object with id',
-        'DotNetObjectReference instance was already disposed'
+        'DotNetObjectReference instance was already disposed',
+        // Blazor's global event delegation tries to dispatch a click/input/etc. to a
+        // renderer that's already disposed — common during fast navigation. No user-
+        // visible effect; the missed event would have been a no-op.
+        'No interop methods are registered for renderer',
+        // Chromium quirk: ResizeObserver emits this when a callback resizes during a frame
+        // that already fired observer notifications. Per WICG/spec, browsers MAY surface
+        // this as an "error". It does NOT indicate any actual problem with our code.
+        'ResizeObserver loop completed with undelivered notifications',
+        'ResizeObserver loop limit exceeded'
     ];
 
     function shouldSkip(filename) {
