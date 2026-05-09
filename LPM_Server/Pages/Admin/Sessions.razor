@@ -299,8 +299,8 @@
                                     <th class="text-center">@LS.T("sessions.admin")</th>
                                     <th class="text-center">@LS.T("sessions.free")</th>
                                     <th style="width:140px;">Wallet</th>
-                                    <th style="width:115px;">@LS.T("sessions.rate") @PcCurrSym(pcGroup.PcId)/hr</th>
-                                    <th style="width:115px;">@LS.T("sessions.salary") @PcCurrSym(pcGroup.PcId)/hr</th>
+                                    <th style="min-width:135px; width:135px;">@LS.T("sessions.rate") @PcCurrSym(pcGroup.PcId)/hr</th>
+                                    <th style="min-width:135px; width:135px;">@LS.T("sessions.salary") @PcCurrSym(pcGroup.PcId)/hr</th>
                                     <th style="width:105px;">@LS.T("common.status")</th>
                                     <th class="pe-4" style="width:130px;"></th>
                                 </tr>
@@ -559,9 +559,9 @@
                                     <th style="width:140px;">Wallet</th>
                                     @if (pcGroup.Reviews.Any(r => r.IsSolo))
                                     {
-                                        <th style="width:115px;">Rate @PcCurrSym(pcGroup.PcId)/hr</th>
+                                        <th style="min-width:135px; width:135px;">Rate @PcCurrSym(pcGroup.PcId)/hr</th>
                                     }
-                                    <th style="width:115px;">CS Salary @PcCurrSym(pcGroup.PcId)/hr</th>
+                                    <th style="min-width:135px; width:135px;">CS Salary @PcCurrSym(pcGroup.PcId)/hr</th>
                                     <th style="width:105px;">Status</th>
                                     <th class="pe-4" style="width:130px;"></th>
                                 </tr>

@@ -55,14 +55,23 @@
                 {
                     <div class="pu-filter-divider d-none d-sm-block"></div>
                     <div class="d-flex align-items-center gap-2 flex-wrap">
+                        @* Same period-navigation pattern as Salary.razor — Thursday→Wednesday window
+                           anchored to a calendar month, with prev/next stepping ±1 month *@
+                        <button class="pu-nav-btn" @onclick="PrevPeriod" disabled="@_loading" title="Previous period">
+                            <i class="ri-arrow-left-s-line"></i>
+                        </button>
                         <span class="text-muted" style="font-size:0.8rem;">@LS.T("common.from")</span>
-                        <input type="date" class="form-control form-control-sm pu-date-input"
-                               value="@_fromDateStr"
-                               @onchange="e => _fromDateStr = e.Value?.ToString() ?? string.Empty" />
+                        <input type="text" class="form-control form-control-sm pu-date-input"
+                               placeholder="dd/mm/yy"
+                               @bind="_fromDateStr" @bind:event="oninput" />
                         <span class="text-muted" style="font-size:0.8rem;">@LS.T("common.to")</span>
-                        <input type="date" class="form-control form-control-sm pu-date-input"
-                               value="@_toDateStr"
-                               @onchange="e => _toDateStr = e.Value?.ToString() ?? string.Empty" />
+                        <input type="text" class="form-control form-control-sm pu-date-input"
+                               placeholder="dd/mm/yy"
+                               @bind="_toDateStr" @bind:event="oninput" />
+                        <button class="pu-nav-btn" @onclick="NextPeriod"
+                                disabled="@(_loading || IsCurrentPeriod)" title="Next period">
+                            <i class="ri-arrow-right-s-line"></i>
+                        </button>
                         <button class="btn btn-sm pu-btn-apply d-flex align-items-center gap-1"
                                 @onclick="ApplyFilter" disabled="@_loading">
                             <i class="ri-search-line"></i> @LS.T("common.apply")
@@ -772,6 +781,22 @@
     .pu-date-input { font-size: 0.83rem; border-color: #ced4da; min-width: 130px; flex: 1 1 130px; max-width: 160px; min-height: 38px; touch-action: manipulation; }
     .pu-date-input:focus { border-color: #2d6a9f; box-shadow: none; }
 
+    /* Period nav arrows — same shape as Salary's .sal-nav-btn for visual consistency */
+    .pu-nav-btn {
+        background: #f1f5f9; border: 1px solid #cbd5e1;
+        color: #475569; border-radius: 8px; width: 40px; height: 40px;
+        display: flex; align-items: center; justify-content: center;
+        cursor: pointer; font-size: 1.4rem; line-height: 1;
+        transition: background .15s, border-color .15s, color .15s, transform .12s;
+        flex-shrink: 0;
+    }
+    .pu-nav-btn:hover:not(:disabled) {
+        background: #dbeafe; border-color: #60a5fa; color: #1d4ed8;
+        transform: translateY(-1px);
+    }
+    .pu-nav-btn:active:not(:disabled) { transform: translateY(0); }
+    .pu-nav-btn:disabled { opacity: .35; cursor: default; }
+
     @@media (max-width: 480px) {
         .pu-page { padding-left: 10px !important; padding-right: 10px !important; }
         .pu-date-input { max-width: 100%; font-size: 1rem; }
@@ -1104,19 +1129,103 @@
     {
         if (_includeApproved) return;
         _includeApproved = true;
-        if (string.IsNullOrEmpty(_fromDateStr))
-            _fromDateStr = DateOnly.FromDateTime(DateTime.Today.AddDays(-28)).ToString("yyyy-MM-dd");
-        if (string.IsNullOrEmpty(_toDateStr))
-            _toDateStr = DateOnly.FromDateTime(DateTime.Today).ToString("yyyy-MM-dd");
+        // Seed From/To with the current salary period (matches Salary.razor's behaviour).
+        InitPeriod();
     }
 
     private async Task ApplyFilter()
     {
         _filterError = null;
-        if (!DateOnly.TryParse(_fromDateStr, out var from)) { _filterError = "Enter a valid From date."; return; }
-        if (!DateOnly.TryParse(_toDateStr,   out var to))   { _filterError = "Enter a valid To date."; return; }
+        if (!TryParsePuDate(_fromDateStr, out var from)) { _filterError = "Enter a valid From date (dd/mm/yy)."; return; }
+        if (!TryParsePuDate(_toDateStr,   out var to))   { _filterError = "Enter a valid To date (dd/mm/yy)."; return; }
         if (from > to) { _filterError = "From date must be on or before To date."; return; }
         await LoadData();
+    }
+
+    // ── Period navigation (mirrors Salary.razor's Thursday→Wednesday window) ──
+    private int _periodYear;
+    private int _periodMonth;
+
+    /// <summary>For month M: From = Thursday of the week containing the first Wednesday of M;
+    /// To = last Wednesday of M. Same algorithm as Salary.razor.</summary>
+    (DateOnly From, DateOnly To) ComputePeriod(int year, int month)
+    {
+        var firstDay = new DateOnly(year, month, 1);
+        var daysToWed = ((int)DayOfWeek.Wednesday - (int)firstDay.DayOfWeek + 7) % 7;
+        var firstWed = firstDay.AddDays(daysToWed);
+        var from = firstWed.AddDays(-6);
+
+        var lastDay = new DateOnly(year, month, DateTime.DaysInMonth(year, month));
+        var daysBackToWed = ((int)lastDay.DayOfWeek - (int)DayOfWeek.Wednesday + 7) % 7;
+        var to = lastDay.AddDays(-daysBackToWed);
+
+        return (from, to);
+    }
+
+    void InitPeriod()
+    {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var (year, month) = ResolveCurrentPeriodMonth(today);
+        _periodYear = year;
+        _periodMonth = month;
+        ApplyPeriod();
+    }
+
+    (int Year, int Month) ResolveCurrentPeriodMonth(DateOnly today)
+    {
+        var year = today.Year;
+        var month = today.Month;
+        var lastDay = new DateOnly(year, month, DateTime.DaysInMonth(year, month));
+        var daysBackToWed = ((int)lastDay.DayOfWeek - (int)DayOfWeek.Wednesday + 7) % 7;
+        var lastWed = lastDay.AddDays(-daysBackToWed);
+        if (today > lastWed)
+        {
+            month++;
+            if (month > 12) { month = 1; year++; }
+        }
+        return (year, month);
+    }
+
+    void ApplyPeriod()
+    {
+        var (from, to) = ComputePeriod(_periodYear, _periodMonth);
+        _fromDateStr = from.ToString("dd/MM/yy");
+        _toDateStr   = to.ToString("dd/MM/yy");
+    }
+
+    async Task PrevPeriod()
+    {
+        _periodMonth--;
+        if (_periodMonth < 1) { _periodMonth = 12; _periodYear--; }
+        ApplyPeriod();
+        await LoadData();
+    }
+
+    async Task NextPeriod()
+    {
+        if (IsCurrentPeriod) return;
+        _periodMonth++;
+        if (_periodMonth > 12) { _periodMonth = 1; _periodYear++; }
+        ApplyPeriod();
+        await LoadData();
+    }
+
+    bool IsCurrentPeriod
+    {
+        get
+        {
+            var (curYear, curMonth) = ResolveCurrentPeriodMonth(DateOnly.FromDateTime(DateTime.Today));
+            return _periodYear == curYear && _periodMonth == curMonth;
+        }
+    }
+
+    /// <summary>Parses a dd/MM/yy string. Falls back to plain TryParse for backwards compat
+    /// (so existing yyyy-MM-dd entries still work if any are in localStorage / typed manually).</summary>
+    static bool TryParsePuDate(string s, out DateOnly d)
+    {
+        if (DateOnly.TryParseExact(s, "dd/MM/yy", System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out d)) return true;
+        return DateOnly.TryParse(s, out d);
     }
 
     // Organization filter — 0=All, 1=Haifa, 2=Riga (mirrors Statistics tab)
@@ -1137,8 +1246,8 @@
         await Task.Yield();
 
         DateOnly? from = null, to = null;
-        if (_includeApproved && DateOnly.TryParse(_fromDateStr, out var f)) from = f;
-        if (_includeApproved && DateOnly.TryParse(_toDateStr,   out var t)) to   = t;
+        if (_includeApproved && TryParsePuDate(_fromDateStr, out var f)) from = f;
+        if (_includeApproved && TryParsePuDate(_toDateStr,   out var t)) to   = t;
 
         _purchases = PcSvc.GetPurchases(_includeApproved, from, to, _includeDeleted, OrgFilter);
 
