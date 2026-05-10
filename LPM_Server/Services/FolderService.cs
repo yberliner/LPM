@@ -1122,6 +1122,43 @@ public class FolderService
         if (path != null && File.Exists(path)) File.Delete(path);
     }
 
+    // ── File metadata sidecar (.meta.json alongside PDF) ────────────────────
+    // Carries info like the parent sessionId so the viewer can render a tiny
+    // "#1234" badge without touching the PDF bytes. Used for: Solo session,
+    // Misc Report, Actions → Next CS, and regular wizard session.
+
+    public void WriteFileMetaSidecar(int pcId, string relativePath, bool solo,
+                                      int sessionId, string fileType, string? createdBy)
+    {
+        if (sessionId <= 0) return;
+        var folder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
+        if (folder == null) return;
+        var fullPath = SafeResolvePath(folder, relativePath);
+        if (fullPath == null) return;
+        var meta = new
+        {
+            sessionId,
+            fileType,
+            createdAt = DateTime.UtcNow.ToString("o"),
+            createdBy = createdBy ?? ""
+        };
+        var json = System.Text.Json.JsonSerializer.Serialize(meta);
+        var metaPath = fullPath + ".meta.json";
+        File.WriteAllText(metaPath, json);
+        _audit.Log(pcId, solo, $"WorkSheets/{Path.GetFileName(fullPath)}.meta.json",
+                   "create", json.Length, null, null, "Sidecar");
+    }
+
+    public string? ReadFileMetaSidecar(int pcId, string relativePath, bool solo)
+    {
+        var folder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
+        if (folder == null) return null;
+        var fullPath = SafeResolvePath(folder, relativePath);
+        if (fullPath == null) return null;
+        var metaPath = fullPath + ".meta.json";
+        return File.Exists(metaPath) ? File.ReadAllText(metaPath) : null;
+    }
+
     /// <summary>
     /// If a `.ann.json` sidecar exists next to <paramref name="srcPdfFullPath"/>, move it next
     /// to <paramref name="dstPdfFullPath"/>. Used by file move/rename so annotations follow the PDF.

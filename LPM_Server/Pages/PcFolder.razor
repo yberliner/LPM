@@ -914,7 +914,8 @@
                                 <th style="width:100px;">Date</th>
                                 <th style="width:@(FsNameColWidth)px;">Session Name</th>
                                 <th style="width:120px;">Auditor</th>
-                                <th style="width:60px;">Duration</th>
+                                <th style="width:80px;">Session Time</th>
+                                <th style="width:80px;">Session Admin</th>
                                 <th>Summary</th>
                                 <th style="width:88px;"></th>
                             </tr>
@@ -932,7 +933,8 @@
                                     </td>
                                     <td class="pcf-fs-td-name">@e.Name</td>
                                     <td class="pcf-fs-td-name">@e.AuditorName</td>
-                                    <td class="pcf-fs-td-dur">@FsSecsToHMM(e.LengthSeconds + e.AdminSeconds)</td>
+                                    <td class="pcf-fs-td-dur">@FsSecsToHMM(e.LengthSeconds)</td>
+                                    <td class="pcf-fs-td-dur">@FsSecsToHMM(e.AdminSeconds)</td>
                                     <td class="pcf-fs-td-html">@((MarkupString)DashSvc.SanitizeStoredHtml(e.SummaryHtml))</td>
                                     <td class="pcf-fs-td-btn">
                                         <div class="pcf-fs-action-group">
@@ -977,13 +979,21 @@
                     <input type="date" class="pcf-fs-edit-meta-input"
                            @bind="_fsEditDate" />
                     <label class="pcf-fs-edit-meta-lbl ms-2">
-                        <i class="ri-time-line me-1"></i>Duration
+                        <i class="ri-time-line me-1"></i>Session Time
                     </label>
                     <input type="text" inputmode="numeric" maxlength="5"
                            class="pcf-fs-edit-meta-input arf-time-input"
                            placeholder="H:MM"
-                           value="@_fsEditDuration"
-                           @oninput="e => _fsEditDuration = e.Value?.ToString() ?? string.Empty" />
+                           value="@_fsEditLength"
+                           @oninput="e => _fsEditLength = e.Value?.ToString() ?? string.Empty" />
+                    <label class="pcf-fs-edit-meta-lbl ms-2">
+                        <i class="ri-briefcase-line me-1"></i>Session Admin
+                    </label>
+                    <input type="text" inputmode="numeric" maxlength="5"
+                           class="pcf-fs-edit-meta-input arf-time-input"
+                           placeholder="H:MM"
+                           value="@_fsEditAdmin"
+                           @oninput="e => _fsEditAdmin = e.Value?.ToString() ?? string.Empty" />
                 </div>
                 <div id="pcf-fs-editor" style="background:#fff;border-radius:4px 4px 0 0;min-height:150px;"></div>
                 <div class="pcf-fs-save-row">
@@ -1987,6 +1997,18 @@
         pointer-events: none;
         animation: pcf-pane-star-glow 2s ease-in-out infinite;
         filter: drop-shadow(0 0 4px rgba(251,191,36,.6));
+    }
+    /* ── Tiny "#1234" badge driven by the .meta.json sidecar ── */
+    /* Placed at top-left after the star/FS icon area (which occupy left: 8-40px). */
+    .pcf-file-meta-badge {
+        position: absolute; top: 6px; left: 46px; z-index: 50;
+        font-family: ui-monospace, SFMono-Regular, "Menlo", monospace;
+        font-size: 10px; line-height: 1;
+        color: rgba(0,0,0,.7);
+        background: rgba(255,255,255,.85);
+        padding: 2px 5px; border-radius: 3px;
+        pointer-events: none; user-select: none;
+        border: 1px solid rgba(0,0,0,.2);
     }
     @@keyframes pcf-pane-star-glow {
         0%, 100% { opacity: .5; transform: scale(.9); filter: drop-shadow(0 0 2px rgba(251,191,36,.3)); }
@@ -3443,7 +3465,7 @@
     /* ── FS cell-edit popup ── */
     .pcf-fs-edit-modal {
         background: #1e293b; border: 1px solid #334155; border-radius: 10px;
-        padding: 16px; width: 520px; max-width: 96vw;
+        padding: 16px; width: 600px; max-width: 96vw;
         box-shadow: 0 8px 32px rgba(0,0,0,.6);
     }
     .pcf-fs-edit-title {
@@ -4547,7 +4569,8 @@
     List<DashboardService.SessionSummaryEditInfo> _fsEntries = new();
     int?   _fsEditingId;
     DateOnly _fsEditDate;
-    string   _fsEditDuration = "";
+    string   _fsEditLength = "";
+    string   _fsEditAdmin  = "";
 
     // Delete-confirm state for the per-row Delete button (requires typing "Delete")
     bool    _showFsDeleteConfirm;
@@ -5584,7 +5607,8 @@
                           System.Globalization.DateTimeStyles.None, out var d)
                       ? d
                       : DateOnly.FromDateTime(DateTime.Today);
-        _fsEditDuration = FsSecsToHMM(entry.LengthSeconds + entry.AdminSeconds);
+        _fsEditLength = FsSecsToHMM(entry.LengthSeconds);
+        _fsEditAdmin  = FsSecsToHMM(entry.AdminSeconds);
         _showFsEditModal = true;
         StateHasChanged();
         await Task.Delay(60);
@@ -5632,16 +5656,17 @@
             })();
         ");
 
-        // Date + Duration are pre-filled from the entry, so a "Save" always writes a
-        // sensible value. Duration is stored in fs.AdminSeconds; for non-session-linked
-        // FS entries the displayed total equals exactly the user-typed h:mm.
+        // Date / Session Time / Session Admin are pre-filled from the entry, so a "Save"
+        // always writes sensible values. Both time fields use h:mm and are stored
+        // separately in fs.LengthSeconds / fs.AdminSeconds.
         var dateStr = _fsEditDate == default
             ? DateOnly.FromDateTime(DateTime.Today).ToString("yyyy-MM-dd")
             : _fsEditDate.ToString("yyyy-MM-dd");
-        var totalSecs = ParseHmmToSeconds(_fsEditDuration);
+        var lenSecs = ParseHmmToSeconds(_fsEditLength);
+        var admSecs = ParseHmmToSeconds(_fsEditAdmin);
 
         DashSvc.UpdateFolderSummary(_fsEditingId.Value, html ?? "",
-            sessionDate: dateStr, adminSeconds: totalSecs);
+            sessionDate: dateStr, adminSeconds: admSecs, lengthSeconds: lenSecs);
 
         _fsEditingId = null;
         _showFsEditModal = false;

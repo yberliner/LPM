@@ -9235,6 +9235,8 @@
                     Console.WriteLine($"[SoloImport] Warning: could not save PDF for PC {capturedPcId}");
                 else
                 {
+                    FolderSvc.WriteFileMetaSidecar(capturedPcId, $"WorkSheets/{savedSessionFileName}", solo: true,
+                        sessionId, "SoloSession", capturedUsername);
                     foreach (var (attName, attData, _) in capturedAttachments)
                         FolderSvc.SaveAttachment(capturedPcId, savedSessionFileName, attName, attData, solo: true);
                     if (nextCsPdfBytes.Length > 0)
@@ -9703,6 +9705,9 @@
                     var savedSessionFileName = capturedIsSolo
                         ? FolderSvc.SaveSoloUploadedFile(capturedPcId, capturedFileName, normalizedBytes)!
                         : FolderSvc.SaveUploadedFile(capturedPcId, capturedFileName, normalizedBytes)!;
+
+                    FolderSvc.WriteFileMetaSidecar(capturedPcId, $"WorkSheets/{savedSessionFileName}", capturedIsSolo,
+                        sessionId, "Session", capturedUsername);
 
                     foreach (var (name, data, _) in capturedAttachments)
                         FolderSvc.SaveAttachment(capturedPcId, savedSessionFileName, name, data, capturedIsSolo);
@@ -11713,6 +11718,8 @@ string _actionPcSearch = "";
                     isFreeSession: !capturedBillPc,
                     source: "Memo");
                 DashSvc.NotifyDataChanged();
+                FolderSvc.WriteFileMetaSidecar(capturedPcId, $"WorkSheets/{savedName}.pdf", capturedSolo,
+                    sessionId, "MiscReport", _logUsername);
                 sDb.Status = 2;
                 await InvokeAsync(StateHasChanged);
 
@@ -12133,6 +12140,8 @@ string _actionPcSearch = "";
                 if (!string.IsNullOrWhiteSpace(capturedBottomHtml))
                     DashSvc.SaveNextCs(sessionId, capturedBottomHtml);
                 DashSvc.NotifyDataChanged();
+                FolderSvc.WriteFileMetaSidecar(capturedPcId, $"WorkSheets/{savedName}.pdf", capturedSolo,
+                    sessionId, "ActionsNextCs", _logUsername);
                 sDb.Status = 2;
                 await InvokeAsync(StateHasChanged);
 

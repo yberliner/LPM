@@ -2873,7 +2873,8 @@ public class DashboardService
         return list;
     }
 
-    public void UpdateFolderSummary(int id, string html, string? sessionDate = null, int? adminSeconds = null)
+    public void UpdateFolderSummary(int id, string html,
+        string? sessionDate = null, int? adminSeconds = null, int? lengthSeconds = null)
     {
         // Sanitize user-supplied HTML (from the Quill rich-text editor) before storing —
         // it is later rendered via MarkupString, so anything not in our allowlist would be
@@ -2889,16 +2890,18 @@ public class DashboardService
         using var cmd = conn.CreateCommand();
         // COALESCE(@param, col) leaves a column unchanged when the caller passes null —
         // keeps the simple "html only" callers working while letting newer callers also
-        // update Date/Duration in the same round-trip.
+        // update Date/Time/Admin in the same round-trip.
         cmd.CommandText = @"
             UPDATE sess_folder_summary
-            SET SummaryHtml  = @html,
-                SessionDate  = COALESCE(@date, SessionDate),
-                AdminSeconds = COALESCE(@admSec, AdminSeconds)
+            SET SummaryHtml   = @html,
+                SessionDate   = COALESCE(@date, SessionDate),
+                AdminSeconds  = COALESCE(@admSec, AdminSeconds),
+                LengthSeconds = COALESCE(@lenSec, LengthSeconds)
             WHERE Id = @id";
         cmd.Parameters.AddWithValue("@html", html);
         cmd.Parameters.AddWithValue("@date", (object?)sessionDate ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@admSec", (object?)adminSeconds ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@lenSec", (object?)lengthSeconds ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@id", id);
         cmd.ExecuteNonQuery();
     }

@@ -64,6 +64,47 @@ window.pcfViewer = {
         if (pane._currentRenderTask) { try { pane._currentRenderTask.cancel(); } catch(_){} pane._currentRenderTask = null; }
     },
 
+    // Fetch the file-meta sidecar (`.meta.json`) and render a tiny "#1234" badge
+    // pinned to the bottom-left of the pane. Clears any previous badge first so
+    // that switching to a file without a sidecar removes the stale badge.
+    async _loadFileMetaBadge(paneId, newFilePath, solo, pane, myGen) {
+        console.log('[meta-badge] _loadFileMetaBadge paneId=' + paneId + ' path=' + newFilePath + ' solo=' + solo + ' pcId=' + this._pcId);
+        const viewer = document.getElementById('pcf-viewer-' + paneId);
+        const paneEl = viewer ? viewer.parentElement : null;
+        if (paneEl) {
+            paneEl.querySelectorAll('.pcf-file-meta-badge').forEach(el => el.remove());
+        }
+        if (!this._pcId || !newFilePath || !paneEl) {
+            console.log('[meta-badge] early-exit: pcId=' + this._pcId + ' newFilePath=' + newFilePath + ' paneEl=' + !!paneEl);
+            return;
+        }
+        try {
+            const fetchUrl = `/api/pc-file-meta?pcId=${this._pcId}&path=${encodeURIComponent(newFilePath)}${solo ? '&solo=true' : ''}`;
+            console.log('[meta-badge] fetching ' + fetchUrl);
+            const r = await fetch(fetchUrl, { credentials: 'include' });
+            if (pane.loadGen !== myGen) { console.log('[meta-badge] superseded'); return; }
+            console.log('[meta-badge] response status=' + r.status);
+            if (!r || r.status !== 200) return;
+            const meta = await r.json();
+            console.log('[meta-badge] meta=' + JSON.stringify(meta));
+            if (pane.loadGen !== myGen || !meta || !meta.sessionId) return;
+            // If we lost the race and another badge appeared, clear it once more.
+            paneEl.querySelectorAll('.pcf-file-meta-badge').forEach(el => el.remove());
+            const badge = document.createElement('div');
+            badge.className = 'pcf-file-meta-badge';
+            badge.textContent = '#' + meta.sessionId;
+            const tipParts = [];
+            if (meta.fileType)  tipParts.push(meta.fileType);
+            if (meta.createdBy) tipParts.push(meta.createdBy);
+            if (meta.createdAt) tipParts.push(meta.createdAt);
+            badge.title = tipParts.join(' · ');
+            paneEl.appendChild(badge);
+            console.log('[meta-badge] badge appended #' + meta.sessionId);
+        } catch (e) {
+            console.log('[meta-badge] fetch failed', e);
+        }
+    },
+
     // Force a full re-fetch + re-render of a pane, bypassing the same-file fast path.
     // Use this after the underlying file's bytes have changed on disk (e.g. normalize, extract).
     async forceReloadPdf(url, paneId, targetPage) {
@@ -107,6 +148,12 @@ window.pcfViewer = {
 
         // Folder summary files are served via a distinct endpoint — mark read-only
         pane.readOnly = url.includes('/api/pc-file-folder-summary');
+
+        // Kick off file-meta sidecar fetch (tiny session-id badge). Fire-and-forget.
+        // Skip for same-file reloads — the badge is already in the DOM.
+        if (!isSameFile) {
+            this._loadFileMetaBadge(paneId, newFilePath, pane.solo, pane, myGen);
+        }
 
         let viewer = document.getElementById('pcf-viewer-' + paneId);
         // Wait for the viewer element to exist AND its width to stabilize across

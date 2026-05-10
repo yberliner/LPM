@@ -1329,6 +1329,15 @@ app.MapGet("/api/pc-file-annotations", (int pcId, string path,
     return json != null ? Results.Content(json, "application/json") : Results.NoContent();
 }).RequireAuthorization();
 
+app.MapGet("/api/pc-file-meta", (int pcId, string path,
+    LPM.Services.FolderService folderSvc, LPM.Services.DashboardService dashSvc,
+    HttpContext ctx, bool solo = false) =>
+{
+    if (!CanAccessPcFile(ctx, pcId, solo, dashSvc)) return Results.Forbid();
+    var json = folderSvc.ReadFileMetaSidecar(pcId, path, solo);
+    return json != null ? Results.Content(json, "application/json") : Results.NoContent();
+}).RequireAuthorization();
+
 app.MapPost("/api/pc-file-save-annotations", async (HttpContext ctx,
     LPM.Services.FolderService folderSvc, LPM.Services.DashboardService dashSvc) =>
 {
