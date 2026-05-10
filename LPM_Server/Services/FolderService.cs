@@ -761,7 +761,7 @@ public class FolderService
             return;
         }
 
-        var baseName = Path.GetFileNameWithoutExtension(sessionName);
+        var baseName = GetSessionStem(sessionName);
         var moved = 0;
 
         foreach (var src in srcFolders)
@@ -1008,7 +1008,7 @@ public class FolderService
         foreach (var file in files)
         {
             // Attachments are files matching {sessionNameNoExt}_att_* (any supported extension)
-            var nameNoExt = Path.GetFileNameWithoutExtension(file.FileName);
+            var nameNoExt = GetSessionStem(file.FileName);
             var prefix = $"{nameNoExt}_att_";
             var attachments = allFiles
                 .Where(n => n!.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
@@ -2187,7 +2187,7 @@ public class FolderService
     {
         var folder = FindPcFolder(pcId);
         if (folder == null) return false;
-        var sessionNoExt = Path.GetFileNameWithoutExtension(sessionFileName);
+        var sessionNoExt = GetSessionStem(sessionFileName);
         var flatName = $"{sessionNoExt}_att_{attFileName}";
         var path = Path.Combine(folder, "WorkSheets", flatName);
         return File.Exists(path);
@@ -2256,7 +2256,7 @@ public class FolderService
         var wsPath = Path.Combine(folder, "WorkSheets");
         Directory.CreateDirectory(wsPath);
 
-        var sessionNoExt = Path.GetFileNameWithoutExtension(sessionFileName);
+        var sessionNoExt = GetSessionStem(sessionFileName);
         var safeName = string.Join("_", attFileName.Split(Path.GetInvalidFileNameChars()));
         var flatName = $"{sessionNoExt}_att_{safeName}";
         var fullPath = Path.Combine(wsPath, flatName);
@@ -2397,7 +2397,7 @@ public class FolderService
     {
         var folder = FindSoloPcFolder(pcId);
         if (folder == null) return false;
-        var sessionNoExt = Path.GetFileNameWithoutExtension(sessionFileName);
+        var sessionNoExt = GetSessionStem(sessionFileName);
         var flatName = $"{sessionNoExt}_att_{attFileName}";
         return File.Exists(Path.Combine(folder, "WorkSheets", flatName));
     }
@@ -2407,7 +2407,7 @@ public class FolderService
         var folderPath = GetOrCreateSoloPcFolderPath(pcId);
         var wsPath = Path.Combine(folderPath, "WorkSheets");
         Directory.CreateDirectory(wsPath);
-        var sessionNoExt = Path.GetFileNameWithoutExtension(sessionFileName);
+        var sessionNoExt = GetSessionStem(sessionFileName);
         var safeName = string.Join("_", attFileName.Split(Path.GetInvalidFileNameChars()));
         var flatName = $"{sessionNoExt}_att_{safeName}";
         var fullPath = Path.Combine(wsPath, flatName);
@@ -2504,6 +2504,20 @@ public class FolderService
         return Path.GetFileNameWithoutExtension(fileName);
     }
 
+    /// <summary>
+    /// Strips a trailing ".pdf" (case-insensitive) from a session file name or DB Name.
+    /// Unlike Path.GetFileNameWithoutExtension, this does NOT eat trailing dotted segments
+    /// such as a year suffix in date-formatted names (e.g. "06.05.26") — those are part of
+    /// the session base, not an extension.
+    /// </summary>
+    public static string GetSessionStem(string sessionFileNameOrName)
+    {
+        if (string.IsNullOrEmpty(sessionFileNameOrName)) return "";
+        return sessionFileNameOrName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)
+            ? sessionFileNameOrName[..^4]
+            : sessionFileNameOrName;
+    }
+
     /// <summary>Save an attachment file as flat file in WorkSheets: {session}_att_{name}. Returns the actual saved filename.</summary>
     public string? SaveAttachment(int pcId, string sessionFileName, string attFileName, byte[] fileBytes, bool solo = false)
     {
@@ -2513,7 +2527,7 @@ public class FolderService
         var wsPath = Path.Combine(folder, "WorkSheets");
         Directory.CreateDirectory(wsPath);
 
-        var sessionNoExt = Path.GetFileNameWithoutExtension(sessionFileName);
+        var sessionNoExt = GetSessionStem(sessionFileName);
         var safeName = string.Join("_", attFileName.Split(Path.GetInvalidFileNameChars()));
         var flatName = $"{sessionNoExt}_att_{safeName}";
         var fullPath = Path.Combine(wsPath, flatName);
@@ -2562,7 +2576,7 @@ public class FolderService
             var wsPath = Path.Combine(folder, "WorkSheets");
             if (Directory.Exists(wsPath))
             {
-                var sessionNoExt = Path.GetFileNameWithoutExtension(sessionFileName);
+                var sessionNoExt = GetSessionStem(sessionFileName);
                 var rx = new System.Text.RegularExpressions.Regex(
                     @"_att_attachment_(\d+)(?:\(\d+\))?\.pdf$",
                     System.Text.RegularExpressions.RegexOptions.IgnoreCase);
@@ -2587,7 +2601,7 @@ public class FolderService
         var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (string.IsNullOrEmpty(sessionFileName)) return result;
 
-        var prefix = Path.GetFileNameWithoutExtension(sessionFileName) + "_att_";
+        var prefix = GetSessionStem(sessionFileName) + "_att_";
 
         // Check both regular and solo folder — the CS may have saved to either
         var foldersToCheck = new HashSet<string?>(StringComparer.OrdinalIgnoreCase)
@@ -2622,7 +2636,7 @@ public class FolderService
     {
         var folder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
         if (folder == null) return false;
-        var sessionNoExt = Path.GetFileNameWithoutExtension(sessionFileName);
+        var sessionNoExt = GetSessionStem(sessionFileName);
         var fullPath = Path.Combine(folder, "WorkSheets", $"{sessionNoExt}_att_arf.pdf");
         if (!File.Exists(fullPath)) return false;
         File.WriteAllBytes(fullPath, pdfBytes);
@@ -2646,7 +2660,7 @@ public class FolderService
         var sessionPath = Path.Combine(wsPath, sessionFileName);
         if (!File.Exists(sessionPath)) return null;
 
-        var sessionNoExt = Path.GetFileNameWithoutExtension(sessionFileName);
+        var sessionNoExt = GetSessionStem(sessionFileName);
         var prefix = $"{sessionNoExt}_att_";
 
         // Collect all attachment full paths

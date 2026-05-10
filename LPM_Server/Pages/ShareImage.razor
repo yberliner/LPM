@@ -660,9 +660,9 @@
         try
         {
             var folder = FolderSvc.GetFolderInfo(pcId, solo);
-            var sessionStem = System.IO.Path.GetFileNameWithoutExtension(sessionName);
+            var sessionStem = FolderService.GetSessionStem(sessionName);
             var ws = folder?.WorkSheets.FirstOrDefault(w =>
-                System.IO.Path.GetFileNameWithoutExtension(w.File.FileName)
+                FolderService.GetSessionStem(w.File.FileName)
                     .Equals(sessionStem, StringComparison.OrdinalIgnoreCase));
             int maxN = 0;
             if (ws != null)

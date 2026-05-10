@@ -916,12 +916,13 @@
                                 <th style="width:120px;">Auditor</th>
                                 <th style="width:60px;">Duration</th>
                                 <th>Summary</th>
-                                <th style="width:36px;"></th>
+                                <th style="width:88px;"></th>
                             </tr>
                         </thead>
                         <tbody>
                             @foreach (var e in _fsEntries)
                             {
+                                var _entry = e;
                                 <tr>
                                     <td class="pcf-fs-td-date">
                                         @FsFormatDate(e.SessionDate)
@@ -934,10 +935,16 @@
                                     <td class="pcf-fs-td-dur">@FsSecsToHMM(e.LengthSeconds + e.AdminSeconds)</td>
                                     <td class="pcf-fs-td-html">@((MarkupString)DashSvc.SanitizeStoredHtml(e.SummaryHtml))</td>
                                     <td class="pcf-fs-td-btn">
-                                        <button class="pcf-fs-edit-btn pcf-fs-edit-btn--inline" title="Edit"
-                                                @onclick="() => _ = FsStartEdit(e.SummaryId)">
-                                            <i class="ri-pencil-line"></i>
-                                        </button>
+                                        <div class="pcf-fs-action-group">
+                                            <button class="pcf-fs-action-btn pcf-fs-action-edit" title="Edit"
+                                                    @onclick="() => _ = FsStartEdit(_entry.SummaryId)">
+                                                <i class="ri-pencil-line"></i>
+                                            </button>
+                                            <button class="pcf-fs-action-btn pcf-fs-action-delete" title="Delete"
+                                                    @onclick="() => FsStartDelete(_entry)">
+                                                <i class="ri-delete-bin-line"></i>
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             }
@@ -958,16 +965,88 @@
                 @if (_editEntry != null)
                 {
                     <div class="pcf-fs-edit-title">
-                        <i class="ri-calendar-line me-1" style="opacity:.6;"></i>@FsFormatDate(_editEntry.SessionDate)
+                        <i class="ri-edit-2-line me-1" style="opacity:.6;"></i>Edit Folder Summary entry
                         @if (!string.IsNullOrEmpty(_editEntry.Name))
                         { <span style="color:#94a3b8;font-weight:400;"> — @_editEntry.Name</span> }
                     </div>
                 }
+                <div class="pcf-fs-edit-meta">
+                    <label class="pcf-fs-edit-meta-lbl">
+                        <i class="ri-calendar-line me-1"></i>Date
+                    </label>
+                    <input type="date" class="pcf-fs-edit-meta-input"
+                           @bind="_fsEditDate" />
+                    <label class="pcf-fs-edit-meta-lbl ms-2">
+                        <i class="ri-time-line me-1"></i>Duration
+                    </label>
+                    <input type="text" inputmode="numeric" maxlength="5"
+                           class="pcf-fs-edit-meta-input arf-time-input"
+                           placeholder="H:MM"
+                           value="@_fsEditDuration"
+                           @oninput="e => _fsEditDuration = e.Value?.ToString() ?? string.Empty" />
+                </div>
                 <div id="pcf-fs-editor" style="background:#fff;border-radius:4px 4px 0 0;min-height:150px;"></div>
                 <div class="pcf-fs-save-row">
                     <button class="btn btn-sm btn-outline-secondary" @onclick="FsCancelEdit">@LS.T("common.cancel")</button>
                     <button class="btn btn-sm btn-primary" @onclick="FsSaveEdit">
                         <i class="ri-save-line me-1"></i>Save
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* ── Folder Summary Delete Confirm Modal ── *@
+    @if (_showFsDeleteConfirm && _fsDeleteEntry != null)
+    {
+        <div class="pcf-modal-backdrop pcf-fs-del-backdrop">
+            <div class="pcf-fs-del-modal" @onclick:stopPropagation="true">
+                <div class="pcf-fs-del-icon-wrap">
+                    <div class="pcf-fs-del-icon-ring"></div>
+                    <i class="ri-error-warning-line pcf-fs-del-icon"></i>
+                </div>
+                <div class="pcf-fs-del-title">ARE YOU SURE?</div>
+                <div class="pcf-fs-del-sub">
+                    @FsFormatDate(_fsDeleteEntry.SessionDate)
+                    @if (!string.IsNullOrEmpty(_fsDeleteEntry.AuditorName))
+                    { <span class="pcf-fs-del-sub-dim"> · @_fsDeleteEntry.AuditorName</span> }
+                </div>
+                @{
+                    var _delPreview = System.Text.RegularExpressions.Regex
+                        .Replace(_fsDeleteEntry.SummaryHtml ?? "", "<[^>]+>", " ")
+                        .Trim();
+                    if (_delPreview.Length > 80) _delPreview = _delPreview.Substring(0, 80) + "…";
+                }
+                @if (!string.IsNullOrWhiteSpace(_delPreview))
+                {
+                    <div class="pcf-fs-del-preview">"@_delPreview"</div>
+                }
+                <div class="pcf-fs-del-warn">
+                    This permanently deletes the folder summary entry.<br>
+                    <strong>This action cannot be undone.</strong>
+                </div>
+                <div class="pcf-fs-del-confirm-row">
+                    <label class="pcf-fs-del-confirm-lbl">Type <code>Delete</code> to confirm:</label>
+                    <input type="text" autocomplete="off" autocapitalize="off" spellcheck="false"
+                           class="pcf-fs-del-confirm-input"
+                           value="@_fsDeleteTypedText"
+                           @oninput="e => _fsDeleteTypedText = e.Value?.ToString() ?? string.Empty" />
+                </div>
+                <div class="pcf-fs-del-actions">
+                    <button class="btn btn-sm btn-outline-secondary" @onclick="FsCancelDelete">
+                        @LS.T("common.cancel")
+                    </button>
+                    <button class="pcf-fs-del-confirm-btn" disabled="@(_fsDeleteTypedText != "Delete" || _fsDeleteBusy)"
+                            @onclick="FsConfirmDelete">
+                        @if (_fsDeleteBusy)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        else
+                        {
+                            <i class="ri-delete-bin-line me-1"></i>
+                        }
+                        Delete forever
                     </button>
                 </div>
             </div>
@@ -3320,24 +3399,76 @@
     .pcf-fs-td-dur  { white-space: nowrap; color: #64748b; }
     .pcf-fs-td-html { color: #334155; }
     .pcf-fs-td-html * { color: inherit; }
-    .pcf-fs-td-btn  { text-align: center; }
-    .pcf-fs-edit-btn--inline {
-        background: rgba(99,102,241,.10); border: 1px solid rgba(99,102,241,.3);
-        border-radius: 5px; color: #4f46e5;
-        width: 28px; height: 28px; min-height: 28px;
-        display: inline-flex; align-items: center; justify-content: center;
-        cursor: pointer; font-size: .82rem; transition: background .12s;
+    .pcf-fs-td-btn  { text-align: center; padding: 6px 8px !important; }
+    .pcf-fs-action-group {
+        display: inline-flex; gap: 6px; align-items: center; justify-content: center;
     }
-    .pcf-fs-edit-btn--inline:hover { background: rgba(99,102,241,.20); }
+    .pcf-fs-action-btn {
+        position: relative;
+        width: 32px; height: 32px;
+        display: inline-flex; align-items: center; justify-content: center;
+        border: none; border-radius: 8px;
+        color: #fff; font-size: .95rem;
+        cursor: pointer;
+        box-shadow: 0 2px 6px rgba(15,23,42,.10);
+        transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
+    }
+    .pcf-fs-action-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 6px 14px rgba(15,23,42,.20);
+        filter: brightness(1.08);
+    }
+    .pcf-fs-action-btn:active {
+        transform: translateY(0);
+        box-shadow: 0 1px 3px rgba(15,23,42,.15);
+        filter: brightness(.95);
+    }
+    .pcf-fs-action-edit {
+        background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+    }
+    .pcf-fs-action-edit:hover {
+        background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+    }
+    .pcf-fs-action-delete {
+        background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%);
+    }
+    .pcf-fs-action-delete:hover {
+        background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
+    }
+    @@media (max-width: 480px) {
+        .pcf-fs-action-group { flex-direction: column; gap: 4px; }
+        .pcf-fs-action-btn { width: 30px; height: 30px; }
+    }
+
     /* ── FS cell-edit popup ── */
     .pcf-fs-edit-modal {
         background: #1e293b; border: 1px solid #334155; border-radius: 10px;
-        padding: 16px; width: 480px; max-width: 96vw;
+        padding: 16px; width: 520px; max-width: 96vw;
         box-shadow: 0 8px 32px rgba(0,0,0,.6);
     }
     .pcf-fs-edit-title {
         font-size: .88rem; font-weight: 700; color: #e2e8f0;
         margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid #334155;
+    }
+    .pcf-fs-edit-meta {
+        display: flex; align-items: center; flex-wrap: wrap;
+        gap: 6px; margin-bottom: 10px;
+    }
+    .pcf-fs-edit-meta-lbl {
+        font-size: .78rem; font-weight: 600; color: #cbd5e1;
+        margin: 0; white-space: nowrap;
+    }
+    .pcf-fs-edit-meta-input {
+        background: #0f172a; border: 1px solid #475569;
+        color: #e2e8f0; border-radius: 6px;
+        padding: 5px 8px; font-size: 16px;
+        line-height: 1.2; height: 32px;
+        max-width: 150px;
+    }
+    .pcf-fs-edit-meta-input.arf-time-input { width: 90px; }
+    .pcf-fs-edit-meta-input:focus {
+        outline: none; border-color: #6366f1;
+        box-shadow: 0 0 0 2px rgba(99,102,241,.25);
     }
     .pcf-fs-save-row {
         display: flex; gap: 6px; justify-content: flex-end;
@@ -3346,6 +3477,108 @@
     .pcf-fs-edit-modal .ql-toolbar { background: #f1f5f9; border-radius: 4px 4px 0 0; }
     .pcf-fs-edit-modal .ql-container { font-size: 13px; }
     .pcf-fs-edit-modal .ql-editor { color: #1e293b; background: #fff; min-height: 80px; }
+
+    /* ── FS Delete confirmation modal ── */
+    .pcf-fs-del-backdrop { z-index: 10030 !important; }
+    .pcf-fs-del-modal {
+        background: #ffffff; border-radius: 16px;
+        width: min(440px, 96vw); padding: 24px 22px 18px;
+        box-shadow: 0 24px 60px rgba(0,0,0,.45);
+        color: #1e293b; text-align: center;
+        animation: pcf-ctx-pop .22s ease-out;
+        position: relative;
+    }
+    .pcf-fs-del-icon-wrap {
+        position: relative; width: 72px; height: 72px;
+        margin: 0 auto 14px;
+    }
+    .pcf-fs-del-icon-ring {
+        position: absolute; inset: 0; border-radius: 50%;
+        background: radial-gradient(circle, rgba(239,68,68,.22) 0%, rgba(239,68,68,0) 70%);
+        animation: pcf-fs-del-pulse 1.6s ease-in-out infinite;
+    }
+    @@keyframes pcf-fs-del-pulse {
+        0%,100% { transform: scale(1); opacity: 1; }
+        50%     { transform: scale(1.15); opacity: .55; }
+    }
+    .pcf-fs-del-icon {
+        position: absolute; inset: 0;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 44px;
+        background: linear-gradient(135deg, #ef4444, #b91c1c);
+        -webkit-background-clip: text; background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+    .pcf-fs-del-title {
+        font-size: 1.3rem; font-weight: 800;
+        color: #b91c1c; letter-spacing: .04em;
+        margin-bottom: 6px;
+    }
+    .pcf-fs-del-sub {
+        font-size: .85rem; color: #475569; font-weight: 600;
+        margin-bottom: 4px;
+    }
+    .pcf-fs-del-sub-dim { color: #94a3b8; font-weight: 400; }
+    .pcf-fs-del-preview {
+        font-size: .78rem; color: #64748b; font-style: italic;
+        margin: 6px 0 12px; padding: 6px 10px;
+        background: #f8fafc; border-radius: 6px;
+        border-left: 3px solid #ef4444;
+        text-align: left; line-height: 1.35;
+    }
+    .pcf-fs-del-warn {
+        font-size: .82rem; color: #475569;
+        margin-bottom: 14px; line-height: 1.45;
+    }
+    .pcf-fs-del-warn strong { color: #b91c1c; }
+    .pcf-fs-del-confirm-row {
+        text-align: left; margin-bottom: 14px;
+    }
+    .pcf-fs-del-confirm-lbl {
+        display: block; font-size: .78rem; font-weight: 600;
+        color: #475569; margin-bottom: 4px;
+    }
+    .pcf-fs-del-confirm-lbl code {
+        background: #fef2f2; color: #b91c1c;
+        padding: 1px 6px; border-radius: 4px;
+        font-size: .82rem; font-weight: 700;
+    }
+    .pcf-fs-del-confirm-input {
+        width: 100%; font-size: 16px;
+        padding: 8px 10px; border-radius: 8px;
+        border: 2px solid #e2e8f0; background: #fff;
+        color: #1e293b;
+        transition: border-color .15s, box-shadow .15s;
+    }
+    .pcf-fs-del-confirm-input:focus {
+        outline: none; border-color: #ef4444;
+        box-shadow: 0 0 0 3px rgba(239,68,68,.15);
+    }
+    .pcf-fs-del-actions {
+        display: flex; gap: 8px; justify-content: flex-end;
+        align-items: center;
+    }
+    .pcf-fs-del-confirm-btn {
+        display: inline-flex; align-items: center;
+        padding: 7px 16px; border: none; border-radius: 8px;
+        background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%);
+        color: #fff; font-weight: 700; font-size: .85rem;
+        cursor: pointer; min-height: 36px;
+        box-shadow: 0 4px 12px rgba(185,28,28,.30);
+        transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
+    }
+    .pcf-fs-del-confirm-btn:hover:not(:disabled) {
+        transform: translateY(-1px);
+        box-shadow: 0 8px 18px rgba(185,28,28,.40);
+        filter: brightness(1.06);
+    }
+    .pcf-fs-del-confirm-btn:active:not(:disabled) {
+        transform: translateY(0);
+    }
+    .pcf-fs-del-confirm-btn:disabled {
+        opacity: .45; cursor: not-allowed; filter: grayscale(.4);
+        box-shadow: none;
+    }
 
     .pcf-move-folder {
         display: flex; align-items: center; gap: 6px;
@@ -4313,6 +4546,14 @@
     bool   _showFsEditModal;
     List<DashboardService.SessionSummaryEditInfo> _fsEntries = new();
     int?   _fsEditingId;
+    DateOnly _fsEditDate;
+    string   _fsEditDuration = "";
+
+    // Delete-confirm state for the per-row Delete button (requires typing "Delete")
+    bool    _showFsDeleteConfirm;
+    bool    _fsDeleteBusy;
+    string  _fsDeleteTypedText = "";
+    DashboardService.SessionSummaryEditInfo? _fsDeleteEntry;
 
     // Computed initial width for the Session Name column based on longest entry
     int FsNameColWidth => _fsEntries.Count == 0 ? 120
@@ -5235,7 +5476,7 @@
                     if (FolderSvc.TryOverwriteArfPdf(PcId, sessionFileName, pdfBytes, Solo))
                     {
                         // Reload any pane that currently shows arf.pdf
-                        var arfFileName = $"{Path.GetFileNameWithoutExtension(sessionFileName)}_att_arf.pdf";
+                        var arfFileName = $"{FolderService.GetSessionStem(sessionFileName)}_att_arf.pdf";
                         for (int i = 0; i < _paneCount; i++)
                         {
                             var pf = _panes[i].File;
@@ -5271,6 +5512,9 @@
         _showFsModal = false;
         _showFsEditModal = false;
         _fsEditingId = null;
+        _showFsDeleteConfirm = false;
+        _fsDeleteEntry = null;
+        _fsDeleteTypedText = "";
 
         // Reload any pane showing the Folder Summary so edits are visible (two-phase)
         for (int i = 0; i < _paneCount; i++)
@@ -5331,11 +5575,19 @@
     async Task FsStartEdit(int summaryId)
     {
         _fsEditingId = summaryId;
+        var entry = _fsEntries.FirstOrDefault(e => e.SummaryId == summaryId);
+        if (entry == null) { _fsEditingId = null; return; }
+        // Pre-populate Date + Duration so the user sees current values, not blanks.
+        // SessionDate is stored as "yyyy-MM-dd" by the SELECT's COALESCE chain.
+        _fsEditDate = DateOnly.TryParseExact(entry.SessionDate, "yyyy-MM-dd",
+                          System.Globalization.CultureInfo.InvariantCulture,
+                          System.Globalization.DateTimeStyles.None, out var d)
+                      ? d
+                      : DateOnly.FromDateTime(DateTime.Today);
+        _fsEditDuration = FsSecsToHMM(entry.LengthSeconds + entry.AdminSeconds);
         _showFsEditModal = true;
         StateHasChanged();
         await Task.Delay(60);
-        var entry = _fsEntries.FirstOrDefault(e => e.SummaryId == summaryId);
-        if (entry == null) return;
         var html = System.Text.Json.JsonSerializer.Serialize(entry.SummaryHtml ?? "");
         await JS.InvokeVoidAsync("eval", $@"
             (function() {{
@@ -5380,23 +5632,70 @@
             })();
         ");
 
-        DashSvc.UpdateFolderSummary(_fsEditingId.Value, html ?? "");
+        // Date + Duration are pre-filled from the entry, so a "Save" always writes a
+        // sensible value. Duration is stored in fs.AdminSeconds; for non-session-linked
+        // FS entries the displayed total equals exactly the user-typed h:mm.
+        var dateStr = _fsEditDate == default
+            ? DateOnly.FromDateTime(DateTime.Today).ToString("yyyy-MM-dd")
+            : _fsEditDate.ToString("yyyy-MM-dd");
+        var totalSecs = ParseHmmToSeconds(_fsEditDuration);
 
-        var idx = _fsEntries.FindIndex(e => e.SummaryId == _fsEditingId.Value);
-        if (idx >= 0) _fsEntries[idx] = _fsEntries[idx] with { SummaryHtml = html };
+        DashSvc.UpdateFolderSummary(_fsEditingId.Value, html ?? "",
+            sessionDate: dateStr, adminSeconds: totalSecs);
+
         _fsEditingId = null;
         _showFsEditModal = false;
 
-        // Reload any open folder summary pane (two-phase)
+        // Reload any open folder summary pane (two-phase) so changes show in the FS PDF
         for (int i = 0; i < _paneCount; i++)
         {
             var f = _panes[i].File; var fn = _panes[i].FileName;
             if (f != null && fn != null && IsFolderSummaryFile(fn, f))
                 await LoadFolderSummaryTwoPhase(f, PaneIds[i]);
         }
-        // Refresh table if modal is open
+        // Refresh the table so date/duration columns reflect the new values
         if (_showFsModal)
             _fsEntries = DashSvc.GetSessionSummariesForPcEdit(PcId, Solo);
+    }
+
+    // Parse "H:MM" or digit-only ("5", "30", "130", "1230") into total seconds.
+    // Mirrors FormatArfTime semantics so the global arf-time-input auto-format isn't required
+    // for the value to be interpreted correctly (Save before blur was returning 0 otherwise).
+    static int ParseHmmToSeconds(string val)
+    {
+        if (string.IsNullOrWhiteSpace(val)) return 0;
+        var trimmed = val.Trim();
+        int h = 0, m = 0;
+
+        if (trimmed.Contains(':'))
+        {
+            var parts = trimmed.Split(':');
+            if (parts.Length != 2) return 0;
+            if (!int.TryParse(parts[0], out h) || !int.TryParse(parts[1], out m)) return 0;
+        }
+        else
+        {
+            var digits = new string(trimmed.Where(char.IsDigit).ToArray());
+            if (digits.Length == 0) return 0;
+            if (digits.Length <= 2)
+            {
+                m = int.Parse(digits);                  // "5" → 0:05, "30" → 0:30
+            }
+            else if (digits.Length == 3)
+            {
+                h = int.Parse(digits[..1]);             // "130" → 1:30
+                m = int.Parse(digits[1..]);
+            }
+            else
+            {
+                h = int.Parse(digits[..^2]);            // "1230" → 12:30, "12345" → 123:45
+                m = int.Parse(digits[^2..]);
+            }
+        }
+
+        if (h < 0) h = 0;
+        if (m < 0 || m > 59) m = 0;
+        return (h * 60 + m) * 60;
     }
 
     async Task FsCancelEdit()
@@ -5412,6 +5711,53 @@
         ");
         _fsEditingId = null;
         _showFsEditModal = false;
+    }
+
+    // ── Folder Summary entry delete (per-row, type-to-confirm) ────────────────
+    void FsStartDelete(DashboardService.SessionSummaryEditInfo entry)
+    {
+        _fsDeleteEntry = entry;
+        _fsDeleteTypedText = "";
+        _fsDeleteBusy = false;
+        _showFsDeleteConfirm = true;
+    }
+
+    void FsCancelDelete()
+    {
+        _showFsDeleteConfirm = false;
+        _fsDeleteEntry = null;
+        _fsDeleteTypedText = "";
+        _fsDeleteBusy = false;
+    }
+
+    async Task FsConfirmDelete()
+    {
+        if (_fsDeleteEntry == null) return;
+        if (_fsDeleteTypedText != "Delete") return; // safety: button is disabled too
+        _fsDeleteBusy = true;
+        StateHasChanged();
+        try
+        {
+            var deletedId = _fsDeleteEntry.SummaryId;
+            DashSvc.DeleteFolderSummary(deletedId);
+            _fsEntries.RemoveAll(x => x.SummaryId == deletedId);
+
+            _showFsDeleteConfirm = false;
+            _fsDeleteEntry = null;
+            _fsDeleteTypedText = "";
+
+            // Reload any open folder summary pane so the deleted entry vanishes from the FS PDF
+            for (int i = 0; i < _paneCount; i++)
+            {
+                var f = _panes[i].File; var fn = _panes[i].FileName;
+                if (f != null && fn != null && IsFolderSummaryFile(fn, f))
+                    await LoadFolderSummaryTwoPhase(f, PaneIds[i]);
+            }
+        }
+        finally
+        {
+            _fsDeleteBusy = false;
+        }
     }
 
     static string FsFormatDate(string dateStr) =>

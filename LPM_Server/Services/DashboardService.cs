@@ -2873,7 +2873,7 @@ public class DashboardService
         return list;
     }
 
-    public void UpdateFolderSummary(int id, string html)
+    public void UpdateFolderSummary(int id, string html, string? sessionDate = null, int? adminSeconds = null)
     {
         // Sanitize user-supplied HTML (from the Quill rich-text editor) before storing —
         // it is later rendered via MarkupString, so anything not in our allowlist would be
@@ -2887,8 +2887,28 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "UPDATE sess_folder_summary SET SummaryHtml = @html WHERE Id = @id";
+        // COALESCE(@param, col) leaves a column unchanged when the caller passes null —
+        // keeps the simple "html only" callers working while letting newer callers also
+        // update Date/Duration in the same round-trip.
+        cmd.CommandText = @"
+            UPDATE sess_folder_summary
+            SET SummaryHtml  = @html,
+                SessionDate  = COALESCE(@date, SessionDate),
+                AdminSeconds = COALESCE(@admSec, AdminSeconds)
+            WHERE Id = @id";
         cmd.Parameters.AddWithValue("@html", html);
+        cmd.Parameters.AddWithValue("@date", (object?)sessionDate ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@admSec", (object?)adminSeconds ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@id", id);
+        cmd.ExecuteNonQuery();
+    }
+
+    public void DeleteFolderSummary(int id)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM sess_folder_summary WHERE Id = @id";
         cmd.Parameters.AddWithValue("@id", id);
         cmd.ExecuteNonQuery();
     }
@@ -3156,7 +3176,7 @@ public class DashboardService
 
     public string? GetSessionAuditorName(int pcId, string sessionFileName)
     {
-        var name = Path.GetFileNameWithoutExtension(sessionFileName);
+        var name = FolderService.GetSessionStem(sessionFileName);
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
@@ -4721,10 +4741,10 @@ public class DashboardService
                 if (folder == null) continue;
                 var wsPath = Path.Combine(folder, "WorkSheets");
                 if (!Directory.Exists(wsPath)) continue;
-                var nameNoExt = Path.GetFileNameWithoutExtension(sessName);
+                var nameNoExt = FolderService.GetSessionStem(sessName);
                 foreach (var f in Directory.GetFiles(wsPath, "*.pdf"))
                 {
-                    var fn = Path.GetFileNameWithoutExtension(f);
+                    var fn = FolderService.GetSessionStem(Path.GetFileName(f));
                     if (string.Equals(fn, nameNoExt, StringComparison.OrdinalIgnoreCase) ||
                         fn.StartsWith(nameNoExt + "_att_", StringComparison.OrdinalIgnoreCase))
                         files.Add(f);

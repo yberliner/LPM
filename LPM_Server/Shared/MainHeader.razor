@@ -3597,6 +3597,14 @@
                                 <i class="ri-arrow-left-s-line me-1"></i>Change
                             </button>
                         </div>
+                        <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+                            <label class="form-label mb-0" style="font-size:.82rem; color:#64748b; min-width:60px;">
+                                <i class="ri-calendar-line me-1"></i>Date
+                            </label>
+                            <input type="date" class="form-control form-control-sm"
+                                   style="max-width:180px; font-size:16px;"
+                                   @bind="_actSummaryDate" />
+                        </div>
                         <div id="act-summary-editor-wrap">
                             <div id="act-summary-editor"></div>
                         </div>
@@ -9773,6 +9781,8 @@ string _actionPcSearch = "";
     bool   _actSummaryBillUser;
     string _actSummaryBillAdminTime = "";
     string _actSummaryBillError     = "";
+    // User-selectable date for the folder summary (defaults to today each time the modal opens)
+    DateOnly _actSummaryDate = DateOnly.FromDateTime(DateTime.Today);
     List<DashboardService.ApprovedPc> _actionAllPcs = [];   // Open Folder + Write to Folder Summary (AllowAll respected)
 
     // ── File History state ──
@@ -10735,6 +10745,7 @@ string _actionPcSearch = "";
         _actSummaryBillAdminTime  = "";
         _actSummaryBillError      = "";
         _adminTimeConfirmed       = false;
+        _actSummaryDate           = DateOnly.FromDateTime(DateTime.Today);
         _showActionSummary = true;
 
         if (_isSoloUser)
@@ -10858,6 +10869,10 @@ string _actionPcSearch = "";
             return;
         }
         var capturedBillUser = _actSummaryBillUser;
+        // Snapshot user-selected date; fall back to today if somehow cleared (e.g. browser reset).
+        var capturedDate = _actSummaryDate == default
+            ? DateOnly.FromDateTime(DateTime.Today)
+            : _actSummaryDate;
 
         _actionSummaryBusy = true;
         _actionSuccessMsg = "";
@@ -10878,10 +10893,9 @@ string _actionPcSearch = "";
                 // Generate a 1-page "Folder Summary Record" PDF, save to WorkSheets, and create
                 // a billable session row. The session links the FS row so the folder-summary
                 // list display picks up s.AdminSeconds via the JOIN (same trick as the memo flow).
-                var today      = DateOnly.FromDateTime(DateTime.Today);
                 var auditorName = string.IsNullOrWhiteSpace(_logUsername) ? "(unknown)" : _logUsername;
-                var pdfBytes   = PdfSvc.GenerateFsRecordPdf(_actionSummaryPcName, today, auditorName, capturedBillAdminTime, html);
-                var fileName   = $"{today:yyMMdd} FS Record";
+                var pdfBytes   = PdfSvc.GenerateFsRecordPdf(_actionSummaryPcName, capturedDate, auditorName, capturedBillAdminTime, html);
+                var fileName   = $"{capturedDate:yyMMdd} FS Record";
                 var savedName  = await Task.Run(() =>
                     FolderSvc.SaveMemoFile(_actionSummaryPcId, fileName, pdfBytes, _actionSummaryIsSoloFolder));
 
@@ -10889,7 +10903,7 @@ string _actionPcSearch = "";
                     auditorId:       _msgUserId.Value,
                     pcId:            _actionSummaryPcId,
                     name:            savedName,
-                    date:            today,
+                    date:            capturedDate,
                     solo:            _actionSummaryIsSoloFolder,
                     createdByUserId: _currentCoreUserId,
                     adminSeconds:    capturedBillAdminSec,
@@ -10897,7 +10911,9 @@ string _actionPcSearch = "";
                 Console.WriteLine($"[MainHeader] FS Record billed for PC {_actionSummaryPcId} ({_actionSummaryPcName}) — admin={capturedBillAdminTime} sessionId={linkedSessionId} by '{_logUsername}'");
             }
 
-            DashSvc.AddFolderSummary(linkedSessionId, _actionSummaryPcId, _actionSummaryIsSoloFolder ? null : _msgUserId.Value, html);
+            DashSvc.AddFolderSummary(linkedSessionId, _actionSummaryPcId,
+                _actionSummaryIsSoloFolder ? null : _msgUserId.Value, html,
+                folderSummaryDate: capturedDate.ToString("yyyy-MM-dd"));
             DashSvc.NotifyDataChanged();
             Console.WriteLine($"[MainHeader] Folder summary saved for PC {_actionSummaryPcId} by '{_logUsername}' (billed={capturedBillUser})");
             _actionSummaryBusy = false;
