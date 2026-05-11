@@ -2474,6 +2474,55 @@ public class PdfService
         }).GeneratePdf();
     }
 
+    public byte[] GenerateNoShowPdf(string pcName, DateOnly date, string auditorName, string adminTimeHHmm, string notesPlainText)
+    {
+        QuestPDF.Settings.License = LicenseType.Community;
+        return Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4);
+                page.Margin(30);
+                page.DefaultTextStyle(x => x.FontSize(12).FontColor("#1a1a1a").FontFamily("DejaVu Sans", "Noto Sans Hebrew"));
+                page.Content().Column(col =>
+                {
+                    col.Spacing(8);
+
+                    col.Item().Text("PC No-Show").FontSize(22).Bold().FontColor("#b91c1c");
+                    col.Item().Text($"PC: {pcName}").FontSize(12).FontColor("#475569");
+
+                    col.Item().PaddingTop(6).Border(1).BorderColor("#cbd5e1").Padding(8).Row(row =>
+                    {
+                        row.RelativeItem().Column(c =>
+                        {
+                            c.Item().Text("Date").FontSize(9).FontColor("#64748b");
+                            c.Item().Text(date.ToString("yyyy-MM-dd")).FontSize(12).Bold();
+                        });
+                        row.RelativeItem().Column(c =>
+                        {
+                            c.Item().Text("Auditor").FontSize(9).FontColor("#64748b");
+                            c.Item().Text(string.IsNullOrWhiteSpace(auditorName) ? "—" : auditorName).FontSize(12).Bold();
+                        });
+                        row.RelativeItem().Column(c =>
+                        {
+                            c.Item().Text("Admin time billed").FontSize(9).FontColor("#64748b");
+                            c.Item().Text(string.IsNullOrWhiteSpace(adminTimeHHmm) ? "—" : adminTimeHHmm).FontSize(12).Bold().FontColor("#0f766e");
+                        });
+                    });
+
+                    col.Item().PaddingTop(12).Text("Notes").FontSize(10).FontColor("#64748b");
+                    col.Item().PaddingTop(2).Border(1).BorderColor("#e2e8f0").Padding(10).Column(body =>
+                    {
+                        var text = notesPlainText ?? "";
+                        var lines = text.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
+                        foreach (var line in lines)
+                            body.Item().Text(line.Length == 0 ? " " : line).FontSize(12);
+                    });
+                });
+            });
+        }).GeneratePdf();
+    }
+
     private static List<(string Text, PdfSharpCore.Drawing.XColor? Color)> ArfSummaryLines(string html)
     {
         var result = new List<(string, PdfSharpCore.Drawing.XColor?)>();

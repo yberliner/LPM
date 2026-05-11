@@ -446,6 +446,15 @@
                                             <i class="ri-sticky-note-line" style="color:#ec4899;"></i>@LS.T("actions.addMemo")
                                         </a>
                                     </li>
+                                    @if (!_isSoloUser)
+                                    {
+                                    <li>
+                                        <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
+                                           @onclick="OpenNoShowWizard">
+                                            <i class="ri-user-unfollow-line" style="color:#dc2626;"></i>PC No-Show
+                                        </a>
+                                    </li>
+                                    }
                                     @if (!_isSoloUser && !_isRestrictedAud)
                                     {
                                     <li>
@@ -3645,6 +3654,184 @@
                                 disabled="@(_actionSummaryBusy || (_actSummaryBillUser && string.IsNullOrWhiteSpace(_actSummaryBillAdminTime)))"
                                 @onclick="SubmitActionSummary">
                             @if (_actionSummaryBusy)
+                            {
+                                <span class="spinner-border spinner-border-sm"></span>
+                            }
+                            else
+                            {
+                                <i class="ri-save-line"></i>
+                            }
+                            Save
+                        </button>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@* ── PC No-Show Modal ── *@
+@if (_showNoShow)
+{
+    <div class="modal show d-block" tabindex="-1"
+         style="background:rgba(0,0,0,.45); z-index:9999;"
+         @onclick="CloseNoShow">
+        <div class="modal-dialog modal-dialog-centered modal-md"
+             @onclick:stopPropagation="true">
+            <div class="modal-content" style="border:none; border-radius:16px; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,.25); background:#fff !important; color:#111827 !important;">
+                <div class="modal-header py-2" style="background:linear-gradient(135deg,#dc2626,#f97316); border-bottom:none;">
+                    <h5 class="modal-title fs-15 text-white d-flex align-items-center gap-2">
+                        <i class="ri-user-unfollow-line"></i>PC No-Show
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white"
+                            @onclick="CloseNoShow"></button>
+                </div>
+                <div class="modal-body" style="background:#fff !important;">
+                    @if (!string.IsNullOrEmpty(_noShowPermMsg))
+                    {
+                        <div class="alert alert-warning py-2 mb-3" style="font-size:.82rem;">
+                            <i class="ri-lock-line me-1"></i>@_noShowPermMsg
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(_noShowError))
+                    {
+                        <div class="alert alert-danger py-2 mb-3" style="font-size:.82rem;">
+                            <i class="ri-error-warning-line me-1"></i>@_noShowError
+                        </div>
+                    }
+
+                    @if (_noShowStep == 0)
+                    {
+                        <div class="act-success-screen">
+                            <div class="act-success-ring"></div>
+                            <div class="act-success-icon">
+                                <i class="ri-check-line"></i>
+                            </div>
+                            <div class="act-success-title">No-Show Recorded!</div>
+                            <div class="act-success-sub">
+                                Added to <strong>@_noShowPcName</strong>'s folder
+                            </div>
+                            <div class="act-success-sparkles">
+                                <span class="act-spark" style="--d:0;--x:-40px;--y:-30px;"></span>
+                                <span class="act-spark" style="--d:1;--x:45px;--y:-25px;"></span>
+                                <span class="act-spark" style="--d:2;--x:-35px;--y:25px;"></span>
+                                <span class="act-spark" style="--d:3;--x:40px;--y:30px;"></span>
+                                <span class="act-spark" style="--d:4;--x:0px;--y:-45px;"></span>
+                                <span class="act-spark" style="--d:5;--x:-50px;--y:0px;"></span>
+                            </div>
+                        </div>
+                    }
+                    else if (_noShowStep == 1)
+                    {
+                        @if (_actionAllPcs.Count == 0)
+                        {
+                            <div class="act-noperm-screen">
+                                <div class="act-noperm-icon-wrap">
+                                    <div class="act-noperm-ring"></div>
+                                    <i class="ri-lock-line act-noperm-icon"></i>
+                                </div>
+                                <div class="act-noperm-title">@LS.T("actions.noFoldersAssigned")</div>
+                                <div class="act-noperm-sub">You haven't been assigned to any PC folders yet.<br>Contact your administrator to request access.</div>
+                            </div>
+                        }
+                        else
+                        {
+                            <label class="form-label" style="font-size:.82rem; color:#64748b;">Select PC</label>
+                            <input type="text" class="form-control form-control-sm mb-2"
+                                   placeholder="@LS.T("actions.searchPcs")"
+                                   style="border-color:#cbd5e1; background:#fff !important; color:#111827 !important;"
+                                   @bind="_noShowPcSearch" @bind:event="oninput" />
+                            <div style="max-height:280px; overflow-y:auto;">
+                                @foreach (var pc in _actionAllPcs.Where(p => string.IsNullOrEmpty(_noShowPcSearch) || p.FullName.Contains(_noShowPcSearch, StringComparison.OrdinalIgnoreCase)))
+                                {
+                                    var thisPc = pc;
+                                    <div class="act-pc-item" @onclick="() => OnNoShowPcSelected(thisPc.PcId, thisPc.FullName)">
+                                        <i class="ri-user-line" style="color:#dc2626; opacity:.7;"></i>
+                                        <span>@thisPc.FullName</span>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    }
+                    else
+                    {
+                        <div class="d-flex align-items-center gap-2 mb-3 px-2 py-2"
+                             style="background:#fef2f2; border-radius:8px; border:1px solid #fecaca;">
+                            <i class="ri-user-line" style="color:#dc2626;"></i>
+                            <span style="font-weight:700; font-size:.92rem; color:#1e293b;">@_noShowPcName</span>
+                            <button class="btn btn-sm ms-auto p-0" style="color:#64748b; font-size:.8rem;"
+                                    @onclick="() => { _noShowStep = 1; _noShowPcSearch = string.Empty; _noShowError = string.Empty; }">
+                                <i class="ri-arrow-left-s-line me-1"></i>Change
+                            </button>
+                        </div>
+                        <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+                            <label class="form-label mb-0" style="font-size:.82rem; color:#64748b; min-width:60px;">
+                                <i class="ri-calendar-line me-1"></i>Date
+                            </label>
+                            <input type="date" class="form-control form-control-sm"
+                                   style="max-width:180px; font-size:16px;"
+                                   @bind="_noShowDate" />
+                        </div>
+                        <div class="d-flex align-items-center gap-2 mb-2 flex-wrap">
+                            <label class="form-label mb-0" style="font-size:.82rem; color:#64748b; min-width:60px;">
+                                <i class="ri-user-line me-1"></i>Auditor
+                            </label>
+                            <select class="form-select form-select-sm" style="max-width:260px; font-size:16px;"
+                                    @bind="_noShowAuditorId">
+                                <option value="0">— Select auditor —</option>
+                                @foreach (var s in _noShowAuditorList)
+                                {
+                                    <option value="@s.PersonId">@s.FullName</option>
+                                }
+                            </select>
+                        </div>
+                        <label class="form-label mb-1" style="font-size:.82rem; color:#64748b;">
+                            <i class="ri-edit-line me-1"></i>Notes <span style="color:#dc2626;">*</span>
+                        </label>
+                        <textarea class="form-control form-control-sm"
+                                  style="font-size:16px;"
+                                  rows="5"
+                                  placeholder="Describe the no-show (required)..."
+                                  @bind="_noShowNotes" @bind:event="oninput"></textarea>
+
+                        <button type="button"
+                                class="memo-also-summary-toggle d-flex align-items-center gap-2 mt-3"
+                                @onclick="ToggleNoShowBill">
+                            <span class="memo-also-summary-box @(_noShowBillUser ? "memo-also-summary-box-on" : "")">
+                                @if (_noShowBillUser)
+                                {
+                                    <i class="ri-check-line"></i>
+                                }
+                            </span>
+                            <span class="memo-also-summary-text">
+                                <i class="ri-money-dollar-circle-line me-1" style="color:#10b981;"></i>Bill the user
+                            </span>
+                        </button>
+                        @if (_noShowBillUser)
+                        {
+                            <div class="d-flex align-items-center gap-2 mt-2">
+                                <AdminTimeInput @bind-Value="_noShowBillAdminTime" />
+                            </div>
+                            @if (!string.IsNullOrEmpty(_noShowBillError))
+                            {
+                                <div class="alert alert-warning d-flex align-items-center gap-2 mt-2 mb-0 py-2" style="font-size:.82rem;">
+                                    <i class="ri-error-warning-line"></i>@_noShowBillError
+                                </div>
+                            }
+                        }
+                    }
+                </div>
+                @if (_noShowStep == 2)
+                {
+                    <div class="modal-footer py-2" style="border-color:#e2e8f0; background:#fff !important;">
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="CloseNoShow">@LS.T("common.cancel")</button>
+                        <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
+                                disabled="@(_noShowBusy
+                                            || _noShowAuditorId <= 0
+                                            || string.IsNullOrWhiteSpace(_noShowNotes)
+                                            || (_noShowBillUser && string.IsNullOrWhiteSpace(_noShowBillAdminTime)))"
+                                @onclick="SubmitNoShow">
+                            @if (_noShowBusy)
                             {
                                 <span class="spinner-border spinner-border-sm"></span>
                             }
@@ -9790,6 +9977,23 @@ string _actionPcSearch = "";
     DateOnly _actSummaryDate = DateOnly.FromDateTime(DateTime.Today);
     List<DashboardService.ApprovedPc> _actionAllPcs = [];   // Open Folder + Write to Folder Summary (AllowAll respected)
 
+    // ── PC No-Show state ──
+    bool     _showNoShow;
+    int      _noShowStep = 1;        // 0 = success, 1 = pick PC, 2 = form
+    int      _noShowPcId;
+    string   _noShowPcName = "";
+    string   _noShowPcSearch = "";
+    DateOnly _noShowDate = DateOnly.FromDateTime(DateTime.Today);
+    string   _noShowNotes = "";
+    int      _noShowAuditorId;
+    List<(int PersonId, string FullName)> _noShowAuditorList = new();
+    bool     _noShowBillUser;
+    string   _noShowBillAdminTime = "";
+    string   _noShowBillError = "";
+    bool     _noShowBusy;
+    string   _noShowError = "";
+    string   _noShowPermMsg = "";
+
     // ── File History state ──
     bool _showFileHistory;
     string _fhPcSearch = "";
@@ -10943,6 +11147,206 @@ string _actionPcSearch = "";
         // Clean up Quill instance
         _ = JSRuntime.InvokeVoidAsync("eval",
             "if(window._actSumQuill) { try { window._actSumQuill = null; } catch(e){} }");
+    }
+
+    // ── PC No-Show methods ──────────────────────────────────────
+    void OpenNoShowWizard()
+    {
+        if (!_msgUserId.HasValue) return;
+        if (_isSoloUser) return; // hidden in UI; defensive
+        LoadAllPcs();
+        _noShowAuditorList   = DashSvc.GetAuditorCsStaffList();
+        _noShowStep          = 1;
+        _noShowPcId          = 0;
+        _noShowPcName        = "";
+        _noShowPcSearch      = "";
+        _noShowDate          = DateOnly.FromDateTime(DateTime.Today);
+        _noShowNotes         = "";
+        _noShowAuditorId     = _noShowAuditorList.Any(a => a.PersonId == _msgUserId.Value)
+                                   ? _msgUserId.Value : 0;
+        _noShowBillUser      = false;
+        _noShowBillAdminTime = "";
+        _noShowBillError     = "";
+        _noShowBusy          = false;
+        _noShowError         = "";
+        _noShowPermMsg       = "";
+        _adminTimeConfirmed  = false; // shared >20-min confirm flag
+        _showNoShow          = true;
+    }
+
+    void CloseNoShow()
+    {
+        _showNoShow = false;
+        _noShowStep = 1;
+    }
+
+    void OnNoShowPcSelected(int pcId, string pcName)
+    {
+        if (!_msgUserId.HasValue) return;
+        var hasPermission = DashSvc.CanAccessPcFolder(_msgUserId.Value, pcId, _logUsername);
+        if (!hasPermission)
+        {
+            DashSvc.CheckOrRequestPermission(_msgUserId.Value, pcId, _logUsername);
+            _noShowPermMsg = "You do not have permissions for this PC. An approval request was sent to admin.";
+            Console.WriteLine($"[MainHeader] PC No-Show DENIED + permission requested: PC='{pcName}' (id={pcId}) user='{_logUsername}'");
+            return;
+        }
+        _noShowPermMsg = "";
+        _noShowPcId    = pcId;
+        _noShowPcName  = pcName;
+        _noShowStep    = 2;
+    }
+
+    void ToggleNoShowBill()
+    {
+        _noShowBillUser  = !_noShowBillUser;
+        _noShowBillError = "";
+    }
+
+    /// <summary>
+    /// Validate and consume the "Bill the user" admin time for the No-Show submit.
+    /// Mirrors <see cref="TryConsumeFsBillAdminTime"/> against No-Show-specific fields.
+    /// Returns false if validation failed or the >20-min confirm modal was raised — caller aborts.
+    /// </summary>
+    bool TryConsumeNoShowBillAdminTime(Func<Task> onConfirmed, out int adminSec, out string formattedAdminTime)
+    {
+        adminSec = 0;
+        formattedAdminTime = "";
+        _noShowBillError = "";
+        if (!_noShowBillUser) return true;
+
+        if (string.IsNullOrWhiteSpace(_noShowBillAdminTime))
+        {
+            _noShowBillError = "Please enter an admin time (h:mm).";
+            return false;
+        }
+        var formatted = FormatArfTime(_noShowBillAdminTime.Trim());
+        if (string.IsNullOrEmpty(formatted))
+        {
+            _noShowBillError = "Please enter a valid admin time (h:mm).";
+            return false;
+        }
+        var mins = ArfTimeToMinutes(formatted);
+        if (mins <= 0)
+        {
+            _noShowBillError = "Admin time must be greater than 0:00.";
+            return false;
+        }
+        if (mins > 20 && !_adminTimeConfirmed)
+        {
+            _pendingAdminTime = formatted;
+            _adminTimeConfirmContinuation = onConfirmed;
+            _showAdminTimeConfirm = true;
+            return false;
+        }
+        _adminTimeConfirmed = false;
+        _adminTimeConfirmContinuation = null;
+        formattedAdminTime = formatted;
+        adminSec = mins * 60;
+        return true;
+    }
+
+    async Task SubmitNoShow()
+    {
+        if (!_msgUserId.HasValue || _noShowPcId <= 0) return;
+        if (_noShowAuditorId <= 0)
+        {
+            _noShowError = "Please select an auditor.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(_noShowNotes))
+        {
+            _noShowError = "Please enter notes describing the no-show.";
+            return;
+        }
+
+        if (!TryConsumeNoShowBillAdminTime(SubmitNoShow, out var capturedAdminSec, out var capturedAdminTime))
+        {
+            StateHasChanged();
+            return;
+        }
+        var capturedBill     = _noShowBillUser;
+        var capturedNotes    = _noShowNotes.Trim();
+        var capturedPcId     = _noShowPcId;
+        var capturedPcName   = _noShowPcName;
+        var capturedAuditor  = _noShowAuditorId;
+        var capturedDate     = _noShowDate == default
+            ? DateOnly.FromDateTime(DateTime.Today)
+            : _noShowDate;
+        var auditorName = _noShowAuditorList
+            .Where(a => a.PersonId == capturedAuditor)
+            .Select(a => a.FullName)
+            .FirstOrDefault() ?? "";
+
+        _noShowBusy  = true;
+        _noShowError = "";
+        StateHasChanged();
+        try
+        {
+            await Task.Run(() =>
+            {
+                // Ensure PC folder + WorkSheets exists (matches SmSaveAdd defensive setup).
+                var pcDir = FolderSvc.GetOrCreatePcFolderPath(capturedPcId);
+                Directory.CreateDirectory(Path.Combine(pcDir, "WorkSheets"));
+
+                var pdfBytes = PdfSvc.GenerateNoShowPdf(
+                    capturedPcName, capturedDate, auditorName, capturedAdminTime, capturedNotes);
+
+                var datePrefix = capturedDate.ToString("yyMMdd");
+                string sessionName = "";
+                // Try the bare name first, then suffixed copies on collision.
+                var baseCandidate = $"{datePrefix} PC No-Show";
+                if (!FolderSvc.SectionFileExistsAtPath(capturedPcId, "WorkSheets", $"{baseCandidate}.pdf", solo: false)
+                    && FolderSvc.SaveSectionFileToPath(capturedPcId, "WorkSheets", $"{baseCandidate}.pdf", pdfBytes, solo: false))
+                {
+                    sessionName = baseCandidate;
+                }
+                else
+                {
+                    for (int i = 2; i <= 100; i++)
+                    {
+                        var candidate = $"{datePrefix} PC No-Show {i}";
+                        if (FolderSvc.SectionFileExistsAtPath(capturedPcId, "WorkSheets", $"{candidate}.pdf", solo: false))
+                            continue;
+                        if (FolderSvc.SaveSectionFileToPath(capturedPcId, "WorkSheets", $"{candidate}.pdf", pdfBytes, solo: false))
+                        {
+                            sessionName = candidate;
+                            break;
+                        }
+                    }
+                }
+                if (string.IsNullOrEmpty(sessionName))
+                    throw new InvalidOperationException("Could not save No-Show PDF (100 name collisions or folder missing).");
+
+                DashSvc.AddSessionFromManager(
+                    pcId:            capturedPcId,
+                    auditorId:       capturedAuditor,
+                    csId:            -1,
+                    sessionDate:     capturedDate.ToString("yyyy-MM-dd"),
+                    lengthSec:       0,
+                    adminSec:        capturedBill ? capturedAdminSec : 0,
+                    isFree:          !capturedBill,
+                    notes:           capturedNotes,
+                    createdByUserId: _currentCoreUserId,
+                    name:            sessionName);
+                Console.WriteLine($"[MainHeader] PC No-Show recorded for PC {capturedPcId} ({capturedPcName}) — auditor={auditorName} bill={capturedBill} admin={capturedAdminTime} by '{_logUsername}'");
+            });
+
+            DashSvc.NotifyDataChanged();
+            _noShowBusy = false;
+            _noShowStep = 0; // success animation
+            StateHasChanged();
+            await Task.Delay(1500);
+            CloseNoShow();
+        }
+        catch (Exception ex)
+        {
+            _noShowError = $"Failed: {ex.Message}";
+        }
+        finally
+        {
+            _noShowBusy = false;
+        }
     }
 
     // ── Add PC ──
