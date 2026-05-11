@@ -323,10 +323,10 @@
                     <div class="components-reconnect-rejected" style="display:none;">
                         <div style="font-size:2rem;margin-bottom:12px;">🔄</div>
                         <div style="font-size:1.1rem;font-weight:700;margin-bottom:6px;">Session expired</div>
-                        <div style="font-size:.82rem;color:#94a3b8;margin-bottom:16px;">Your session has ended. Please reload.</div>
+                        <div style="font-size:.82rem;color:#94a3b8;margin-bottom:16px;">Refreshing your data&hellip;</div>
                         <button onclick="location.reload()" style="background:linear-gradient(135deg,#3b82f6,#2563eb);
                             color:#fff;border:none;padding:8px 24px;border-radius:8px;font-weight:600;cursor:pointer;">
-                            Reload Page
+                            Reload Now
                         </button>
                     </div>
                 </div>
@@ -413,6 +413,13 @@
                                     if (rejectedCount >= 3) {
                                         cleanup();
                                         showState('rejected');
+                                        // Server is reachable but our circuit is gone (typical for a
+                                        // tab that's been disconnected for hours). A full page reload
+                                        // gets a fresh circuit + fresh data. Brief delay so the user
+                                        // sees what happened; the "Reload Now" button is an immediate escape.
+                                        setTimeout(function() {
+                                            try { location.reload(); } catch (e) { /* ignore — page is unloading */ }
+                                        }, 2000);
                                         return;
                                     }
                                     window._lpmReconnectTimer = setTimeout(tryReconnect, 3000);
