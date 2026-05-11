@@ -342,7 +342,12 @@ app.Use(async (context, next) =>
     }
     await next();
 });
-app.UseStaticFiles();
+// Register .bcmap (PDF.js binary cmap files) — unknown extensions are 404'd by default.
+{
+    var ctp = new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider();
+    ctp.Mappings[".bcmap"] = "application/octet-stream";
+    app.UseStaticFiles(new StaticFileOptions { ContentTypeProvider = ctp });
+}
 
 app.UseRouting();
 app.UseAuthentication();

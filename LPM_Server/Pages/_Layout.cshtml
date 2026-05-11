@@ -591,15 +591,19 @@
           };
         </script>
 
-        <!-- PDF.js for PC Folder viewer -->
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+        <!-- PDF.js for PC Folder viewer (self-hosted: CSP worker-src='self' blocks cross-origin workers,
+             which was forcing PDF.js into a fake-worker fallback that crashes on old/slow clients) -->
+        <script src="/assets/libs/pdfjs/pdf.min.js?v=3.11.174"
+                onerror="window._pdfJsFailedToLoad=true;console.error('[pdfjs] script failed to load');"></script>
         <script>
             if (window['pdfjs-dist/build/pdf']) {
                 window['pdfjs-dist/build/pdf'].GlobalWorkerOptions.workerSrc =
-                    'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+                    '/assets/libs/pdfjs/pdf.worker.min.js?v=3.11.174';
+            } else {
+                window._pdfJsFailedToLoad = true;
             }
         </script>
-        <script src="js/pcf-viewer.js?v=49"></script>
+        <script src="js/pcf-viewer.js?v=50"></script>
         <script>
             window.pcfSaveAnnotatedPdf = async function(pcId, filePath, pagesJson) {
                 const pages = JSON.parse(pagesJson);

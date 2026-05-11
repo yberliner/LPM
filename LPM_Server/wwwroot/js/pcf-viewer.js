@@ -238,7 +238,44 @@ window.pcfViewer = {
         viewer.classList.remove('pcf-dual-mode');
 
         const pdfjsLib = window['pdfjs-dist/build/pdf'];
-        if (!pdfjsLib) { viewer.style.visibility = ''; viewer.innerHTML = '<div style="color:#fff;padding:40px;">PDF.js not loaded</div>'; return; }
+        if (!pdfjsLib) {
+            viewer.style.visibility = '';
+            viewer.innerHTML = '';
+            const box = document.createElement('div');
+            box.style.cssText = 'color:#fff;padding:40px;text-align:center;line-height:1.6;';
+            const head = document.createElement('div');
+            head.style.cssText = 'font-weight:700;font-size:1rem;margin-bottom:6px;';
+            head.textContent = 'PDF viewer failed to load';
+            const sub = document.createElement('div');
+            sub.style.cssText = 'font-size:.85rem;color:#cbd5e1;margin-bottom:14px;';
+            sub.textContent = 'Try refreshing the page. If the problem persists, you can download the file directly.';
+            const dl = document.createElement('a');
+            dl.href = url;
+            dl.target = '_blank';
+            dl.rel = 'noopener';
+            dl.style.cssText = 'display:inline-block;padding:8px 18px;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;';
+            dl.textContent = 'Download file';
+            box.appendChild(head); box.appendChild(sub); box.appendChild(dl);
+            viewer.appendChild(box);
+            // Best-effort server-side report so we know which clients are hitting this.
+            try {
+                fetch('/api/client-error', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    keepalive: true,
+                    body: JSON.stringify({
+                        kind: 'pcf-pdfjs-missing',
+                        message: 'window["pdfjs-dist/build/pdf"] undefined when loadPdf called',
+                        url: location.href,
+                        fileUrl: url,
+                        userAgent: navigator.userAgent,
+                        scriptFailed: !!window._pdfJsFailedToLoad,
+                        when: new Date().toISOString()
+                    })
+                }).catch(function(){});
+            } catch(_) {}
+            return;
+        }
 
         // Cancel any previous in-flight fetch for this pane so it cannot race with
         // the new load and leave the pane in a stuck empty state.
@@ -249,8 +286,8 @@ window.pcfViewer = {
 
         let pdfDoc;
         const docSource = prefetchedData
-            ? { data: prefetchedData, cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/', cMapPacked: true }
-            : { url, withCredentials: true, cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/', cMapPacked: true };
+            ? { data: prefetchedData, cMapUrl: '/assets/libs/pdfjs/cmaps/', cMapPacked: true }
+            : { url, withCredentials: true, cMapUrl: '/assets/libs/pdfjs/cmaps/', cMapPacked: true };
         const loadingTask = pdfjsLib.getDocument(docSource);
         pane._loadingTask = loadingTask;
         try {
@@ -275,6 +312,26 @@ window.pcfViewer = {
                 viewer.appendChild(box);
             }
             console.error('[pcf-viewer] loadPdf error', url, e);
+            // Explicit server-side report so PDF.js load failures land in the log even when
+            // the global error reporter's origin filter would otherwise drop them.
+            try {
+                fetch('/api/client-error', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    keepalive: true,
+                    body: JSON.stringify({
+                        kind: 'pcf-load-fail',
+                        message: (e && e.message) ? String(e.message).slice(0, 500) : 'unknown',
+                        status: e && e.status ? e.status : null,
+                        name:   e && e.name   ? e.name   : null,
+                        stack:  (e && e.stack) ? String(e.stack).slice(0, 2000) : null,
+                        url: location.href,
+                        fileUrl: url,
+                        userAgent: navigator.userAgent,
+                        when: new Date().toISOString()
+                    })
+                }).catch(function(){});
+            } catch(_) {}
             return;
         }
         pane._loadingTask = null;
@@ -1817,7 +1874,7 @@ window.pcfViewer = {
             } else {
                 docSource = { url: pdfUrl };
             }
-            insertDoc = await pdfjsLib.getDocument({ ...docSource, cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/', cMapPacked: true }).promise;
+            insertDoc = await pdfjsLib.getDocument({ ...docSource, cMapUrl: '/assets/libs/pdfjs/cmaps/', cMapPacked: true }).promise;
         } catch (e) {
             console.error('Failed to load insert PDF:', e);
             return 0;
@@ -2946,7 +3003,7 @@ window.pcfViewer = {
         if (!pdfjsLib) { loadingEl.textContent = 'PDF.js not available'; return; }
 
         try {
-            const pdfDoc = await pdfjsLib.getDocument({ url, withCredentials: true, cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/', cMapPacked: true }).promise;
+            const pdfDoc = await pdfjsLib.getDocument({ url, withCredentials: true, cMapUrl: '/assets/libs/pdfjs/cmaps/', cMapPacked: true }).promise;
             // Check window was closed while loading
             if (this._floatWin !== win) return;
 
