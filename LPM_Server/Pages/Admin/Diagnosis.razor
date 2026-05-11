@@ -142,6 +142,11 @@
                 <i class="ri-route-line me-1"></i>Sessions Origin
             </a>
         </li>
+        <li class="nav-item">
+            <a class="nav-link @(_diagTab == "deletedSessions" ? "active" : "")" @onclick="SwitchToDeletedSessionsTab" href="javascript:void(0)">
+                <i class="ri-delete-bin-line me-1"></i>Deleted Sessions
+            </a>
+        </li>
     </ul>
 
     @if (_diagTab == "health")
@@ -2240,6 +2245,217 @@
     </style>
 }
 
+@if (_diagTab == "deletedSessions")
+{
+    <div class="diag-editor-card mb-4">
+        <div class="diag-editor-header">
+            <i class="ri-delete-bin-line me-2"></i>Deleted Sessions
+            <span class="diag-editor-sub">Audit log of every deleted session — who, when, and a one-click restore</span>
+        </div>
+        <div class="diag-editor-body">
+            <div class="d-flex align-items-center gap-3 flex-wrap mb-3">
+                <div class="d-flex align-items-center gap-2">
+                    <span class="fw-semibold" style="font-size:.8rem;color:#6b7280;">
+                        <i class="ri-filter-3-line me-1"></i>Status:
+                    </span>
+                    <div class="btn-group btn-group-sm" role="group">
+                        <button type="button"
+                                class="btn @(_audSessStatusFilter == "all" ? "btn-primary" : "btn-outline-primary")"
+                                @onclick='() => SetAudSessStatusFilter("all")'>All</button>
+                        <button type="button"
+                                class="btn @(_audSessStatusFilter == "pending" ? "btn-primary" : "btn-outline-primary")"
+                                @onclick='() => SetAudSessStatusFilter("pending")'>Not Restored</button>
+                        <button type="button"
+                                class="btn @(_audSessStatusFilter == "restored" ? "btn-primary" : "btn-outline-primary")"
+                                @onclick='() => SetAudSessStatusFilter("restored")'>Restored</button>
+                    </div>
+                </div>
+
+                <div class="d-flex align-items-center gap-2 ms-auto">
+                    <span class="fw-semibold" style="font-size:.8rem;color:#6b7280;">Show:</span>
+                    <div class="btn-group btn-group-sm" role="group">
+                        <button type="button"
+                                class="btn @(_audSessLimit == 100 ? "btn-secondary" : "btn-outline-secondary")"
+                                @onclick="() => SetAudSessLimit(100)">100</button>
+                        <button type="button"
+                                class="btn @(_audSessLimit == 500 ? "btn-secondary" : "btn-outline-secondary")"
+                                @onclick="() => SetAudSessLimit(500)">500</button>
+                        <button type="button"
+                                class="btn @(_audSessLimit == null ? "btn-secondary" : "btn-outline-secondary")"
+                                @onclick="() => SetAudSessLimit(null)">All</button>
+                    </div>
+                </div>
+            </div>
+
+            @if (_audSessError != null)
+            {
+                <div class="alert alert-danger py-2 mb-3" style="font-size:.82rem;">
+                    <i class="ri-error-warning-line me-1"></i>@_audSessError
+                </div>
+            }
+            @if (!string.IsNullOrEmpty(_audSessSuccess))
+            {
+                <div class="alert alert-success py-2 mb-3" style="font-size:.82rem;">
+                    <i class="ri-check-double-line me-1"></i>@_audSessSuccess
+                </div>
+            }
+
+            @{
+                var visibleRows = _audSessRows.Where(r => _audSessStatusFilter switch
+                {
+                    "restored" => r.RestoredAt != null,
+                    "pending"  => r.RestoredAt == null,
+                    _          => true
+                }).ToList();
+            }
+
+            @if (visibleRows.Count == 0)
+            {
+                <div class="text-center py-4 text-muted small">
+                    <i class="ri-inbox-line me-1"></i>No deleted sessions match this filter.
+                </div>
+            }
+            else
+            {
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle small mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width:140px;">Deleted At</th>
+                                <th style="width:120px;">Deleted By</th>
+                                <th style="width:80px;">Orig SessId</th>
+                                <th style="width:110px;">Date</th>
+                                <th>PC</th>
+                                <th>Auditor</th>
+                                <th>Session Name</th>
+                                <th class="text-end" style="width:90px;">Length</th>
+                                <th class="text-end" style="width:90px;">Admin</th>
+                                <th style="width:130px;">Origin</th>
+                                <th style="width:140px;">Status</th>
+                                <th style="width:110px;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in visibleRows)
+                            {
+                                var thisRow = row;
+                                var rowStyle = thisRow.RestoredAt != null ? "color:#94a3b8;background:#f8fafc;" : "";
+                                <tr style="@rowStyle">
+                                    <td class="text-muted">@thisRow.DeletedAt</td>
+                                    <td class="fw-semibold">@thisRow.DeletedByUsername</td>
+                                    <td class="text-muted">@thisRow.OriginalSessionId</td>
+                                    <td>@thisRow.SessionDate</td>
+                                    <td class="fw-semibold">@(thisRow.PcName ?? "—")</td>
+                                    <td>@(thisRow.AuditorName ?? "(Solo)")</td>
+                                    <td class="text-muted">@(string.IsNullOrEmpty(thisRow.SessionName) ? "—" : thisRow.SessionName)</td>
+                                    <td class="text-end font-monospace">@FmtSec(thisRow.LengthSec)</td>
+                                    <td class="text-end font-monospace">@FmtSec(thisRow.AdminSec)</td>
+                                    <td>
+                                        <span class="origin-badge origin-@((thisRow.OriginSource ?? "unknown").ToLower())">@OriginDisplay(thisRow.OriginSource ?? "Unknown")</span>
+                                    </td>
+                                    <td>
+                                        @if (thisRow.RestoredAt != null)
+                                        {
+                                            <span style="font-size:.7rem;color:#15803d;font-weight:600;">
+                                                <i class="ri-arrow-go-back-line me-1"></i>Restored
+                                                <div style="font-size:.65rem;color:#6b7280;font-weight:400;">
+                                                    @thisRow.RestoredAt
+                                                    @if (!string.IsNullOrEmpty(thisRow.RestoredByUsername))
+                                                    {
+                                                        <text>by @thisRow.RestoredByUsername</text>
+                                                    }
+                                                </div>
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span style="font-size:.7rem;color:#dc2626;font-weight:600;">
+                                                <i class="ri-time-line me-1"></i>Pending
+                                            </span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (thisRow.RestoredAt == null)
+                                        {
+                                            <button class="btn btn-sm btn-outline-success"
+                                                    disabled="@_audSessRestoreBusy"
+                                                    @onclick="() => ConfirmRestoreDeletedSession(thisRow)">
+                                                <i class="ri-arrow-go-back-line me-1"></i>Restore
+                                            </button>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+
+    @* Origin badge styles are scoped to the Origin tab — duplicate the minimum we need here so badges render. *@
+    <style>
+        .origin-badge {
+            display: inline-block; font-size: .7rem; font-weight: 700; padding: 2px 8px; border-radius: 10px;
+            letter-spacing: .03em;
+        }
+        .origin-badge.origin-wizard         { background: #dcfce7; color: #166534; }
+        .origin-badge.origin-memo           { background: #fce7f3; color: #9d174d; }
+        .origin-badge.origin-nextcs         { background: #ccfbf1; color: #115e59; }
+        .origin-badge.origin-sessionmanager { background: #dbeafe; color: #1e40af; }
+        .origin-badge.origin-pcnoshow       { background: #fecaca; color: #7f1d1d; }
+        .origin-badge.origin-import         { background: #f1f5f9; color: #475569; }
+        .origin-badge.origin-unknown        { background: #fee2e2; color: #b91c1c; }
+    </style>
+
+    @if (_audSessConfirmRow != null)
+    {
+        <div class="modal show d-block" tabindex="-1" style="background:rgba(0,0,0,.45); z-index:9999;"
+             @onclick="() => _audSessConfirmRow = null">
+            <div class="modal-dialog modal-dialog-centered" @onclick:stopPropagation="true">
+                <div class="modal-content" style="border:none; border-radius:14px; overflow:hidden;">
+                    <div class="modal-header py-2" style="background:linear-gradient(135deg,#15803d,#22c55e); border-bottom:none;">
+                        <h5 class="modal-title fs-15 text-white d-flex align-items-center gap-2">
+                            <i class="ri-arrow-go-back-line"></i>Restore Deleted Session
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white"
+                                @onclick="() => _audSessConfirmRow = null"></button>
+                    </div>
+                    <div class="modal-body" style="font-size:.85rem;">
+                        <p class="mb-2">You are about to restore:</p>
+                        <div class="border rounded p-2 mb-3" style="background:#f8fafc;">
+                            <div><strong>Session #@_audSessConfirmRow.OriginalSessionId</strong> — @_audSessConfirmRow.SessionName</div>
+                            <div class="text-muted small">PC: @_audSessConfirmRow.PcName · Date: @_audSessConfirmRow.SessionDate</div>
+                            <div class="text-muted small">Deleted @_audSessConfirmRow.DeletedAt by @_audSessConfirmRow.DeletedByUsername</div>
+                        </div>
+                        <p class="mb-0 text-muted small">
+                            This will recreate the session row + cs_reviews / folder_summary / next_cs / questions
+                            entries, and copy any backed-up files back to the PC's WorkSheets folder.
+                        </p>
+                    </div>
+                    <div class="modal-footer py-2">
+                        <button class="btn btn-sm btn-outline-secondary"
+                                @onclick="() => _audSessConfirmRow = null">Cancel</button>
+                        <button class="btn btn-sm btn-success d-flex align-items-center gap-1"
+                                disabled="@_audSessRestoreBusy"
+                                @onclick="ExecuteRestoreDeletedSession">
+                            @if (_audSessRestoreBusy)
+                            {
+                                <span class="spinner-border spinner-border-sm"></span>
+                            }
+                            else
+                            {
+                                <i class="ri-arrow-go-back-line"></i>
+                            }
+                            Restore
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+}
+
 <style>
     .merge-danger-banner {
         background: linear-gradient(135deg, #7f1d1d, #dc2626, #7f1d1d);
@@ -2368,6 +2584,85 @@
         var m = (s % 3600) / 60;
         var sec = s % 60;
         return $"{h:D2}:{m:D2}:{sec:D2}";
+    }
+
+    // ── Deleted Sessions tab state + actions ──────────────────────────────
+    int? _audSessLimit = 100;
+    string _audSessStatusFilter = "all";   // all | pending | restored
+    List<LPM.Services.DeletedSessionRow> _audSessRows = new();
+    LPM.Services.DeletedSessionRow? _audSessConfirmRow;
+    bool _audSessRestoreBusy;
+    string? _audSessError;
+    string _audSessSuccess = "";
+
+    void SwitchToDeletedSessionsTab()
+    {
+        _diagTab = "deletedSessions";
+        LoadDeletedSessions();
+    }
+
+    void LoadDeletedSessions()
+    {
+        try
+        {
+            _audSessError = null;
+            _audSessRows = DashSvc.GetDeletedSessions(_audSessLimit);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Diagnosis] Deleted Sessions load failed: {ex.Message}");
+            _audSessRows = new();
+            _audSessError = $"Failed to load deleted sessions: {ex.Message}";
+        }
+    }
+
+    void SetAudSessStatusFilter(string f)
+    {
+        _audSessStatusFilter = f;
+    }
+
+    void SetAudSessLimit(int? limit)
+    {
+        _audSessLimit = limit;
+        LoadDeletedSessions();
+    }
+
+    void ConfirmRestoreDeletedSession(LPM.Services.DeletedSessionRow row)
+    {
+        _audSessConfirmRow = row;
+        _audSessError = null;
+        _audSessSuccess = "";
+    }
+
+    async Task ExecuteRestoreDeletedSession()
+    {
+        if (_audSessConfirmRow == null) return;
+        _audSessRestoreBusy = true;
+        _audSessError = null;
+        _audSessSuccess = "";
+        var row = _audSessConfirmRow;
+        var admin = AdminUser();
+        try
+        {
+            var result = await Task.Run(() => DashSvc.RestoreDeletedSession(row.Id, admin, FolderSvc));
+            if (result.Ok)
+            {
+                _audSessSuccess = $"Session #{row.OriginalSessionId} restored.";
+                _audSessConfirmRow = null;
+                LoadDeletedSessions();
+                DashSvc.NotifyDataChanged();
+            }
+            else
+            {
+                _audSessError = result.Error;
+            }
+        }
+        catch (Exception ex)
+        {
+            _audSessError = $"Error: {ex.Message}";
+            Console.WriteLine($"[Diagnosis] Restore failed for auditId={row.Id}: {ex.Message}");
+        }
+        finally { _audSessRestoreBusy = false; }
     }
 
     async Task LoadDeletedFiles()

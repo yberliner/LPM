@@ -228,9 +228,19 @@ public record SessionDetailModel(
     string? ReviewedAt, string? CsStatus, string? CsNotes,
     int? CsSalaryCentsPerHour, int? CsChargedCentsRatePerHour,
     int? WalletId);
-public record SessionFkTable(string Table, List<string> Cols, List<List<string>> Rows);
+public record SessionFkTable(string Table, List<string> Cols, List<List<string>> Rows)
+{
+    public string FromCol { get; init; } = "SessionId";
+}
 public record SessionDeleteInfo(int SessionId, int PcId, string SessionName,
     List<SessionFkTable> FkTables, List<string> Files);
+public record DeletedSessionRow(
+    int Id, int OriginalSessionId, string DeletedAt, string DeletedByUsername,
+    int? DeletedByUserId, int? PcId, string? PcName, int? AuditorId, string? AuditorName,
+    string? SessionDate, string? SessionName, int LengthSec, int AdminSec, bool IsFree,
+    string? OriginSource, string? CreatedByUsername, string? OriginalCreatedAt,
+    string? RestoredAt, string? RestoredByUsername, string? BackupFolderPath,
+    string? ApprovedNotes);
 public record ApprovedPcEntry(int Id, int PcId, string PcName, string WorkCapacity = StaffRoles.Auditor);
 public record AuditorPermGroup(int AuditorId, string AuditorName, bool AllowAll, List<ApprovedPcEntry> ApprovedPcs, string StaffRole = StaffRoles.Auditor);
 
@@ -4704,13 +4714,63 @@ public class DashboardService
     public SessionDeleteInfo LoadSessionDeleteInfo(int sessionId, int pcId, string sessName, FolderService folderSvc)
     {
         var fkTables = new List<SessionFkTable>();
-        foreach (var (tbl, idCol) in new[]
+
+        // ── Dynamic FK discovery ──────────────────────────────────────────
+        // Scan every user table; whichever has a FOREIGN KEY referencing
+        // sess_sessions becomes a cascade target. Captures the FK column
+        // name so renames in future schemas keep working.
+        var discovered = new List<(string Table, string FromCol)>();
+        try
         {
-            ("cs_reviews",          "CsReviewId"),
-            ("sess_folder_summary", "Id"),
-            ("sess_next_cs",        "Id"),
-            ("sess_questions",      "SessionId"),
-        })
+            using var connDisc = new SqliteConnection(_connectionString);
+            connDisc.Open();
+
+            // Materialize the table list BEFORE running per-table PRAGMAs —
+            // Microsoft.Data.Sqlite allows only one active reader/connection.
+            var allTables = new List<string>();
+            using (var lstCmd = connDisc.CreateCommand())
+            {
+                lstCmd.CommandText =
+                    "SELECT name FROM sqlite_master " +
+                    "WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name <> 'sess_sessions'";
+                using var lstR = lstCmd.ExecuteReader();
+                while (lstR.Read()) allTables.Add(lstR.GetString(0));
+            }
+
+            foreach (var t in allTables)
+            {
+                try
+                {
+                    using var fkCmd = connDisc.CreateCommand();
+                    var safe = t.Replace("\"", "\"\"");
+                    fkCmd.CommandText = $"PRAGMA foreign_key_list(\"{safe}\")";
+                    using var fkR = fkCmd.ExecuteReader();
+                    while (fkR.Read())
+                    {
+                        // Columns: id, seq, table, from, to, on_update, on_delete, match
+                        var refTable = fkR.IsDBNull(2) ? "" : fkR.GetString(2);
+                        var fromCol  = fkR.IsDBNull(3) ? "" : fkR.GetString(3);
+                        if (string.Equals(refTable, "sess_sessions", StringComparison.OrdinalIgnoreCase)
+                            && !string.IsNullOrEmpty(fromCol))
+                        {
+                            discovered.Add((t, fromCol));
+                        }
+                    }
+                }
+                catch (Exception exTbl)
+                {
+                    Console.WriteLine($"[DeleteSession] FK probe failed for {t}: {exTbl.Message}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DeleteSession] FK discovery failed: {ex.Message}");
+        }
+
+        Console.WriteLine($"[DeleteSession] FK discovery: {discovered.Count} child table(s) reference sess_sessions ({string.Join(", ", discovered.Select(d => $"{d.Table}.{d.FromCol}"))})");
+
+        foreach (var (tbl, fromCol) in discovered)
         {
             var cols = new List<string>();
             var rows = new List<List<string>>();
@@ -4719,7 +4779,9 @@ public class DashboardService
                 using var conn2 = new SqliteConnection(_connectionString);
                 conn2.Open();
                 using var cmd2 = conn2.CreateCommand();
-                cmd2.CommandText = $"SELECT * FROM {tbl} WHERE SessionId = @sid";
+                var safeTbl = tbl.Replace("\"", "\"\"");
+                var safeCol = fromCol.Replace("\"", "\"\"");
+                cmd2.CommandText = $"SELECT * FROM \"{safeTbl}\" WHERE \"{safeCol}\" = @sid";
                 cmd2.Parameters.AddWithValue("@sid", sessionId);
                 using var r = cmd2.ExecuteReader();
                 for (int i = 0; i < r.FieldCount; i++) cols.Add(r.GetName(i));
@@ -4731,8 +4793,11 @@ public class DashboardService
                     rows.Add(rr);
                 }
             }
-            catch { }
-            fkTables.Add(new SessionFkTable(tbl, cols, rows));
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[DeleteSession] FK row read failed for {tbl}.{fromCol}: {ex.Message}");
+            }
+            fkTables.Add(new SessionFkTable(tbl, cols, rows) { FromCol = fromCol });
         }
 
         var files = new List<string>();
@@ -4803,6 +4868,159 @@ public class DashboardService
         conn.Open();
         using var cmd = conn.CreateCommand();
 
+        // ── Audit snapshot: insert the full row into sys_deleted_sessions BEFORE any DELETE.
+        // Wrapped in try/catch so a missing audit table (e.g. fresh DB without the migration applied)
+        // never blocks an actual delete.
+        try
+        {
+            // Step 1: read the snapshot into local vars so the DataReader is closed before
+            // any other command runs on this connection (Microsoft.Data.Sqlite allows only
+            // one active reader per connection).
+            object? pcIdSnap = null, audIdSnap = null, sessDateSnap = null, seqSnap = null;
+            object? lenSnap = null, admSnap = null, freeSnap = null, chargeSnap = null;
+            object? rateSnap = null, salarySnap = null, walletSnap = null;
+            object? notesSnap = null, verifiedSnap = null, impSnap = null, originSnap = null;
+            object? creatorSnap = null, origCreatedAtSnap = null, sessNameSnap = null;
+            object? pcNameSnap = null, audNameSnap = null, creatorNameSnap = null;
+            object? verByUserIdSnap = null, verAtSnap = null;
+            object? sumUpdAtSnap = null, sumUpdByUserIdSnap = null;
+            bool snapFound = false;
+
+            using (var snapCmd = conn.CreateCommand())
+            {
+                snapCmd.CommandText = @"
+                    SELECT s.PcId, s.AuditorId, s.SessionDate, s.SequenceInDay,
+                           s.LengthSeconds, s.AdminSeconds, s.IsFreeSession,
+                           s.ChargeSeconds, s.ChargedRateCentsPerHour, s.AuditorSalaryCentsPerHour,
+                           s.WalletId, s.ApprovedNotes, s.VerifiedStatus, s.IsImported,
+                           s.OriginSource, s.CreatedByUserId, s.CreatedAt, s.Name,
+                           s.VerifiedByUserId, s.VerifiedAt,
+                           s.SummaryUpdatedAt, s.SummaryUpdatedByUserId,
+                           TRIM(pc.FirstName || ' ' || COALESCE(NULLIF(pc.LastName,''), '')) AS PcName,
+                           CASE WHEN s.AuditorId IS NULL THEN NULL
+                                ELSE TRIM(ap.FirstName || ' ' || COALESCE(NULLIF(ap.LastName,''), ''))
+                           END AS AuditorName,
+                           cu.Username AS CreatedByUsername
+                    FROM sess_sessions s
+                    LEFT JOIN core_persons pc ON pc.PersonId = s.PcId
+                    LEFT JOIN core_persons ap ON ap.PersonId = s.AuditorId
+                    LEFT JOIN core_users   cu ON cu.Id       = s.CreatedByUserId
+                    WHERE s.SessionId = @sid";
+                snapCmd.Parameters.AddWithValue("@sid", info.SessionId);
+                using var snapR = snapCmd.ExecuteReader();
+                if (snapR.Read())
+                {
+                    snapFound = true;
+                    pcIdSnap          = snapR.IsDBNull(0)  ? null : snapR.GetInt32(0);
+                    audIdSnap         = snapR.IsDBNull(1)  ? null : snapR.GetInt32(1);
+                    sessDateSnap      = snapR.IsDBNull(2)  ? null : snapR.GetString(2);
+                    seqSnap           = snapR.IsDBNull(3)  ? null : snapR.GetInt32(3);
+                    lenSnap           = snapR.IsDBNull(4)  ? null : snapR.GetInt32(4);
+                    admSnap           = snapR.IsDBNull(5)  ? null : snapR.GetInt32(5);
+                    freeSnap          = snapR.IsDBNull(6)  ? null : snapR.GetInt32(6);
+                    chargeSnap        = snapR.IsDBNull(7)  ? null : snapR.GetInt32(7);
+                    rateSnap          = snapR.IsDBNull(8)  ? null : snapR.GetInt32(8);
+                    salarySnap        = snapR.IsDBNull(9)  ? null : snapR.GetInt32(9);
+                    walletSnap        = snapR.IsDBNull(10) ? null : snapR.GetInt32(10);
+                    notesSnap         = snapR.IsDBNull(11) ? null : snapR.GetString(11);
+                    verifiedSnap      = snapR.IsDBNull(12) ? null : snapR.GetString(12);
+                    impSnap           = snapR.IsDBNull(13) ? null : snapR.GetInt32(13);
+                    originSnap        = snapR.IsDBNull(14) ? null : snapR.GetString(14);
+                    creatorSnap       = snapR.IsDBNull(15) ? null : snapR.GetInt32(15);
+                    origCreatedAtSnap = snapR.IsDBNull(16) ? null : snapR.GetString(16);
+                    sessNameSnap      = snapR.IsDBNull(17) ? null : snapR.GetString(17);
+                    verByUserIdSnap   = snapR.IsDBNull(18) ? null : snapR.GetInt32(18);
+                    verAtSnap         = snapR.IsDBNull(19) ? null : snapR.GetString(19);
+                    sumUpdAtSnap      = snapR.IsDBNull(20) ? null : snapR.GetString(20);
+                    sumUpdByUserIdSnap = snapR.IsDBNull(21) ? null : snapR.GetInt32(21);
+                    pcNameSnap        = snapR.IsDBNull(22) ? null : snapR.GetString(22);
+                    audNameSnap       = snapR.IsDBNull(23) ? null : snapR.GetString(23);
+                    creatorNameSnap   = snapR.IsDBNull(24) ? null : snapR.GetString(24);
+                }
+            } // snapR + snapCmd disposed; connection free for the next commands.
+
+            if (snapFound)
+            {
+                // Resolve DeletedByUserId from username (best-effort).
+                int? deletedByUserId = null;
+                using (var uidCmd = conn.CreateCommand())
+                {
+                    uidCmd.CommandText = "SELECT Id FROM core_users WHERE Username = @u LIMIT 1";
+                    uidCmd.Parameters.AddWithValue("@u", adminUser ?? "");
+                    var uidObj = uidCmd.ExecuteScalar();
+                    if (uidObj != null && uidObj != DBNull.Value)
+                        deletedByUserId = Convert.ToInt32(uidObj);
+                }
+
+                var fkJson = System.Text.Json.JsonSerializer.Serialize(info.FkTables);
+
+                using var insCmd = conn.CreateCommand();
+                insCmd.CommandText = @"
+                    INSERT INTO sys_deleted_sessions (
+                        OriginalSessionId, PcId, PcName, AuditorId, AuditorName,
+                        SessionDate, SequenceInDay, SessionName,
+                        LengthSeconds, AdminSeconds, IsFreeSession, ChargeSeconds,
+                        ChargedRateCentsPerHour, AuditorSalaryCentsPerHour, WalletId,
+                        ApprovedNotes, VerifiedStatus, VerifiedByUserId, VerifiedAt,
+                        SummaryUpdatedAt, SummaryUpdatedByUserId,
+                        IsImported, OriginSource,
+                        CreatedByUserId, CreatedByUsername, OriginalCreatedAt,
+                        DeletedAt, DeletedByUsername, DeletedByUserId,
+                        FkRowsJson, BackupFolderPath)
+                    VALUES (
+                        @origSid, @pcId, @pcName, @audId, @audName,
+                        @sessDate, @seq, @sessName,
+                        @len, @adm, @free, @charge,
+                        @rate, @salary, @wallet,
+                        @notes, @verified, @verBy, @verAt,
+                        @sumUpdAt, @sumUpdBy,
+                        @imp, @origin,
+                        @creator, @creatorName, @origCreatedAt,
+                        datetime('now', 'localtime'), @delUser, @delUserId,
+                        @fkJson, @backup)";
+                insCmd.Parameters.AddWithValue("@origSid",       info.SessionId);
+                insCmd.Parameters.AddWithValue("@pcId",          pcIdSnap          ?? DBNull.Value);
+                insCmd.Parameters.AddWithValue("@pcName",        pcNameSnap        ?? DBNull.Value);
+                insCmd.Parameters.AddWithValue("@audId",         audIdSnap         ?? DBNull.Value);
+                insCmd.Parameters.AddWithValue("@audName",       audNameSnap       ?? DBNull.Value);
+                insCmd.Parameters.AddWithValue("@sessDate",      sessDateSnap      ?? DBNull.Value);
+                insCmd.Parameters.AddWithValue("@seq",           seqSnap           ?? DBNull.Value);
+                insCmd.Parameters.AddWithValue("@sessName",      sessNameSnap      ?? DBNull.Value);
+                insCmd.Parameters.AddWithValue("@len",           lenSnap           ?? DBNull.Value);
+                insCmd.Parameters.AddWithValue("@adm",           admSnap           ?? DBNull.Value);
+                insCmd.Parameters.AddWithValue("@free",          freeSnap          ?? DBNull.Value);
+                insCmd.Parameters.AddWithValue("@charge",        chargeSnap        ?? DBNull.Value);
+                insCmd.Parameters.AddWithValue("@rate",          rateSnap          ?? DBNull.Value);
+                insCmd.Parameters.AddWithValue("@salary",        salarySnap        ?? DBNull.Value);
+                insCmd.Parameters.AddWithValue("@wallet",        walletSnap        ?? DBNull.Value);
+                insCmd.Parameters.AddWithValue("@notes",         notesSnap         ?? DBNull.Value);
+                insCmd.Parameters.AddWithValue("@verified",      verifiedSnap      ?? DBNull.Value);
+                insCmd.Parameters.AddWithValue("@verBy",         verByUserIdSnap   ?? DBNull.Value);
+                insCmd.Parameters.AddWithValue("@verAt",         verAtSnap         ?? DBNull.Value);
+                insCmd.Parameters.AddWithValue("@sumUpdAt",      sumUpdAtSnap      ?? DBNull.Value);
+                insCmd.Parameters.AddWithValue("@sumUpdBy",      sumUpdByUserIdSnap ?? DBNull.Value);
+                insCmd.Parameters.AddWithValue("@imp",           impSnap           ?? DBNull.Value);
+                insCmd.Parameters.AddWithValue("@origin",        originSnap        ?? DBNull.Value);
+                insCmd.Parameters.AddWithValue("@creator",       creatorSnap       ?? DBNull.Value);
+                insCmd.Parameters.AddWithValue("@creatorName",   creatorNameSnap   ?? DBNull.Value);
+                insCmd.Parameters.AddWithValue("@origCreatedAt", origCreatedAtSnap ?? DBNull.Value);
+                insCmd.Parameters.AddWithValue("@delUser",       adminUser ?? "");
+                insCmd.Parameters.AddWithValue("@delUserId",     deletedByUserId.HasValue ? (object)deletedByUserId.Value : DBNull.Value);
+                insCmd.Parameters.AddWithValue("@fkJson",        fkJson);
+                insCmd.Parameters.AddWithValue("@backup",        backupFolder);
+                insCmd.ExecuteNonQuery();
+                Console.WriteLine($"[DeleteSession]   AUDIT SNAPSHOT inserted into sys_deleted_sessions for SessionId={info.SessionId}");
+            }
+            else
+            {
+                Console.WriteLine($"[DeleteSession]   AUDIT SNAPSHOT skipped — sess_sessions row not found for SessionId={info.SessionId}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[DeleteSession]   AUDIT SNAPSHOT FAILED (continuing with delete): {ex.Message}");
+        }
+
         foreach (var fkTbl in info.FkTables)
         {
             Console.WriteLine($"[DeleteSession] Table {fkTbl.Table}: {fkTbl.Rows.Count} row(s) to delete");
@@ -4811,11 +5029,13 @@ public class DashboardService
                 var rowDesc = string.Join(", ", fkTbl.Cols.Zip(row, (c, v) => $"{c}={v}"));
                 Console.WriteLine($"[DeleteSession]   ROW: {rowDesc}");
             }
-            cmd.CommandText = $"DELETE FROM {fkTbl.Table} WHERE SessionId = @sid";
+            var safeTbl = fkTbl.Table.Replace("\"", "\"\"");
+            var safeCol = (string.IsNullOrEmpty(fkTbl.FromCol) ? "SessionId" : fkTbl.FromCol).Replace("\"", "\"\"");
+            cmd.CommandText = $"DELETE FROM \"{safeTbl}\" WHERE \"{safeCol}\" = @sid";
             cmd.Parameters.Clear();
             cmd.Parameters.AddWithValue("@sid", info.SessionId);
             var n = cmd.ExecuteNonQuery();
-            Console.WriteLine($"[DeleteSession]   → {n} row(s) deleted from {fkTbl.Table}");
+            Console.WriteLine($"[DeleteSession]   → {n} row(s) deleted from {fkTbl.Table} (via {safeCol})");
         }
 
         cmd.CommandText = "DELETE FROM sess_sessions WHERE SessionId = @sid";
@@ -4825,5 +5045,253 @@ public class DashboardService
         Console.WriteLine($"[DeleteSession]   ROW: SessionId={info.SessionId}, PcId={info.PcId}, Name='{info.SessionName}'");
         Console.WriteLine($"[DeleteSession]   → 1 row deleted from sess_sessions");
         Console.WriteLine($"[DeleteSession] ====== END — Admin='{adminUser}' SessionId={info.SessionId} ======");
+    }
+
+    // ── Deleted Sessions audit (Diagnosis → Deleted Sessions tab) ────────────────
+
+    public List<DeletedSessionRow> GetDeletedSessions(int? limit, string? originFilter = null)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        var where = string.IsNullOrEmpty(originFilter)
+            ? ""
+            : "WHERE COALESCE(OriginSource,'Unknown') = @origin";
+        var limitClause = limit.HasValue ? "LIMIT @limit" : "";
+        cmd.CommandText = $@"
+            SELECT Id, OriginalSessionId, DeletedAt, DeletedByUsername, DeletedByUserId,
+                   PcId, PcName, AuditorId, AuditorName, SessionDate, SessionName,
+                   COALESCE(LengthSeconds,0), COALESCE(AdminSeconds,0), COALESCE(IsFreeSession,0),
+                   OriginSource, CreatedByUsername, OriginalCreatedAt,
+                   RestoredAt, RestoredByUsername, BackupFolderPath, ApprovedNotes
+            FROM sys_deleted_sessions
+            {where}
+            ORDER BY DeletedAt DESC
+            {limitClause}";
+        if (!string.IsNullOrEmpty(originFilter))
+            cmd.Parameters.AddWithValue("@origin", originFilter);
+        if (limit.HasValue)
+            cmd.Parameters.AddWithValue("@limit", limit.Value);
+
+        var list = new List<DeletedSessionRow>();
+        try
+        {
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                list.Add(new DeletedSessionRow(
+                    r.GetInt32(0),
+                    r.GetInt32(1),
+                    r.IsDBNull(2)  ? "" : r.GetString(2),
+                    r.IsDBNull(3)  ? "" : r.GetString(3),
+                    r.IsDBNull(4)  ? null : (int?)r.GetInt32(4),
+                    r.IsDBNull(5)  ? null : (int?)r.GetInt32(5),
+                    r.IsDBNull(6)  ? null : r.GetString(6),
+                    r.IsDBNull(7)  ? null : (int?)r.GetInt32(7),
+                    r.IsDBNull(8)  ? null : r.GetString(8),
+                    r.IsDBNull(9)  ? null : r.GetString(9),
+                    r.IsDBNull(10) ? null : r.GetString(10),
+                    r.GetInt32(11),
+                    r.GetInt32(12),
+                    r.GetInt32(13) != 0,
+                    r.IsDBNull(14) ? null : r.GetString(14),
+                    r.IsDBNull(15) ? null : r.GetString(15),
+                    r.IsDBNull(16) ? null : r.GetString(16),
+                    r.IsDBNull(17) ? null : r.GetString(17),
+                    r.IsDBNull(18) ? null : r.GetString(18),
+                    r.IsDBNull(19) ? null : r.GetString(19),
+                    r.IsDBNull(20) ? null : r.GetString(20)));
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[GetDeletedSessions] FAILED (table may not exist yet): {ex.Message}");
+        }
+        return list;
+    }
+
+    /// <summary>Returns (ok, errorMessage). On success the audit row is marked RestoredAt/RestoredBy.</summary>
+    public (bool Ok, string Error) RestoreDeletedSession(int auditId, string restoringUser, FolderService folderSvc)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        // Fetch the audit row.
+        int origSid; int? pcId; string sessName; string? fkJson; string? backupPath; string? alreadyRestoredAt;
+        using (var loadCmd = conn.CreateCommand())
+        {
+            loadCmd.CommandText = @"
+                SELECT OriginalSessionId, PcId, SessionName, FkRowsJson, BackupFolderPath, RestoredAt
+                FROM sys_deleted_sessions WHERE Id = @id";
+            loadCmd.Parameters.AddWithValue("@id", auditId);
+            using var r = loadCmd.ExecuteReader();
+            if (!r.Read()) return (false, "Audit row not found.");
+            origSid           = r.GetInt32(0);
+            pcId              = r.IsDBNull(1) ? null : (int?)r.GetInt32(1);
+            sessName          = r.IsDBNull(2) ? "" : r.GetString(2);
+            fkJson            = r.IsDBNull(3) ? null : r.GetString(3);
+            backupPath        = r.IsDBNull(4) ? null : r.GetString(4);
+            alreadyRestoredAt = r.IsDBNull(5) ? null : r.GetString(5);
+        }
+
+        if (!string.IsNullOrEmpty(alreadyRestoredAt))
+            return (false, $"Already restored at {alreadyRestoredAt}.");
+        if (!pcId.HasValue)
+            return (false, "Original PcId is missing in audit row.");
+
+        // Verify the PC still exists.
+        using (var pcCmd = conn.CreateCommand())
+        {
+            pcCmd.CommandText = "SELECT 1 FROM core_persons WHERE PersonId = @pid LIMIT 1";
+            pcCmd.Parameters.AddWithValue("@pid", pcId.Value);
+            if (pcCmd.ExecuteScalar() == null)
+                return (false, "Original PC no longer exists — cannot restore.");
+        }
+
+        // Make sure the SessionId slot is free.
+        using (var dupCmd = conn.CreateCommand())
+        {
+            dupCmd.CommandText = "SELECT 1 FROM sess_sessions WHERE SessionId = @sid LIMIT 1";
+            dupCmd.Parameters.AddWithValue("@sid", origSid);
+            if (dupCmd.ExecuteScalar() != null)
+                return (false, $"SessionId {origSid} is already in use.");
+        }
+
+        // Resolve restorer's userId (best-effort).
+        int? restoredByUserId = null;
+        using (var uidCmd = conn.CreateCommand())
+        {
+            uidCmd.CommandText = "SELECT Id FROM core_users WHERE Username = @u LIMIT 1";
+            uidCmd.Parameters.AddWithValue("@u", restoringUser ?? "");
+            var uidObj = uidCmd.ExecuteScalar();
+            if (uidObj != null && uidObj != DBNull.Value)
+                restoredByUserId = Convert.ToInt32(uidObj);
+        }
+
+        using var tx = conn.BeginTransaction();
+        try
+        {
+            // 1. Restore sess_sessions row from the audit snapshot.
+            using (var insCmd = conn.CreateCommand())
+            {
+                insCmd.Transaction = tx;
+                insCmd.CommandText = @"
+                    INSERT INTO sess_sessions (
+                        SessionId, PcId, AuditorId, SessionDate, SequenceInDay,
+                        LengthSeconds, AdminSeconds, IsFreeSession, ChargeSeconds,
+                        ChargedRateCentsPerHour, AuditorSalaryCentsPerHour, WalletId,
+                        ApprovedNotes, VerifiedStatus, VerifiedByUserId, VerifiedAt,
+                        SummaryUpdatedAt, SummaryUpdatedByUserId,
+                        IsImported, OriginSource,
+                        CreatedByUserId, CreatedAt, Name)
+                    SELECT
+                        OriginalSessionId, PcId, AuditorId, SessionDate, SequenceInDay,
+                        LengthSeconds, AdminSeconds, IsFreeSession, ChargeSeconds,
+                        ChargedRateCentsPerHour, AuditorSalaryCentsPerHour, WalletId,
+                        ApprovedNotes, VerifiedStatus, VerifiedByUserId, VerifiedAt,
+                        SummaryUpdatedAt, SummaryUpdatedByUserId,
+                        IsImported, OriginSource,
+                        CreatedByUserId, OriginalCreatedAt, SessionName
+                    FROM sys_deleted_sessions WHERE Id = @id";
+                insCmd.Parameters.AddWithValue("@id", auditId);
+                insCmd.ExecuteNonQuery();
+            }
+
+            // 2. Restore FK rows (cs_reviews, sess_folder_summary, sess_next_cs, sess_questions).
+            if (!string.IsNullOrWhiteSpace(fkJson))
+            {
+                List<SessionFkTable>? fkTables = null;
+                try { fkTables = System.Text.Json.JsonSerializer.Deserialize<List<SessionFkTable>>(fkJson); }
+                catch (Exception jex) { Console.WriteLine($"[RestoreSession] FkRowsJson parse failed: {jex.Message}"); }
+
+                if (fkTables != null)
+                {
+                    foreach (var fk in fkTables)
+                    {
+                        if (fk.Rows.Count == 0) continue;
+                        var colList = string.Join(",", fk.Cols);
+                        var paramList = string.Join(",", fk.Cols.Select((_, i) => $"@p{i}"));
+                        using var fkCmd = conn.CreateCommand();
+                        fkCmd.Transaction = tx;
+                        fkCmd.CommandText = $"INSERT INTO {fk.Table} ({colList}) VALUES ({paramList})";
+                        foreach (var row in fk.Rows)
+                        {
+                            fkCmd.Parameters.Clear();
+                            for (int i = 0; i < fk.Cols.Count; i++)
+                            {
+                                // Empty captured string → NULL. Note: this loses the (rare) NULL-vs-empty-text distinction.
+                                var v = i < row.Count ? row[i] : "";
+                                fkCmd.Parameters.AddWithValue($"@p{i}", string.IsNullOrEmpty(v) ? DBNull.Value : (object)v);
+                            }
+                            fkCmd.ExecuteNonQuery();
+                        }
+                        Console.WriteLine($"[RestoreSession] Restored {fk.Rows.Count} row(s) into {fk.Table}");
+                    }
+                }
+            }
+
+            // 3. Mark audit row as restored.
+            using (var upCmd = conn.CreateCommand())
+            {
+                upCmd.Transaction = tx;
+                upCmd.CommandText = @"
+                    UPDATE sys_deleted_sessions
+                    SET RestoredAt = datetime('now', 'localtime'),
+                        RestoredByUsername = @user,
+                        RestoredByUserId = @uid
+                    WHERE Id = @id";
+                upCmd.Parameters.AddWithValue("@user", restoringUser ?? "");
+                upCmd.Parameters.AddWithValue("@uid", restoredByUserId.HasValue ? (object)restoredByUserId.Value : DBNull.Value);
+                upCmd.Parameters.AddWithValue("@id", auditId);
+                upCmd.ExecuteNonQuery();
+            }
+
+            tx.Commit();
+        }
+        catch (Exception ex)
+        {
+            try { tx.Rollback(); } catch { }
+            Console.WriteLine($"[RestoreSession] FAILED auditId={auditId} sid={origSid}: {ex.Message}");
+            return (false, $"Restore failed: {ex.Message}");
+        }
+
+        // 4. Restore files from the backup folder (best-effort, outside the DB transaction).
+        if (!string.IsNullOrWhiteSpace(backupPath) && Directory.Exists(backupPath))
+        {
+            try
+            {
+                // Find the PC's WorkSheets folder (regular or solo).
+                string? pcFolder = folderSvc.FindPcFolder(pcId.Value) ?? folderSvc.FindSoloPcFolder(pcId.Value);
+                if (pcFolder != null)
+                {
+                    var wsPath = Path.Combine(pcFolder, "WorkSheets");
+                    Directory.CreateDirectory(wsPath);
+                    int copied = 0, skipped = 0;
+                    foreach (var src in Directory.GetFiles(backupPath, "*.pdf"))
+                    {
+                        var dest = Path.Combine(wsPath, Path.GetFileName(src));
+                        if (File.Exists(dest)) { skipped++; continue; }
+                        File.Copy(src, dest);
+                        copied++;
+                    }
+                    Console.WriteLine($"[RestoreSession] Files copied={copied} skipped={skipped} from {backupPath} → {wsPath}");
+                }
+                else
+                {
+                    Console.WriteLine($"[RestoreSession] PC folder not found for PcId={pcId} — files not restored.");
+                }
+            }
+            catch (Exception fex)
+            {
+                Console.WriteLine($"[RestoreSession] File restore error: {fex.Message}");
+            }
+        }
+        else
+        {
+            Console.WriteLine($"[RestoreSession] Backup folder missing or unset — files not restored.");
+        }
+
+        Console.WriteLine($"[RestoreSession] OK auditId={auditId} restored SessionId={origSid} by '{restoringUser}'");
+        return (true, "");
     }
 }
