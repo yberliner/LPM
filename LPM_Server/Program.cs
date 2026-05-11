@@ -313,9 +313,10 @@ app.Use(async (ctx, next) =>
     ctx.Response.Headers["Content-Security-Policy"] =
         "default-src 'self'; " +
         "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.quilljs.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; " +
-        "style-src  'self' 'unsafe-inline' https://cdn.quilljs.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; " +
+        "worker-src 'self' blob:; " +
+        "style-src  'self' 'unsafe-inline' https://cdn.quilljs.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://fonts.googleapis.com; " +
         "img-src    'self' data: blob:; " +
-        "font-src   'self' data: https://cdn.jsdelivr.net https://cdn.quilljs.com; " +
+        "font-src   'self' data: https://cdn.jsdelivr.net https://cdn.quilljs.com https://fonts.gstatic.com; " +
         "connect-src 'self' ws: wss:; " +
         "frame-ancestors 'none'; " +
         "base-uri 'self'; " +

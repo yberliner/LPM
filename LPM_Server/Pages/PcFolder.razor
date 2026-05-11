@@ -7449,7 +7449,7 @@
     {
         _showPageCtxMenu = false;
         // _pageBgPaneId and _pageBgPageIdx are already set from OnPageRightClick
-        await JS.InvokeVoidAsync("lpmClickById", "pcf-insert-input");
+        await JS.InvokeVoidAsync("pcfViewer.clickById", "pcf-insert-input");
     }
 
     async Task FloatPage()
@@ -8343,7 +8343,7 @@
         _newMenuParentFolder = _ctxNode.IsFolder ? _ctxNode.RelativePath : Path.GetDirectoryName(_ctxNode.RelativePath)!.Replace('\\', '/');
         _newMenuSection = _ctxSection;
         CloseCtxMenu();
-        await JS.InvokeVoidAsync("lpmClickById", "pcf-upload-input");
+        await JS.InvokeVoidAsync("pcfViewer.clickById", "pcf-upload-input");
     }
 
     void CtxNewEmptyPdf()
@@ -8414,7 +8414,7 @@
     async Task NewMenuUploadClick()
     {
         CloseNewMenu();
-        await JS.InvokeVoidAsync("lpmClickById", "pcf-upload-input");
+        await JS.InvokeVoidAsync("pcfViewer.clickById", "pcf-upload-input");
     }
 
     void CloseNewMenu() { _newMenuSection = null; }

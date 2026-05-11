@@ -1804,7 +1804,20 @@ window.pcfViewer = {
 
         let insertDoc;
         try {
-            insertDoc = await pdfjsLib.getDocument({ url: pdfUrl, cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/', cMapPacked: true }).promise;
+            // CSP-safe: decode base64 data URLs locally — `connect-src` blocks pdf.js from
+            // XHR-fetching `data:` URLs, so we hand it a Uint8Array instead.
+            let docSource;
+            if (typeof pdfUrl === 'string' && pdfUrl.startsWith('data:')) {
+                const commaIdx = pdfUrl.indexOf(',');
+                const b64 = pdfUrl.substring(commaIdx + 1);
+                const binary = atob(b64);
+                const bytes = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                docSource = { data: bytes };
+            } else {
+                docSource = { url: pdfUrl };
+            }
+            insertDoc = await pdfjsLib.getDocument({ ...docSource, cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/', cMapPacked: true }).promise;
         } catch (e) {
             console.error('Failed to load insert PDF:', e);
             return 0;
