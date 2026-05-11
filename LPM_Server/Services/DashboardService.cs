@@ -3290,7 +3290,11 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
-        var dateFilter  = lookbackDays > 0 ? "AND s.SessionDate >= @cutoff" : "";
+        // A row passes the day filter when EITHER the session date OR the create-date is within
+        // the lookback window (equivalent to: MAX(SessionDate, date(CreatedAt)) >= cutoff).
+        var dateFilter  = lookbackDays > 0
+            ? "AND (s.SessionDate >= @cutoff OR substr(s.CreatedAt, 1, 10) >= @cutoff)"
+            : "";
         var doneFilter  = includeDone ? "" : "AND (cr.CsReviewId IS NULL OR EXISTS (SELECT 1 FROM sess_questions sq WHERE sq.SessionId = s.SessionId AND sq.Status IN ('Pending','Replied')))";
         cmd.CommandText = $@"
             SELECT s.SessionId, s.PcId,
@@ -3358,8 +3362,11 @@ public class DashboardService
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
+        // A row passes the day filter when EITHER the session date OR the create-date is within
+        // the lookback window (equivalent to: MAX(SessionDate, date(CreatedAt)) >= cutoff).
         var dateFilter = lookbackDays > 0
-            ? "AND s.SessionDate >= @cutoff" : "";
+            ? "AND (s.SessionDate >= @cutoff OR substr(s.CreatedAt, 1, 10) >= @cutoff)"
+            : "";
         if (isSolo)
         {
             // Solo: sessions are on their own PcId, no permission check needed
