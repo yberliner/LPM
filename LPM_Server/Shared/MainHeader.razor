@@ -417,14 +417,14 @@
                         </li>
                         <!-- End::header-element import-session -->
 
-                        <!-- Start::header-element actions -->
-                        <li class="header-element me-2">
-                            <div class="dropdown">
-                                <button class="btn btn-sm d-flex align-items-center gap-1"
+                        <!-- Start::header-element pc-actions -->
+                        <li class="header-element me-1">
+                            <div class="dropdown pc-btn-wrap">
+                                <button class="btn btn-sm d-flex align-items-center gap-1 pc-btn-magic"
                                         style="border-radius:8px; font-weight:600; font-size:.82rem;
                                                color:var(--header-prime-color); border:1px solid var(--header-prime-color);"
                                         data-bs-toggle="dropdown" aria-expanded="false">
-                                    <i class="ri-menu-add-line"></i>@LS.T("actions.title")
+                                    <i class="ri-user-line"></i>@LS.T("actions.pcTitle")
                                     <i class="ri-arrow-down-s-fill" style="font-size:.7rem;"></i>
                                 </button>
                                 <ul class="dropdown-menu dropdown-menu-end shadow-sm">
@@ -450,41 +450,67 @@
                                     {
                                     <li>
                                         <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
+                                           @onclick="OpenNcWizard">
+                                            <i class="ri-user-follow-line" style="color:#14b8a6;"></i>Add Next C/S
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
                                            @onclick="OpenNoShowWizard">
                                             <i class="ri-user-unfollow-line" style="color:#dc2626;"></i>PC No-Show
                                         </a>
                                     </li>
                                     }
-                                    @if (!_isSoloUser && !_isRestrictedAud)
+                                </ul>
+                            </div>
+                        </li>
+                        <!-- End::header-element pc-actions -->
+
+                        @* "More" dropdown is hidden for solo users and restricted auditors —
+                           every item inside requires both !_isSoloUser and !_isRestrictedAud. *@
+                        @if (!_isSoloUser && !_isRestrictedAud)
+                        {
+                        <!-- Start::header-element more-actions -->
+                        <li class="header-element me-2">
+                            <div class="dropdown">
+                                <button class="btn btn-sm d-flex align-items-center gap-1"
+                                        style="border-radius:8px; font-weight:600; font-size:.82rem;
+                                               color:var(--header-prime-color); border:1px solid var(--header-prime-color);"
+                                        data-bs-toggle="dropdown" aria-expanded="false">
+                                    <i class="ri-more-line"></i>@LS.T("actions.moreTitle")
+                                    <i class="ri-arrow-down-s-fill" style="font-size:.7rem;"></i>
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                                    @if (!_isRestrictedAud)
                                     {
+                                    <li>
+                                        <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
+                                           @onclick="OpenSessionManager">
+                                            <i class="ri-database-2-line" style="color:#f97316;"></i>@LS.T("actions.sessionManager")
+                                        </a>
+                                    </li>
                                     <li>
                                         <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
                                            @onclick="OpenEffortLogModal">
                                             <i class="ri-timer-line" style="color:#06b6d4;"></i>Add Effort Log
                                         </a>
                                     </li>
-                                    }
-                                    @if (!_isSoloUser)
-                                    {
                                     <li>
                                         <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
-                                           @onclick="OpenNcWizard">
-                                            <i class="ri-user-follow-line" style="color:#14b8a6;"></i>Add Next C/S
-                                        </a>
-                                    </li>
-                                    }
-                                    @if (!_isSoloUser && !_isRestrictedAud)
-                                    {
-                                    <li>
-                                        <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
-                                           @onclick="OpenScheduleMeeting">
-                                            <i class="ri-calendar-event-line" style="color:#f59e0b;"></i>@LS.T("actions.scheduleMeeting")
+                                           @onclick="OpenShowStat">
+                                            <i class="ri-bar-chart-box-line" style="color:#06b6d4;"></i>Show Stat
                                         </a>
                                     </li>
                                     <li>
                                         <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
                                            @onclick="OpenUploadFrontCover">
                                             <i class="ri-upload-cloud-2-line" style="color:#10b981;"></i>@LS.T("actions.uploadFrontCover")
+                                        </a>
+                                    </li>
+                                    <li>
+                                        <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
+                                           @onclick="OpenPrintAllStaff">
+                                            <i class="ri-team-line" style="color:#6366f1;"></i>@LS.T("actions.printStaffReports")
                                         </a>
                                     </li>
                                     <li>
@@ -501,34 +527,22 @@
                                     </li>
                                     <li>
                                         <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
-                                           @onclick="OpenSessionManager">
-                                            <i class="ri-database-2-line" style="color:#f97316;"></i>@LS.T("actions.sessionManager")
-                                        </a>
-                                    </li>
-                                    <li>
-                                        <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
                                            @onclick="OpenFileHistory">
                                             <i class="ri-history-line" style="color:#64748b;"></i>File History
                                         </a>
                                     </li>
                                     <li>
                                         <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
-                                           @onclick="OpenShowStat">
-                                            <i class="ri-bar-chart-box-line" style="color:#06b6d4;"></i>Show Stat
-                                        </a>
-                                    </li>
-                                    <li><hr class="dropdown-divider" /></li>
-                                    <li>
-                                        <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
-                                           @onclick="OpenPrintAllStaff">
-                                            <i class="ri-team-line" style="color:#6366f1;"></i>@LS.T("actions.printStaffReports")
+                                           @onclick="OpenScheduleMeeting">
+                                            <i class="ri-calendar-event-line" style="color:#f59e0b;"></i>@LS.T("actions.scheduleMeeting")
                                         </a>
                                     </li>
                                     }
                                 </ul>
                             </div>
                         </li>
-                        <!-- End::header-element actions -->
+                        <!-- End::header-element more-actions -->
+                        }
 
                         <!-- Start::header-element messages -->
                         @if (_msgUserId.HasValue)
@@ -5237,6 +5251,39 @@
     .hdr-ab-amber:hover  { box-shadow: 0 4px 18px rgba(245,158,11,.5); }
     .hdr-ab-indigo:hover { box-shadow: 0 4px 18px rgba(99,102,241,.5); }
     .hdr-ab-blue:hover   { box-shadow: 0 4px 18px rgba(59,130,246,.5); }
+
+    /* ── PC dropdown button — gentle always-on breathing halo ── */
+    .pc-btn-wrap { position: relative; }
+    .pc-btn-magic {
+        position: relative;
+        z-index: 1;
+    }
+    /* Soft glow halo that gently breathes behind the button */
+    .pc-btn-magic::before {
+        content: '';
+        position: absolute;
+        inset: -6px;
+        border-radius: 14px;
+        background: radial-gradient(closest-side,
+            rgba(139,92,246,.30),
+            rgba(59,130,246,.14) 55%,
+            transparent 78%);
+        z-index: -1;
+        pointer-events: none;
+        filter: blur(3px);
+        animation: pcBreathe 5s ease-in-out infinite;
+    }
+    @@keyframes pcBreathe {
+        0%, 100% { opacity: .35; transform: scale(.96); }
+        50%      { opacity: .85; transform: scale(1.05); }
+    }
+    @@media (prefers-reduced-motion: reduce) {
+        .pc-btn-magic::before {
+            animation: none;
+            opacity: .55;
+            transform: scale(1);
+        }
+    }
 
     /* Mobile: disable hover expand, ensure touch target */
     @@media (max-width: 768px) {

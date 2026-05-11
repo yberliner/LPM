@@ -835,6 +835,8 @@
   "common.yes": "כן",
   "common.no": "לא",
   "actions.title": "פעולות",
+  "actions.pcTitle": "PC",
+  "actions.moreTitle": "עוד",
   "actions.openFolder": "פתח תיקייה",
   "actions.writeToSummary": "כתוב לסיכום תיקייה",
   "actions.addMemo": "הוסף דוח לתיקייה",

@@ -1103,6 +1103,8 @@
   "common.yes": "Yes",
   "common.no": "No",
   "actions.title": "Actions",
+  "actions.pcTitle": "PC",
+  "actions.moreTitle": "More",
   "actions.openFolder": "Open Folder",
   "actions.writeToSummary": "Write to Folder Summary",
   "actions.addMemo": "Add Miscellaneous Report to Folder",
