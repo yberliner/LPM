@@ -2503,7 +2503,7 @@
     bool _dataLoaded  = false;
     bool _pendingCsExpanded = true;
     bool _weeklyOverviewExpanded = true;
-    int  _csQueueDays = 21;
+    int  _csQueueDays = 0; // 0 = "All" (no day cutoff)
     bool _showDoneCs  = false;
     List<DashboardService.AuditorSessionStatus> _auditorStatuses = [];
     Dictionary<int, HashSet<string>> _audAttachTypes = new();
@@ -3153,7 +3153,7 @@
 
     async Task OnCsQueueRangeChanged(ChangeEventArgs e)
     {
-        _csQueueDays = int.TryParse(e.Value?.ToString(), out var v) ? v : 21;
+        _csQueueDays = int.TryParse(e.Value?.ToString(), out var v) ? v : 0;
         Console.WriteLine($"[Home] Changed CS queue range to {_csQueueDays} days by '{_username}'");
         _pendingCsSessions = DashSvc.GetPendingCsSessions(_userId!.Value, _csQueueDays, _showDoneCs);
         RefreshQuestions();
