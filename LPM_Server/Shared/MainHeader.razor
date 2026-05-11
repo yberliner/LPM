@@ -11328,7 +11328,8 @@ string _actionPcSearch = "";
                     isFree:          !capturedBill,
                     notes:           capturedNotes,
                     createdByUserId: _currentCoreUserId,
-                    name:            sessionName);
+                    name:            sessionName,
+                    originSource:    "PcNoShow");
                 Console.WriteLine($"[MainHeader] PC No-Show recorded for PC {capturedPcId} ({capturedPcName}) — auditor={auditorName} bill={capturedBill} admin={capturedAdminTime} by '{_logUsername}'");
             });
 

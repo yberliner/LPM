@@ -2103,7 +2103,7 @@
                 {
                     <div class="col-6 col-md-3">
                         <div class="origin-count-card origin-@kv.Key.ToLower()">
-                            <div class="origin-count-label">@kv.Key</div>
+                            <div class="origin-count-label">@OriginDisplay(kv.Key)</div>
                             <div class="origin-count-value">@kv.Value.ToString("N0")</div>
                         </div>
                     </div>
@@ -2132,6 +2132,9 @@
                         <button type="button"
                                 class="btn @(_originFilter == "SessionManager" ? "btn-primary" : "btn-outline-primary")"
                                 @onclick='() => SetOriginFilter("SessionManager")'>Session Manager</button>
+                        <button type="button"
+                                class="btn @(_originFilter == "PcNoShow" ? "btn-primary" : "btn-outline-primary")"
+                                @onclick='() => SetOriginFilter("PcNoShow")'>PC No-Show</button>
                         <button type="button"
                                 class="btn @(_originFilter == "Import" ? "btn-primary" : "btn-outline-primary")"
                                 @onclick='() => SetOriginFilter("Import")'>Import</button>
@@ -2198,7 +2201,7 @@
                                     <td class="text-end font-monospace">@FmtSec(row.AdminSec)</td>
                                     <td>@(row.CreatedByUser ?? "—")</td>
                                     <td>
-                                        <span class="origin-badge origin-@row.Origin.ToLower()">@row.Origin</span>
+                                        <span class="origin-badge origin-@row.Origin.ToLower()">@OriginDisplay(row.Origin)</span>
                                     </td>
                                     <td class="text-muted">@row.CreatedAt</td>
                                 </tr>
@@ -2218,6 +2221,7 @@
         .origin-count-card.origin-memo           { border-color: #f9a8d4; background: #fdf2f8; }
         .origin-count-card.origin-nextcs         { border-color: #5eead4; background: #f0fdfa; }
         .origin-count-card.origin-sessionmanager { border-color: #93c5fd; background: #eff6ff; }
+        .origin-count-card.origin-pcnoshow       { border-color: #dc2626; background: #fef2f2; }
         .origin-count-card.origin-import         { border-color: #cbd5e1; background: #f8fafc; }
         .origin-count-card.origin-unknown        { border-color: #fca5a5; background: #fef2f2; }
         .origin-count-label { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: #64748b; font-weight: 600; }
@@ -2230,6 +2234,7 @@
         .origin-badge.origin-memo           { background: #fce7f3; color: #9d174d; }
         .origin-badge.origin-nextcs         { background: #ccfbf1; color: #115e59; }
         .origin-badge.origin-sessionmanager { background: #dbeafe; color: #1e40af; }
+        .origin-badge.origin-pcnoshow       { background: #fecaca; color: #7f1d1d; }
         .origin-badge.origin-import         { background: #f1f5f9; color: #475569; }
         .origin-badge.origin-unknown        { background: #fee2e2; color: #b91c1c; }
     </style>
@@ -2348,6 +2353,12 @@
         _originLimit = limit;
         LoadOriginData();
     }
+
+    static string OriginDisplay(string origin) => origin switch
+    {
+        "PcNoShow" => "PC No-Show",
+        _          => origin
+    };
 
     /// <summary>HH:MM:SS for non-zero, "—" for 0/negative. Used in Sessions Origin table.</summary>
     static string FmtSec(int s)

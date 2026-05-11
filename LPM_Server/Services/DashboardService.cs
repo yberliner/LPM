@@ -4348,7 +4348,8 @@ public class DashboardService
     }
 
     public int AddSessionFromManager(int pcId, int? auditorId, int csId, string sessionDate,
-        int lengthSec, int adminSec, bool isFree, string? notes, int? createdByUserId, string? name = null)
+        int lengthSec, int adminSec, bool isFree, string? notes, int? createdByUserId, string? name = null,
+        string originSource = "SessionManager")
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -4376,7 +4377,7 @@ public class DashboardService
               (@pcId, @audId, @date, @seq,
                @len, @adm, @free,
                @charge, 0,
-               @notes, @name, @creator, @wallet, datetime('now', 'localtime'), 'SessionManager')";
+               @notes, @name, @creator, @wallet, datetime('now', 'localtime'), @origin)";
         cmd.Parameters.AddWithValue("@pcId",    pcId);
         cmd.Parameters.AddWithValue("@audId",   auditorId.HasValue ? auditorId.Value : DBNull.Value);
         cmd.Parameters.AddWithValue("@date",    sessionDate);
@@ -4389,6 +4390,7 @@ public class DashboardService
         cmd.Parameters.AddWithValue("@name",    (object?)name ?? DBNull.Value);
         cmd.Parameters.AddWithValue("@creator", createdByUserId.HasValue ? (object)createdByUserId.Value : DBNull.Value);
         cmd.Parameters.AddWithValue("@wallet",  walletId.HasValue ? (object)walletId.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("@origin",  originSource);
         cmd.ExecuteNonQuery();
 
         using var rowIdCmd = conn.CreateCommand();
