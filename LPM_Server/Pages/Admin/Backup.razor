@@ -1133,6 +1133,9 @@
     [JSInvokable]
     public void OnBackupError(string type, string relPath, string fullPath, string? pcName, string isoTime, string detail)
     {
+        // Discard errors for the _deleted_sessions audit folder — they are not actionable.
+        if (string.Equals(pcName, "_deleted_sessions", StringComparison.OrdinalIgnoreCase))
+            return;
         DateTime when;
         if (!DateTime.TryParse(isoTime, System.Globalization.CultureInfo.InvariantCulture,
                 System.Globalization.DateTimeStyles.RoundtripKind, out when))

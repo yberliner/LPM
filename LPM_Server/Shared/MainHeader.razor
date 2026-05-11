@@ -4082,7 +4082,7 @@
                                         <tr class="sm-row @(warnRow ? "sm-solo-warn" : "")" @onclick="() => SmOpenSoloDetail(s)">
                                             <td>@s.PcName</td>
                                             <td>@s.SessionDate</td>
-                                            <td>@FormatSec(s.LengthSec + s.AdminSec)</td>
+                                            <td>@SecToHhmm(s.LengthSec + s.AdminSec)</td>
                                             <td>
                                                 @if (s.IsFreeSession) { <span class="badge bg-success" style="font-size:.7rem;">Yes</span> }
                                                 else { <span class="badge bg-secondary" style="font-size:.7rem;">No</span> }
@@ -4153,7 +4153,7 @@
                                         <td>@s.SessionDate</td>
                                         <td class="sm-name-cell" title="@s.Name">@s.Name</td>
                                         <td>@s.AuditorName</td>
-                                        <td>@FormatSec(s.LengthSec + s.AdminSec)</td>
+                                        <td>@SecToHhmm(s.LengthSec + s.AdminSec)</td>
                                         <td>@(s.IsFree ? "Yes" : "")</td>
                                         <td><span class="badge @SmStatusBadge(s.VerifiedStatus)">@s.VerifiedStatus</span></td>
                                     </tr>
@@ -4209,18 +4209,21 @@
                         </div>
                         <div class="sm-field-row">
                             <div class="sm-field">
-                                <label>Session (sec)</label>
-                                <input type="number" class="form-control form-control-sm" @bind="_smEditLenSec" />
+                                <label>Session</label>
+                                <input type="text" class="form-control form-control-sm arf-time-input"
+                                       placeholder="h:mm" @bind="_smEditLenHhmm" />
                             </div>
                             <div class="sm-field">
-                                <label>Admin (sec)</label>
-                                <input type="number" class="form-control form-control-sm" @bind="_smEditAdminSec" />
+                                <label>Admin</label>
+                                <input type="text" class="form-control form-control-sm arf-time-input"
+                                       placeholder="h:mm" @bind="_smEditAdminHhmm" />
                             </div>
                         </div>
                         <div class="sm-field-row">
                             <div class="sm-field">
-                                <label>Charge (sec)</label>
-                                <input type="number" class="form-control form-control-sm" @bind="_smEditChargeSec" />
+                                <label>Charge</label>
+                                <input type="text" class="form-control form-control-sm arf-time-input"
+                                       placeholder="h:mm" @bind="_smEditChargeHhmm" />
                             </div>
                             <div class="sm-field">
                                 <label>Charged Rate (¢/hr)</label>
@@ -7767,6 +7770,11 @@
     string _smEditVerified = "";
     string _smEditNotes = "";
     int _smEditChargeSec;
+    // h:mm UI mirrors of the three second-based fields above. Populated from seconds
+    // (rounded to the nearest minute), reparsed back to seconds on submit.
+    string _smEditLenHhmm    = "";
+    string _smEditAdminHhmm  = "";
+    string _smEditChargeHhmm = "";
     int _smEditChargedRate;
     int _smEditAudSalary;
     int _smEditWalletId;
@@ -10344,6 +10352,9 @@ string _actionPcSearch = "";
         _smEditVerified = _smDetail.VerifiedStatus;
         _smEditNotes = _smDetail.ApprovedNotes ?? "";
         _smEditChargeSec = _smDetail.ChargeSeconds;
+        _smEditLenHhmm    = SecToHhmm(_smDetail.LengthSeconds);
+        _smEditAdminHhmm  = SecToHhmm(_smDetail.AdminSeconds);
+        _smEditChargeHhmm = SecToHhmm(_smDetail.ChargeSeconds);
         _smEditChargedRate = _smDetail.ChargedRateCentsPerHour;
         _smEditAudSalary = _smDetail.AuditorSalaryCentsPerHour;
         _smEditCsReviewLen = _smDetail.ReviewLengthSeconds ?? 0;
@@ -10364,6 +10375,23 @@ string _actionPcSearch = "";
         else SmLoadPage(_smPage);
     }
 
+    // Format seconds as "h:mm" rounded to the nearest minute (91s → "0:02", 89s → "0:01").
+    static string SecToHhmm(int sec)
+    {
+        if (sec <= 0) return "0:00";
+        var m = (int)Math.Round(sec / 60.0, MidpointRounding.AwayFromZero);
+        return $"{m / 60}:{m % 60:D2}";
+    }
+
+    // Parse "h:mm" / "hh:mm" / "130" back to seconds (always a multiple of 60).
+    // Empty/invalid input → 0. Reuses existing FormatArfTime + ArfTimeToMinutes.
+    int HhmmStringToSec(string s)
+    {
+        var formatted = FormatArfTime((s ?? "").Trim());
+        var mins = ArfTimeToMinutes(formatted);
+        return mins > 0 ? mins * 60 : 0;
+    }
+
     async Task SmSave()
     {
         if (_smDetail == null) return;
@@ -10371,6 +10399,12 @@ string _actionPcSearch = "";
         var detail = _smDetail;
         try
         {
+            // Reparse the h:mm UI strings back to seconds before change-detection / submit.
+            // Result is always a multiple of 60, satisfying the "round on submit" requirement.
+            _smEditLenSec    = HhmmStringToSec(_smEditLenHhmm);
+            _smEditAdminSec  = HhmmStringToSec(_smEditAdminHhmm);
+            _smEditChargeSec = HhmmStringToSec(_smEditChargeHhmm);
+
             // Build summary of what changed
             var changes = new List<string>();
             if (_smEditName != (detail.Name ?? "")) changes.Add("Name");
@@ -10700,13 +10734,6 @@ string _actionPcSearch = "";
         }
         catch (Exception ex) { _smAddError = $"Failed: {ex.Message}"; }
         finally { _smAddSaving = false; }
-    }
-
-    static string FormatSec(int sec)
-    {
-        if (sec <= 0) return "0:00";
-        var m = sec / 60; var s = sec % 60;
-        return $"{m}:{s:D2}";
     }
 
     private async void OnLanguageChanged()
