@@ -3952,15 +3952,17 @@
                         </label>
                     </div>
                     <div class="sm-field">
-                        <label>Notes</label>
-                        <textarea class="form-control form-control-sm" rows="2" @bind="_smAddNotes"></textarea>
+                        <label>Notes <span style="color:#dc2626;">*</span></label>
+                        <textarea class="form-control form-control-sm" rows="2"
+                                  placeholder="Required — describe the session"
+                                  @bind="_smAddNotes" @bind:event="oninput"></textarea>
                     </div>
                 </div>
 
                 <div class="d-flex gap-2 mt-3 justify-content-end">
                     <button class="btn btn-sm btn-outline-secondary" @onclick="SmCancelAdd">Cancel</button>
                     <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
-                            disabled="@_smAddSaving" @onclick="SmSaveAdd">
+                            disabled="@(_smAddSaving || string.IsNullOrWhiteSpace(_smAddNotes))" @onclick="SmSaveAdd">
                         @if (_smAddSaving) { <span class="spinner-border spinner-border-sm me-1"></span> }
                         <i class="ri-save-line"></i> Create Session
                     </button>
@@ -4226,14 +4228,14 @@
                                        placeholder="h:mm" @bind="_smEditChargeHhmm" />
                             </div>
                             <div class="sm-field">
-                                <label>Charged Rate (¢/hr)</label>
-                                <input type="number" class="form-control form-control-sm" @bind="_smEditChargedRate" />
+                                <label>Charged Rate (@SmCurrencyLabel()/hr)</label>
+                                <input type="number" step="0.01" class="form-control form-control-sm" @bind="_smEditChargedRateMain" />
                             </div>
                         </div>
                         <div class="sm-field-row">
                             <div class="sm-field">
-                                <label>Auditor Salary (¢/hr)</label>
-                                <input type="number" class="form-control form-control-sm" @bind="_smEditAudSalary" />
+                                <label>Auditor Salary (@SmCurrencyLabel()/hr)</label>
+                                <input type="number" step="0.01" class="form-control form-control-sm" @bind="_smEditAudSalaryMain" />
                             </div>
                             <div class="sm-field">
                                 <label>Status</label>
@@ -4313,8 +4315,9 @@
                                 </select>
                             </div>
                             <div class="sm-field">
-                                <label>Review Length (sec)</label>
-                                <input type="number" class="form-control form-control-sm" @bind="_smEditCsReviewLen" />
+                                <label>Review Length</label>
+                                <input type="text" class="form-control form-control-sm arf-time-input"
+                                       placeholder="h:mm" @bind="_smEditCsReviewLenHhmm" />
                             </div>
                             <div class="sm-field">
                                 <label>Status</label>
@@ -4332,12 +4335,12 @@
                             </div>
                             <div class="sm-field-row">
                                 <div class="sm-field">
-                                    <label>CS Salary (¢/hr)</label>
-                                    <input type="number" class="form-control form-control-sm" @bind="_smEditCsSalary" />
+                                    <label>CS Salary (@SmCurrencyLabel()/hr)</label>
+                                    <input type="number" step="0.01" class="form-control form-control-sm" @bind="_smEditCsSalaryMain" />
                                 </div>
                                 <div class="sm-field">
-                                    <label>CS Charged (¢/hr)</label>
-                                    <input type="number" class="form-control form-control-sm" @bind="_smEditCsCharged" />
+                                    <label>CS Charged (@SmCurrencyLabel()/hr)</label>
+                                    <input type="number" step="0.01" class="form-control form-control-sm" @bind="_smEditCsChargedMain" />
                                 </div>
                             </div>
                             <div class="sm-field">
@@ -7770,11 +7773,18 @@
     string _smEditVerified = "";
     string _smEditNotes = "";
     int _smEditChargeSec;
-    // h:mm UI mirrors of the three second-based fields above. Populated from seconds
+    // h:mm UI mirrors of the second-based fields above. Populated from seconds
     // (rounded to the nearest minute), reparsed back to seconds on submit.
-    string _smEditLenHhmm    = "";
-    string _smEditAdminHhmm  = "";
-    string _smEditChargeHhmm = "";
+    string _smEditLenHhmm        = "";
+    string _smEditAdminHhmm      = "";
+    string _smEditChargeHhmm     = "";
+    string _smEditCsReviewLenHhmm = "";
+
+    // Major-unit (e.g. NIS) UI mirrors of the cents-per-hour fields. *100 to submit.
+    double _smEditChargedRateMain;
+    double _smEditAudSalaryMain;
+    double _smEditCsSalaryMain;
+    double _smEditCsChargedMain;
     int _smEditChargedRate;
     int _smEditAudSalary;
     int _smEditWalletId;
@@ -10352,9 +10362,14 @@ string _actionPcSearch = "";
         _smEditVerified = _smDetail.VerifiedStatus;
         _smEditNotes = _smDetail.ApprovedNotes ?? "";
         _smEditChargeSec = _smDetail.ChargeSeconds;
-        _smEditLenHhmm    = SecToHhmm(_smDetail.LengthSeconds);
-        _smEditAdminHhmm  = SecToHhmm(_smDetail.AdminSeconds);
-        _smEditChargeHhmm = SecToHhmm(_smDetail.ChargeSeconds);
+        _smEditLenHhmm         = SecToHhmm(_smDetail.LengthSeconds);
+        _smEditAdminHhmm       = SecToHhmm(_smDetail.AdminSeconds);
+        _smEditChargeHhmm      = SecToHhmm(_smDetail.ChargeSeconds);
+        _smEditCsReviewLenHhmm = SecToHhmm(_smDetail.ReviewLengthSeconds ?? 0);
+        _smEditChargedRateMain = _smDetail.ChargedRateCentsPerHour      / 100.0;
+        _smEditAudSalaryMain   = _smDetail.AuditorSalaryCentsPerHour    / 100.0;
+        _smEditCsSalaryMain    = (_smDetail.CsSalaryCentsPerHour ?? 0)        / 100.0;
+        _smEditCsChargedMain   = (_smDetail.CsChargedCentsRatePerHour ?? 0)   / 100.0;
         _smEditChargedRate = _smDetail.ChargedRateCentsPerHour;
         _smEditAudSalary = _smDetail.AuditorSalaryCentsPerHour;
         _smEditCsReviewLen = _smDetail.ReviewLengthSeconds ?? 0;
@@ -10373,6 +10388,21 @@ string _actionPcSearch = "";
         _smDelStage1 = false; _smDelStage2 = false;
         if (_smSoloMode) SmLoadSoloSessions();
         else SmLoadPage(_smPage);
+    }
+
+    // Currency label for the currently-selected wallet in the Edit Session form.
+    // ILS displays as "NIS" per local convention; other codes pass through unchanged.
+    // No wallet selected → defaults to "NIS".
+    string SmCurrencyLabel()
+    {
+        var code = _smPcWallets.FirstOrDefault(w => w.WalletId == _smEditWalletId)?.Currency;
+        return code switch
+        {
+            "ILS" => "NIS",
+            null  => "NIS",
+            ""    => "NIS",
+            _     => code
+        };
     }
 
     // Format seconds as "h:mm" rounded to the nearest minute (91s → "0:02", 89s → "0:01").
@@ -10401,9 +10431,15 @@ string _actionPcSearch = "";
         {
             // Reparse the h:mm UI strings back to seconds before change-detection / submit.
             // Result is always a multiple of 60, satisfying the "round on submit" requirement.
-            _smEditLenSec    = HhmmStringToSec(_smEditLenHhmm);
-            _smEditAdminSec  = HhmmStringToSec(_smEditAdminHhmm);
-            _smEditChargeSec = HhmmStringToSec(_smEditChargeHhmm);
+            _smEditLenSec       = HhmmStringToSec(_smEditLenHhmm);
+            _smEditAdminSec     = HhmmStringToSec(_smEditAdminHhmm);
+            _smEditChargeSec    = HhmmStringToSec(_smEditChargeHhmm);
+            _smEditCsReviewLen  = HhmmStringToSec(_smEditCsReviewLenHhmm);
+            // Major-unit (NIS/USD/…) → cents-per-hour. *100 + round.
+            _smEditChargedRate  = (int)Math.Round(_smEditChargedRateMain * 100);
+            _smEditAudSalary    = (int)Math.Round(_smEditAudSalaryMain   * 100);
+            _smEditCsSalary     = (int)Math.Round(_smEditCsSalaryMain    * 100);
+            _smEditCsCharged    = (int)Math.Round(_smEditCsChargedMain   * 100);
 
             // Build summary of what changed
             var changes = new List<string>();
@@ -10658,8 +10694,10 @@ string _actionPcSearch = "";
     async Task SmSaveAdd()
     {
         _smAddError = "";
+        _smAddNotes = (_smAddNotes ?? "").Trim();
         if (_smAddPcId <= 0) { _smAddError = "Please select a PC."; return; }
         if (_smAddLenMin <= 0) { _smAddError = "Session length must be greater than 0."; return; }
+        if (string.IsNullOrEmpty(_smAddNotes)) { _smAddError = "Notes are required."; return; }
 
         if (_smAddAuditorId == 0)
         {
