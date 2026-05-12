@@ -4260,6 +4260,7 @@
     string _pcName = "";
     string _userName = "";
     string _loginUsername = "";    // login username from auth claims — for "aviv" default preset check
+    bool _isAdmin;                 // true when caller has the "Admin" role — gates destructive ops
     PcFolderInfo? _folder;
     int _csSessionId;            // session ID passed from Dashboard (0 = not from CS button)
     QuestionInfo? _questionInfo;  // current session's question status
@@ -4641,6 +4642,7 @@
         var _pcfStaffRole = HttpContextAccessor.HttpContext?.User.FindFirst("StaffRole")?.Value ?? "";
         var _pcfUsername  = HttpContextAccessor.HttpContext?.User.FindFirst(System.Security.Claims.ClaimTypes.Name)?.Value ?? "";
         _loginUsername = _pcfUsername;
+        _isAdmin = HttpContextAccessor.HttpContext?.User.IsInRole("Admin") ?? false;
         _isUserCS = StaffRoles.IsCS(_pcfStaffRole);
         _isSoloUser = _pcfStaffRole == StaffRoles.Solo;
         _currentUserId = SdSvc.GetUserIdByUsername(_pcfUsername) ?? 0;
@@ -8059,6 +8061,14 @@
     void DeleteExcelRow(int row)
     {
         if (string.IsNullOrEmpty(_excelRelPath)) return;
+        // Server-side admin gate. Excel row deletion is a HARD delete with no
+        // backup of the prior row data — Admin only.
+        if (!_isAdmin)
+        {
+            Console.WriteLine($"[PcFolder] Excel-row delete blocked — non-admin '{_userName}' tried to delete row {row} from '{_excelRelPath}' on PC {PcId}");
+            ShowErrorToast("Only Admin can delete Excel rows. Contact your administrator.");
+            return;
+        }
         Console.WriteLine($"[PcFolder] Deleting Excel row {row} from '{_excelRelPath}' by '{_userName}' — PC {PcId}");
         FolderSvc.DeleteExcelRow(PcId, _excelRelPath, row, Solo);
         _excelData = FolderSvc.ReadExcelFile(PcId, _excelRelPath, Solo);
@@ -8687,6 +8697,16 @@
 
     void ExecuteDelete()
     {
+        // Server-side admin gate. File/folder deletion is destructive (files
+        // go to a backup folder with a retention window; folder deletion is
+        // immediate). Restrict to Admin so staff can't wipe PC folders.
+        if (!_isAdmin)
+        {
+            Console.WriteLine($"[PcFolder] Delete blocked — non-admin '{_userName}' tried to delete '{_deleteTargetName}' on PC {PcId}");
+            _showDeleteConfirm = false;
+            ShowErrorToast("Only Admin can delete files or folders. Contact your administrator.");
+            return;
+        }
         Console.WriteLine($"[PcFolder] Deleted '{_deleteTargetName}' (isFolder={_deleteIsFolder}) by '{_userName}' — PC {PcId}");
         if (_deleteIsFolder)
             FolderSvc.DeleteEmptyFolder(PcId, _deleteTargetPath, Solo);

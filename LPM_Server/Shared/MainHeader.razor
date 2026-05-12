@@ -4226,19 +4226,40 @@
                         </div>
                         <div class="sm-field-row">
                             <div class="sm-field">
-                                <label>Charge</label>
-                                <input type="text" class="form-control form-control-sm arf-time-input"
-                                       placeholder="h:mm" @bind="_smEditChargeHhmm" />
+                                <label>Charge @(_isAdmin ? "" : "(admin only)")</label>
+                                @if (_isAdmin)
+                                {
+                                    <input type="text" class="form-control form-control-sm arf-time-input"
+                                           placeholder="h:mm" @bind="_smEditChargeHhmm" />
+                                }
+                                else
+                                {
+                                    <input class="form-control form-control-sm sm-readonly-fin" value="@_smEditChargeHhmm" readonly title="Only Admin can change billing-related fields" />
+                                }
                             </div>
                             <div class="sm-field">
-                                <label>Charged Rate (@SmCurrencyLabel()/hr)</label>
-                                <input type="number" step="0.01" class="form-control form-control-sm" @bind="_smEditChargedRateMain" />
+                                <label>Charged Rate (@SmCurrencyLabel()/hr) @(_isAdmin ? "" : "(admin only)")</label>
+                                @if (_isAdmin)
+                                {
+                                    <input type="number" step="0.01" class="form-control form-control-sm" @bind="_smEditChargedRateMain" />
+                                }
+                                else
+                                {
+                                    <input class="form-control form-control-sm sm-readonly-fin" value="@_smEditChargedRateMain.ToString("0.00")" readonly title="Only Admin can change billing-related fields" />
+                                }
                             </div>
                         </div>
                         <div class="sm-field-row">
                             <div class="sm-field">
-                                <label>Auditor Salary (@SmCurrencyLabel()/hr)</label>
-                                <input type="number" step="0.01" class="form-control form-control-sm" @bind="_smEditAudSalaryMain" />
+                                <label>Auditor Salary (@SmCurrencyLabel()/hr) @(_isAdmin ? "" : "(admin only)")</label>
+                                @if (_isAdmin)
+                                {
+                                    <input type="number" step="0.01" class="form-control form-control-sm" @bind="_smEditAudSalaryMain" />
+                                }
+                                else
+                                {
+                                    <input class="form-control form-control-sm sm-readonly-fin" value="@_smEditAudSalaryMain.ToString("0.00")" readonly title="Only Admin can change billing-related fields" />
+                                }
                             </div>
                             <div class="sm-field">
                                 <label>Status</label>
@@ -4250,7 +4271,8 @@
                         </div>
                         <div class="sm-field">
                             <label class="d-flex align-items-center gap-2">
-                                <input type="checkbox" class="form-check-input" @bind="_smEditIsFree" /> Free Session
+                                <input type="checkbox" class="form-check-input" @bind="_smEditIsFree" disabled="@(!_isAdmin)" />
+                                Free Session @(_isAdmin ? "" : "(admin only)")
                             </label>
                         </div>
                         <div class="sm-field">
@@ -4258,25 +4280,42 @@
                             <textarea class="form-control form-control-sm" rows="2" @bind="_smEditNotes"></textarea>
                         </div>
                         <div class="sm-field">
-                            <label>Auditor</label>
-                            <select class="form-select form-select-sm" @bind="_smEditAuditorId">
-                                <option value="0">— none (Solo) —</option>
-                                @foreach (var a in _smAddAuditorList)
-                                {
-                                    <option value="@a.PersonId">@a.FullName</option>
-                                }
-                            </select>
-                        </div>
-                        <div class="sm-field">
-                            <label>Wallet</label>
-                            @if (_smPcWallets.Count > 0)
+                            <label>Auditor @(_isAdmin ? "" : "(admin only)")</label>
+                            @if (_isAdmin)
                             {
-                                <select class="form-select form-select-sm" @bind="_smEditWalletId">
-                                    @foreach (var w in _smPcWallets)
+                                <select class="form-select form-select-sm" @bind="_smEditAuditorId">
+                                    <option value="0">— none (Solo) —</option>
+                                    @foreach (var a in _smAddAuditorList)
                                     {
-                                        <option value="@w.WalletId">@w.Name (@w.Currency)@(w.IsActive ? "" : " — inactive")</option>
+                                        <option value="@a.PersonId">@a.FullName</option>
                                     }
                                 </select>
+                            }
+                            else
+                            {
+                                var _smAudDisp = _smAddAuditorList.FirstOrDefault(a => a.PersonId == _smEditAuditorId).FullName ?? "— none (Solo) —";
+                                <input class="form-control form-control-sm sm-readonly-fin" value="@_smAudDisp" readonly title="Only Admin can reassign the auditor" />
+                            }
+                        </div>
+                        <div class="sm-field">
+                            <label>Wallet @(_isAdmin ? "" : "(admin only)")</label>
+                            @if (_smPcWallets.Count > 0)
+                            {
+                                if (_isAdmin)
+                                {
+                                    <select class="form-select form-select-sm" @bind="_smEditWalletId">
+                                        @foreach (var w in _smPcWallets)
+                                        {
+                                            <option value="@w.WalletId">@w.Name (@w.Currency)@(w.IsActive ? "" : " — inactive")</option>
+                                        }
+                                    </select>
+                                }
+                                else
+                                {
+                                    var _smWalDisp = _smPcWallets.FirstOrDefault(w => w.WalletId == _smEditWalletId);
+                                    var _smWalText = _smWalDisp != null ? $"{_smWalDisp.Name} ({_smWalDisp.Currency})" : "—";
+                                    <input class="form-control form-control-sm sm-readonly-fin" value="@_smWalText" readonly title="Only Admin can change the wallet / currency" />
+                                }
                             }
                             else
                             {
@@ -4308,14 +4347,22 @@
                                 <input class="form-control form-control-sm" value="@_smDetail.CsReviewId" readonly />
                             </div>
                             <div class="sm-field">
-                                <label>CS Name</label>
-                                <select class="form-select form-select-sm" @bind="_smEditCsId">
-                                    <option value="0">— None —</option>
-                                    @foreach (var cs in _smCsList)
-                                    {
-                                        <option value="@cs.PersonId">@cs.FullName</option>
-                                    }
-                                </select>
+                                <label>CS Name @(_isAdmin ? "" : "(admin only)")</label>
+                                @if (_isAdmin)
+                                {
+                                    <select class="form-select form-select-sm" @bind="_smEditCsId">
+                                        <option value="0">— None —</option>
+                                        @foreach (var cs in _smCsList)
+                                        {
+                                            <option value="@cs.PersonId">@cs.FullName</option>
+                                        }
+                                    </select>
+                                }
+                                else
+                                {
+                                    var _smCsDisp = _smCsList.FirstOrDefault(c => c.PersonId == _smEditCsId).FullName ?? "— None —";
+                                    <input class="form-control form-control-sm sm-readonly-fin" value="@_smCsDisp" readonly title="Only Admin can reassign the CS reviewer" />
+                                }
                             </div>
                             <div class="sm-field">
                                 <label>Review Length</label>
@@ -4338,12 +4385,26 @@
                             </div>
                             <div class="sm-field-row">
                                 <div class="sm-field">
-                                    <label>CS Salary (@SmCurrencyLabel()/hr)</label>
-                                    <input type="number" step="0.01" class="form-control form-control-sm" @bind="_smEditCsSalaryMain" />
+                                    <label>CS Salary (@SmCurrencyLabel()/hr) @(_isAdmin ? "" : "(admin only)")</label>
+                                    @if (_isAdmin)
+                                    {
+                                        <input type="number" step="0.01" class="form-control form-control-sm" @bind="_smEditCsSalaryMain" />
+                                    }
+                                    else
+                                    {
+                                        <input class="form-control form-control-sm sm-readonly-fin" value="@_smEditCsSalaryMain.ToString("0.00")" readonly title="Only Admin can change billing-related fields" />
+                                    }
                                 </div>
                                 <div class="sm-field">
-                                    <label>CS Charged (@SmCurrencyLabel()/hr)</label>
-                                    <input type="number" step="0.01" class="form-control form-control-sm" @bind="_smEditCsChargedMain" />
+                                    <label>CS Charged (@SmCurrencyLabel()/hr) @(_isAdmin ? "" : "(admin only)")</label>
+                                    @if (_isAdmin)
+                                    {
+                                        <input type="number" step="0.01" class="form-control form-control-sm" @bind="_smEditCsChargedMain" />
+                                    }
+                                    else
+                                    {
+                                        <input class="form-control form-control-sm sm-readonly-fin" value="@_smEditCsChargedMain.ToString("0.00")" readonly title="Only Admin can change billing-related fields" />
+                                    }
                                 </div>
                             </div>
                             <div class="sm-field">
@@ -4473,25 +4534,28 @@
                 <button class="btn btn-sm btn-danger d-flex align-items-center gap-1" @onclick="SmStartDelete">
                     <i class="ri-delete-bin-line"></i> Delete
                 </button>
-                <button class="btn btn-sm btn-outline-warning d-flex align-items-center gap-1"
-                        disabled="@(_smTransferring)" @onclick="() => _smShowTransfer = !_smShowTransfer">
-                    <i class="ri-arrow-right-up-line"></i> Transfer
-                </button>
-                @if (_smShowTransfer)
+                @if (_isAdmin)
                 {
-                    <select class="form-select form-select-sm" style="max-width:200px;" @bind="_smTransferPcId">
-                        <option value="0">— Target PC —</option>
-                        @foreach (var pc in _actionAllPcs.Where(p => p.PcId != _smDetail.PcId))
-                        {
-                            <option value="@pc.PcId">@pc.FullName</option>
-                        }
-                    </select>
-                    <button class="btn btn-sm btn-warning d-flex align-items-center gap-1"
-                            disabled="@(_smTransferPcId == 0 || _smTransferring)" @onclick="SmTransferSession">
-                        @if (_smTransferring) { <span class="spinner-border spinner-border-sm"></span> }
-                        else { <i class="ri-check-line"></i> }
-                        Go
+                    <button class="btn btn-sm btn-outline-warning d-flex align-items-center gap-1"
+                            disabled="@(_smTransferring)" @onclick="() => _smShowTransfer = !_smShowTransfer">
+                        <i class="ri-arrow-right-up-line"></i> Transfer
                     </button>
+                    @if (_smShowTransfer)
+                    {
+                        <select class="form-select form-select-sm" style="max-width:200px;" @bind="_smTransferPcId">
+                            <option value="0">— Target PC —</option>
+                            @foreach (var pc in _actionAllPcs.Where(p => p.PcId != _smDetail.PcId))
+                            {
+                                <option value="@pc.PcId">@pc.FullName</option>
+                            }
+                        </select>
+                        <button class="btn btn-sm btn-warning d-flex align-items-center gap-1"
+                                disabled="@(_smTransferPcId == 0 || _smTransferring)" @onclick="SmTransferSession">
+                            @if (_smTransferring) { <span class="spinner-border spinner-border-sm"></span> }
+                            else { <i class="ri-check-line"></i> }
+                            Go
+                        </button>
+                    }
                 }
                 <div class="ms-auto d-flex gap-2">
                     <button class="btn btn-sm btn-outline-secondary" @onclick="SmBackToList">@LS.T("common.cancel")</button>
@@ -4591,6 +4655,13 @@
     }
     .sm-field { display: flex; flex-direction: column; gap: 2px; }
     .sm-field label { font-size: .75rem; font-weight: 600; color: var(--text-muted); }
+    /* Read-only display for financial fields when caller isn't Admin. Visually distinct so users see "yes that's the rate, no I can't change it." */
+    .sm-readonly-fin {
+        background: rgba(245, 158, 11, 0.06) !important;
+        border-color: rgba(245, 158, 11, 0.35) !important;
+        color: var(--default-text-color) !important;
+        cursor: not-allowed;
+    }
     .sm-field input[readonly], .sm-field input[disabled] { background: var(--default-background); color: var(--text-muted); }
     .sm-field-row { display: flex; gap: 10px; }
     .sm-field-row .sm-field { flex: 1; }
@@ -10645,49 +10716,66 @@ string _actionPcSearch = "";
             _smEditCsSalary     = (int)Math.Round(_smEditCsSalaryMain    * 100);
             _smEditCsCharged    = (int)Math.Round(_smEditCsChargedMain   * 100);
 
-            // Build summary of what changed
+            // ── Admin-only financial fields ──
+            // Non-admin users may edit operational fields (name, date, duration, status,
+            // notes, CS status / notes / review length) but NOT financial ones (rates,
+            // salaries, auditor/CS reassignment, wallet, free toggle, charge seconds).
+            // For non-admin callers we substitute the existing detail values so even a
+            // tampered circuit payload cannot rewrite billing data.
+            var finChargeSec    = _isAdmin ? _smEditChargeSec    : detail.ChargeSeconds;
+            var finChargedRate  = _isAdmin ? _smEditChargedRate  : detail.ChargedRateCentsPerHour;
+            var finAudSalary    = _isAdmin ? _smEditAudSalary    : detail.AuditorSalaryCentsPerHour;
+            var finAuditorId    = _isAdmin ? _smEditAuditorId    : (detail.AuditorId ?? 0);
+            var finIsFree       = _isAdmin ? _smEditIsFree       : detail.IsFreeSession;
+            var finWalletId     = _isAdmin ? _smEditWalletId     : (detail.WalletId ?? 0);
+            var finCsSalary     = _isAdmin ? _smEditCsSalary     : (detail.CsSalaryCentsPerHour ?? 0);
+            var finCsCharged    = _isAdmin ? _smEditCsCharged    : (detail.CsChargedCentsRatePerHour ?? 0);
+            var finCsId         = _isAdmin ? _smEditCsId         : (detail.CsId ?? 0);
+
+            // Build summary of what changed (using the gated values so non-admins don't
+            // see a "Rate changed" entry when their attempted change was ignored).
             var changes = new List<string>();
             if (_smEditName != (detail.Name ?? "")) changes.Add("Name");
             if (_smEditDate.ToString("yyyy-MM-dd") != detail.SessionDate) changes.Add("Date");
             if (_smEditLenSec != detail.LengthSeconds) changes.Add("Duration");
             if (_smEditAdminSec != detail.AdminSeconds) changes.Add("Admin");
-            if (_smEditIsFree != detail.IsFreeSession) changes.Add("Free");
+            if (finIsFree != detail.IsFreeSession) changes.Add("Free");
             if (_smEditVerified != detail.VerifiedStatus) changes.Add("Status");
-            if (_smEditChargeSec != detail.ChargeSeconds) changes.Add("Charge");
-            if (_smEditChargedRate != detail.ChargedRateCentsPerHour) changes.Add("Rate");
-            if (_smEditAudSalary != detail.AuditorSalaryCentsPerHour) changes.Add("Aud Salary");
-            if (_smEditAuditorId != (detail.AuditorId ?? 0)) changes.Add("Auditor");
-            if (_smEditWalletId != (detail.WalletId ?? 0)) changes.Add("Wallet");
+            if (finChargeSec != detail.ChargeSeconds) changes.Add("Charge");
+            if (finChargedRate != detail.ChargedRateCentsPerHour) changes.Add("Rate");
+            if (finAudSalary != detail.AuditorSalaryCentsPerHour) changes.Add("Aud Salary");
+            if (finAuditorId != (detail.AuditorId ?? 0)) changes.Add("Auditor");
+            if (finWalletId != (detail.WalletId ?? 0)) changes.Add("Wallet");
             if (detail.CsReviewId.HasValue)
             {
                 if (_smEditCsReviewLen != (detail.ReviewLengthSeconds ?? 0)) changes.Add("CS Length");
                 if (_smEditCsStatus != (detail.CsStatus ?? "")) changes.Add("CS Status");
-                if (_smEditCsSalary != (detail.CsSalaryCentsPerHour ?? 0)) changes.Add("CS Salary");
-                if (_smEditCsCharged != (detail.CsChargedCentsRatePerHour ?? 0)) changes.Add("CS Rate");
-                if (_smEditCsId > 0 && _smEditCsId != (detail.CsId ?? 0)) changes.Add("CS Reassigned");
+                if (finCsSalary != (detail.CsSalaryCentsPerHour ?? 0)) changes.Add("CS Salary");
+                if (finCsCharged != (detail.CsChargedCentsRatePerHour ?? 0)) changes.Add("CS Rate");
+                if (finCsId > 0 && finCsId != (detail.CsId ?? 0)) changes.Add("CS Reassigned");
             }
 
             await Task.Run(() =>
             {
                 DashSvc.UpdateSessionAdmin(detail.SessionId, _smEditName, _smEditDate.ToString("yyyy-MM-dd"),
-                    _smEditLenSec, _smEditAdminSec, _smEditIsFree, _smEditVerified,
+                    _smEditLenSec, _smEditAdminSec, finIsFree, _smEditVerified,
                     string.IsNullOrWhiteSpace(_smEditNotes) ? null : _smEditNotes,
-                    _smEditChargeSec, _smEditChargedRate, _smEditAudSalary,
-                    _smEditAuditorId > 0 ? (int?)_smEditAuditorId : null,
+                    finChargeSec, finChargedRate, finAudSalary,
+                    finAuditorId > 0 ? (int?)finAuditorId : null,
                     _currentCoreUserId);
 
-                if (_smEditWalletId != (detail.WalletId ?? 0))
-                    DashSvc.UpdateSessionWallet(detail.SessionId, _smEditWalletId > 0 ? (int?)_smEditWalletId : null);
+                if (finWalletId != (detail.WalletId ?? 0))
+                    DashSvc.UpdateSessionWallet(detail.SessionId, finWalletId > 0 ? (int?)finWalletId : null);
 
                 if (detail.CsReviewId.HasValue)
                 {
                     DashSvc.UpdateCsReviewAdmin(detail.CsReviewId.Value,
                         _smEditCsReviewLen, _smEditCsStatus,
                         string.IsNullOrWhiteSpace(_smEditCsNotes) ? null : _smEditCsNotes,
-                        _smEditCsSalary, _smEditCsCharged);
+                        finCsSalary, finCsCharged);
 
-                    if (_smEditCsId > 0 && _smEditCsId != (detail.CsId ?? 0))
-                        DashSvc.ReassignCsReview(detail.CsReviewId.Value, _smEditCsId);
+                    if (finCsId > 0 && finCsId != (detail.CsId ?? 0))
+                        DashSvc.ReassignCsReview(detail.CsReviewId.Value, finCsId);
                 }
             });
 
@@ -10711,6 +10799,9 @@ string _actionPcSearch = "";
     async Task SmTransferSession()
     {
         if (_smDetail == null || _smTransferPcId == 0) return;
+        // Server-side gate — Admin only. Defense in depth in case the button
+        // becomes visible through some other path or a circuit-level invocation.
+        if (!_isAdmin) { _smError = "Only Admin can transfer a session between PCs."; _smShowTransfer = false; return; }
         _smTransferring = true; _smError = ""; _smSuccess = "";
         StateHasChanged();
 

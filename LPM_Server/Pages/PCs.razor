@@ -6642,6 +6642,17 @@
     async Task ConfirmResetBudget()
     {
         if (!_selPcId.HasValue) return;
+        // Server-side admin gate. The Reset Budget button is already wrapped in
+        // @if (_isAdmin) at the markup, so a non-admin shouldn't reach here in
+        // normal UI flow — but a tampered circuit invocation would otherwise
+        // create a financial cutoff that we cannot recover from (deletion is
+        // also admin-only now).
+        if (!_isAdmin)
+        {
+            Console.WriteLine($"[PCs] ConfirmResetBudget blocked — non-admin user '{_username}' attempted reset on PC {_selPcId.Value}");
+            _showResetModal = false;
+            return;
+        }
         var username = _username;
         PcSvc.AddBudgetReset(_selPcId.Value, _resetDate.ToString("yyyy-MM-dd"), username, string.IsNullOrWhiteSpace(_resetNotes) ? null : _resetNotes.Trim());
         Console.WriteLine($"[PCs] Budget reset for PC {_selPcId.Value} on {_resetDate:yyyy-MM-dd} by '{username}': {_resetNotes}");
