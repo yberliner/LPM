@@ -238,7 +238,8 @@ public class FolderService
     private readonly FileAuditService _audit;
     private readonly TextAnnotationService _textAnn;
 
-    public FolderService(IConfiguration config, IMemoryCache cache, FileAuditService audit, TextAnnotationService textAnn)
+    public FolderService(IConfiguration config, IMemoryCache cache, FileAuditService audit,
+                         TextAnnotationService textAnn)
     {
         _basePath = Path.Combine(Directory.GetCurrentDirectory(), "PC-Folders");
         var dbPath = config["Database:Path"] ?? "lifepower.db";

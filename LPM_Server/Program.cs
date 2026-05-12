@@ -1328,11 +1328,92 @@ app.MapGet("/api/pc-session-merged", (int pcId, string session, LPM.Services.Fol
 
 app.MapGet("/api/pc-file-annotations", (int pcId, string path,
     LPM.Services.FolderService folderSvc, LPM.Services.DashboardService dashSvc,
+    LPM.Services.TextAnnotationService taSvc,
     HttpContext ctx, bool solo = false) =>
 {
     if (!CanAccessPcFile(ctx, pcId, solo, dashSvc)) return Results.Forbid();
-    var json = folderSvc.ReadAnnotationSidecar(pcId, path, solo);
-    return json != null ? Results.Content(json, "application/json") : Results.NoContent();
+
+    // The envelope now carries per-user state (currentUserId, currentUserName, owner stamps on
+    // each annotation). Without these headers, a shared browser switching between user logins
+    // could be served the previous user's envelope from cache.
+    ctx.Response.Headers["Cache-Control"] = "private, no-store, max-age=0";
+    ctx.Response.Headers["Pragma"] = "no-cache";
+
+    // Resolve calling user — needed in the envelope so the client can stamp owner on new
+    // annotations and render "you" in hover tooltips. If the cookie has no UserId claim
+    // (shouldn't happen post-login), fall back to 0 → client treats every annotation as foreign.
+    int currentUserId = 0;
+    if (int.TryParse(ctx.User.FindFirst("UserId")?.Value, out var uid) && uid > 0) currentUserId = uid;
+    var currentUserName = currentUserId > 0 ? taSvc.GetUserDisplayName(currentUserId) : "";
+
+    // Authoritative owner map from the audit DB (covers text + draw via AnnType). We rewrite
+    // createdByUserId/createdByName on EVERY entry from this map — never trust what the client
+    // may have written into the sidecar. Entries with no DB row get their createdByUserId
+    // stripped (treated as legacy/locked per the "nobody can edit unowned" rule).
+    var owners = taSvc.GetAnnotationOwners(pcId, path);
+
+    // Parse on-disk sidecar (if any). Either way we return the same envelope shape so the client
+    // can read currentUserId/Name even when the file has no annotations yet.
+    System.Text.Json.Nodes.JsonNode? annotationsNode = null;
+    double? scale = null;
+    var raw = folderSvc.ReadAnnotationSidecar(pcId, path, solo);
+    if (!string.IsNullOrWhiteSpace(raw))
+    {
+        try
+        {
+            var root = System.Text.Json.Nodes.JsonNode.Parse(raw);
+            if (root is System.Text.Json.Nodes.JsonObject obj)
+            {
+                if (obj.TryGetPropertyValue("scale", out var scNode)
+                    && scNode is System.Text.Json.Nodes.JsonValue scV
+                    && scV.TryGetValue<double>(out var sc)) scale = sc;
+                obj.TryGetPropertyValue("annotations", out annotationsNode);
+            }
+            else if (root is System.Text.Json.Nodes.JsonArray)
+            {
+                // Legacy sidecar shape: bare array of annotations.
+                annotationsNode = root;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[AnnSidecar-GET] parse failed pcId={pcId} path='{path}': {ex.Message}");
+        }
+    }
+
+    var outAnns = new System.Text.Json.Nodes.JsonArray();
+    if (annotationsNode is System.Text.Json.Nodes.JsonArray arr)
+    {
+        foreach (var item in arr)
+        {
+            if (item is not System.Text.Json.Nodes.JsonObject ao) continue;
+            // Always strip any client-provided owner fields first, then re-stamp from DB if known.
+            ao.Remove("createdByUserId");
+            ao.Remove("createdByName");
+
+            var guid = ao["guid"]?.GetValue<string>() ?? "";
+            // Stamp owner whenever a DB row exists for the guid, regardless of caller-claimed type.
+            // bg-change in current code has no guid, so it never matches owners — safely skipped.
+            // This branch ALSO recovers ownership for legacy sidecars whose entries were missing the
+            // explicit `type` field (older client wrote them without it; the JS load path defaults
+            // them to 'text' on read).
+            if (!string.IsNullOrEmpty(guid) && owners.TryGetValue(guid, out var o))
+            {
+                ao["createdByUserId"] = o.UserId;
+                ao["createdByName"]   = o.DisplayName;
+            }
+            outAnns.Add(ao.DeepClone());
+        }
+    }
+
+    var envelope = new System.Text.Json.Nodes.JsonObject
+    {
+        ["currentUserId"]   = currentUserId,
+        ["currentUserName"] = currentUserName,
+        ["scale"]           = scale,
+        ["annotations"]     = outAnns
+    };
+    return Results.Content(envelope.ToJsonString(), "application/json");
 }).RequireAuthorization();
 
 app.MapGet("/api/pc-file-meta", (int pcId, string path,
@@ -1345,7 +1426,8 @@ app.MapGet("/api/pc-file-meta", (int pcId, string path,
 }).RequireAuthorization();
 
 app.MapPost("/api/pc-file-save-annotations", async (HttpContext ctx,
-    LPM.Services.FolderService folderSvc, LPM.Services.DashboardService dashSvc) =>
+    LPM.Services.FolderService folderSvc, LPM.Services.DashboardService dashSvc,
+    LPM.Services.TextAnnotationService taSvc) =>
 {
     if (!int.TryParse(ctx.Request.Query["pcId"], out var pcId)) return Results.BadRequest();
     var path = ctx.Request.Query["path"].ToString();
@@ -1358,12 +1440,166 @@ app.MapPost("/api/pc-file-save-annotations", async (HttpContext ctx,
         Console.WriteLine($"[AnnSidecar] REJECTED — Folder Summary is read-only: pcId={pcId} path='{path}'");
         return Results.BadRequest("Folder Summary is read-only.");
     }
+    if (!int.TryParse(ctx.User.FindFirst("UserId")?.Value, out var callerId) || callerId <= 0)
+        return Results.Unauthorized();
+
     using var reader = new System.IO.StreamReader(ctx.Request.Body);
-    var json = await reader.ReadToEndAsync();
-    if (string.IsNullOrWhiteSpace(json) || json == "null" || json == "[]")
+    var rawIncoming = await reader.ReadToEndAsync();
+
+    bool isEmpty = string.IsNullOrWhiteSpace(rawIncoming) || rawIncoming == "null" || rawIncoming == "[]";
+
+    // Single owner map covers text + draw via AnnType. Includes deleted rows so we can tell
+    // "tombstoned, anyone may garbage-collect" apart from "no row at all = legacy/locked".
+    var owners = taSvc.GetAnnotationOwners(pcId, path);
+
+    // Read existing sidecar (if any) so we can preserve protected entries by guid.
+    var existingRaw = folderSvc.ReadAnnotationSidecar(pcId, path, solo);
+    var existingByGuid = new Dictionary<string, System.Text.Json.Nodes.JsonNode>(StringComparer.Ordinal);
+    double? existingScale = null;
+    if (!string.IsNullOrWhiteSpace(existingRaw))
+    {
+        try
+        {
+            var er = System.Text.Json.Nodes.JsonNode.Parse(existingRaw);
+            System.Text.Json.Nodes.JsonArray? earr = null;
+            if (er is System.Text.Json.Nodes.JsonObject eo)
+            {
+                if (eo.TryGetPropertyValue("scale", out var scN)
+                    && scN is System.Text.Json.Nodes.JsonValue scV
+                    && scV.TryGetValue<double>(out var sc)) existingScale = sc;
+                if (eo.TryGetPropertyValue("annotations", out var an) && an is System.Text.Json.Nodes.JsonArray a) earr = a;
+            }
+            else if (er is System.Text.Json.Nodes.JsonArray ea) earr = ea;
+            if (earr != null)
+            {
+                foreach (var n in earr)
+                {
+                    if (n is not System.Text.Json.Nodes.JsonObject no) continue;
+                    var gd = no["guid"]?.GetValue<string>() ?? "";
+                    if (!string.IsNullOrEmpty(gd)) existingByGuid[gd] = no.DeepClone();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[AnnSidecar-POST] existing parse failed pcId={pcId} path='{path}': {ex.Message}");
+        }
+    }
+
+    // Decide which guids are PROTECTED for this caller (cannot mutate, omit, or re-add via this save).
+    // Used for both text and draw — bg-change has no ownership and skips this check.
+    //   - Audit row exists + owner != caller → PROTECTED. Non-owner can never modify, regardless of
+    //     deletion state. (If we let non-owner OMIT a deleted-by-other entry, they could leave it
+    //     out — fine. If we let non-owner SUBMIT a deleted-by-other entry, they'd resurrect what
+    //     the original owner deleted. Both are blocked by treating any non-caller-owned guid as
+    //     protected; the disk version takes precedence for any caller submission of that guid.)
+    //   - Audit row exists + owner == caller → NOT protected. Caller may modify or omit (omitting
+    //     a tombstoned-by-self entry is the normal own-undo path).
+    //   - Audit row missing AND sidecar has the guid → PROTECTED (legacy/locked per spec).
+    //   - Audit row missing AND sidecar lacks the guid → NOT protected (brand-new entry).
+    bool IsProtectedGuid(string guid)
+    {
+        if (owners.TryGetValue(guid, out var o))
+            return o.UserId != callerId;
+        return existingByGuid.ContainsKey(guid);
+    }
+
+    var merged = new System.Text.Json.Nodes.JsonArray();
+    var seenGuids = new HashSet<string>(StringComparer.Ordinal);
+
+    if (!isEmpty)
+    {
+        try
+        {
+            var inRoot = System.Text.Json.Nodes.JsonNode.Parse(rawIncoming);
+            System.Text.Json.Nodes.JsonArray? inArr = null;
+            double? inScale = null;
+            if (inRoot is System.Text.Json.Nodes.JsonObject io)
+            {
+                if (io.TryGetPropertyValue("scale", out var scN)
+                    && scN is System.Text.Json.Nodes.JsonValue scV
+                    && scV.TryGetValue<double>(out var sc)) inScale = sc;
+                if (io.TryGetPropertyValue("annotations", out var an) && an is System.Text.Json.Nodes.JsonArray ia) inArr = ia;
+            }
+            else if (inRoot is System.Text.Json.Nodes.JsonArray bare) inArr = bare;
+
+            if (inScale.HasValue) existingScale = inScale.Value;
+
+            if (inArr != null)
+            {
+                foreach (var n in inArr)
+                {
+                    if (n is not System.Text.Json.Nodes.JsonObject ao) continue;
+                    var type = ao["type"]?.GetValue<string>() ?? "";
+                    var guid = ao["guid"]?.GetValue<string>() ?? "";
+
+                    // Always strip client-claimed owner fields. The on-disk shape carries no owner —
+                    // the GET endpoint re-merges from DB on read.
+                    ao.Remove("createdByUserId");
+                    ao.Remove("createdByName");
+
+                    // Protection check FIRST, regardless of caller-claimed type. If the guid is
+                    // protected (foreign-owned or legacy), use the on-disk version verbatim —
+                    // otherwise a malicious caller could bypass protection by claiming the entry
+                    // is e.g. type="" or type="bg-change" so it falls into the unprotected branch
+                    // and replaces the original with arbitrary content.
+                    if (!string.IsNullOrEmpty(guid))
+                    {
+                        // Drop duplicate guids in incoming (would otherwise double-render).
+                        if (!seenGuids.Add(guid)) continue;
+                        if (IsProtectedGuid(guid))
+                        {
+                            if (existingByGuid.TryGetValue(guid, out var diskNode))
+                                merged.Add(diskNode.DeepClone());
+                            else
+                                Console.WriteLine($"[AnnSidecar-POST] dropping foreign-owned guid={guid} — no on-disk record (corrupt sidecar?)");
+                            continue;
+                        }
+                    }
+
+                    // Not protected (caller-owned, brand-new, or no guid) → accept incoming as-is.
+                    // text/draw/bg-change/etc. all pass through. Type-specific render concerns are
+                    // for the client; the server only enforces ownership.
+                    merged.Add(ao.DeepClone());
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[AnnSidecar-POST] incoming parse failed pcId={pcId} path='{path}': {ex.Message}");
+            return Results.BadRequest("Invalid JSON.");
+        }
+    }
+
+    // Add back any on-disk PROTECTED text/draw entries the caller omitted (whether by mistake,
+    // by stale state, or maliciously). This is the core anti-data-loss guarantee: foreign-owned
+    // and legacy entries can never disappear via a sidecar write that doesn't include them.
+    foreach (var (guid, node) in existingByGuid)
+    {
+        if (seenGuids.Contains(guid)) continue;
+        if (node is not System.Text.Json.Nodes.JsonObject no) continue;
+        var t = no["type"]?.GetValue<string>() ?? "";
+        if ((t == "text" || t == "draw") && IsProtectedGuid(guid))
+            merged.Add(node.DeepClone());
+        // bg-change with no ownership: caller's omission is honored (anyone may clear).
+    }
+
+    // After merge: if NOTHING survived, delete the sidecar (matches old behavior). Otherwise write
+    // the merged envelope back. We always emit the {scale, annotations} shape — never the legacy
+    // bare-array form — so the GET path stays uniform.
+    if (merged.Count == 0)
+    {
         folderSvc.DeleteAnnotationSidecar(pcId, path, solo);
+    }
     else
-        folderSvc.WriteAnnotationSidecar(pcId, path, solo, json);
+    {
+        var outObj = new System.Text.Json.Nodes.JsonObject
+        {
+            ["scale"]       = existingScale,
+            ["annotations"] = merged
+        };
+        folderSvc.WriteAnnotationSidecar(pcId, path, solo, outObj.ToJsonString());
+    }
     return Results.Ok();
 }).RequireAuthorization();
 
@@ -1372,6 +1608,12 @@ app.MapPost("/api/pc-file-save-annotations", async (HttpContext ctx,
 // independently of the .ann.json sidecar (the sidecar is the runtime source of truth
 // for rendering; the DB log is the who/when/what audit trail).
 
+// Annotation audit log endpoints (sys_text_annotations, AnnType column distinguishes text/draw).
+// Owner-only modifications enforced server-side: if a row exists for the guid and was created by
+// someone other than the caller, return 403 — no Admin override, same rule for everyone.
+// New guids → caller becomes the owner via CreatedBy=@u in the INSERT path.
+// `annType` is optional in the request body; defaults to 'text' for backward compat with the
+// existing text-only call site.
 app.MapPost("/api/text-ann/upsert", async (HttpContext ctx,
     LPM.Services.TextAnnotationService taSvc, LPM.Services.DashboardService dashSvc) =>
 {
@@ -1387,11 +1629,20 @@ app.MapPost("/api/text-ann/upsert", async (HttpContext ctx,
     var json = await reader.ReadToEndAsync();
     var doc = System.Text.Json.JsonDocument.Parse(json);
     var root = doc.RootElement;
-    var guid = root.TryGetProperty("guid", out var g) ? g.GetString() ?? "" : "";
+    var guid    = root.TryGetProperty("guid",    out var g)  ? g.GetString()  ?? "" : "";
+    var annType = root.TryGetProperty("annType", out var at) ? at.GetString() ?? "text" : "text";
     var pageIdx = root.TryGetProperty("pageIdx", out var p) && p.ValueKind == System.Text.Json.JsonValueKind.Number ? p.GetInt32() : 0;
-    var text = root.TryGetProperty("text", out var t) ? t.GetString() ?? "" : "";
+    var text    = root.TryGetProperty("text",    out var t)  ? t.GetString()  ?? "" : "";
     if (string.IsNullOrEmpty(guid)) return Results.BadRequest("guid required");
-    taSvc.Upsert(pcId, path, guid, pageIdx, text, userId);
+
+    // Owner-only: if a row already exists for this guid, only the original creator may modify it.
+    var existingOwner = taSvc.GetExistingOwner(pcId, path, guid);
+    if (existingOwner.HasValue && existingOwner.Value != userId)
+    {
+        Console.WriteLine($"[text-ann] FORBIDDEN upsert pcId={pcId} guid={guid} type={annType} caller={userId} owner={existingOwner.Value}");
+        return Results.Forbid();
+    }
+    taSvc.Upsert(pcId, path, guid, annType, pageIdx, text, userId);
     return Results.Ok();
 }).RequireAuthorization();
 
@@ -1411,6 +1662,13 @@ app.MapPost("/api/text-ann/delete", async (HttpContext ctx,
     var doc = System.Text.Json.JsonDocument.Parse(json);
     var guid = doc.RootElement.TryGetProperty("guid", out var g) ? g.GetString() ?? "" : "";
     if (string.IsNullOrEmpty(guid)) return Results.BadRequest("guid required");
+
+    var existingOwner = taSvc.GetExistingOwner(pcId, path, guid);
+    if (existingOwner.HasValue && existingOwner.Value != userId)
+    {
+        Console.WriteLine($"[text-ann] FORBIDDEN delete pcId={pcId} guid={guid} caller={userId} owner={existingOwner.Value}");
+        return Results.Forbid();
+    }
     taSvc.SoftDelete(pcId, path, guid, userId);
     return Results.Ok();
 }).RequireAuthorization();

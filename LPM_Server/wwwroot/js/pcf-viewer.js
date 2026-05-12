@@ -15,6 +15,12 @@ window.pcfViewer = {
     _suppressBlurCommitForPane: null, // paneId — suppress blur-commit during reload
     dotNetRef: null,
     _pcId: 0,
+    _currentUserId: 0,         // core_users.Id of the logged-in user. Populated by sidecar GET envelope.
+    _currentUserName: '',      // display name (FirstName LastName / Username) of the logged-in user.
+    _ownerToastTimer: null,    // debounce handle for the floating "only X can edit" toast
+    _hoverTip: null,           // shared <div> showing author name on hover over text annotations
+    _hoverTipPaneId: null,     // pane currently driving the hover tooltip (suppress flicker across panes)
+    _hoverTipGuid: null,       // guid of annotation under the cursor (suppress repeated DOM writes)
 
     _zoomLevels: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0, 2.5, 3.0],
     _panMode: false,
@@ -388,7 +394,13 @@ window.pcfViewer = {
                   { credentials: 'include' })
                 .then(r => r && r.status === 200 ? r.json() : null)
                 .then(sidecar => {
-                    if (!sidecar || !sidecar.annotations?.length || pane.loadGen !== myGen) return;
+                    if (!sidecar || pane.loadGen !== myGen) return;
+                    // Always extract envelope identity even when annotations[] is empty.
+                    // The client needs currentUserId to stamp newly-created annotations
+                    // and to render hover tooltips ("you" vs other names).
+                    if (typeof sidecar.currentUserId === 'number') this._currentUserId = sidecar.currentUserId;
+                    if (typeof sidecar.currentUserName === 'string') this._currentUserName = sidecar.currentUserName;
+                    if (!sidecar.annotations?.length) return;
                     const sidecarScale = sidecar.scale || 1;
                     const ratio = Math.abs(pane.baseScale - sidecarScale) > 0.001
                         ? pane.baseScale / sidecarScale : 1;
@@ -913,6 +925,30 @@ window.pcfViewer = {
             const { x: pdX, y: pdY } = canvasXY(e);
             const textHit = self._hitTestText(pane, pageIdx, pdX, pdY);
             if (textHit) {
+                // Owner-only drag. If the user clicks a foreign/legacy text annotation,
+                // do nothing (no drag). Toast fires only if they actually attempt to MOVE
+                // (otherwise dead clicks during normal navigation would spam toasts).
+                // Capture the pointer so pointerup fires reliably even if released off-overlay
+                // — without capture the listeners would leak when the user drags off and releases.
+                if (!self._canEditAnn(textHit.ann)) {
+                    try { overlay.setPointerCapture(e.pointerId); } catch(_) {}
+                    let warned = false;
+                    const onMove = () => {
+                        if (warned) return;
+                        warned = true;
+                        self._showOwnerToast(textHit.ann);
+                    };
+                    const onUp = () => {
+                        overlay.removeEventListener('pointermove', onMove);
+                        overlay.removeEventListener('pointerup', onUp);
+                        overlay.removeEventListener('pointercancel', onUp);
+                        try { overlay.releasePointerCapture(e.pointerId); } catch(_) {}
+                    };
+                    overlay.addEventListener('pointermove', onMove);
+                    overlay.addEventListener('pointerup', onUp);
+                    overlay.addEventListener('pointercancel', onUp);
+                    return;
+                }
                 overlay.setPointerCapture(e.pointerId);
                 const ann = textHit.ann;
                 const startX = pdX, startY = pdY;
@@ -960,6 +996,7 @@ window.pcfViewer = {
             console.log('[txt-dbg] dblclick hit=' + JSON.stringify(hit ? { idx: hit.idx, text: hit.ann.text, ax: hit.ann.x, ay: hit.ann.y, mw: hit.ann.maxWidth } : null));
             if (hit) {
                 e.preventDefault();
+                if (!self._canEditAnn(hit.ann)) { self._showOwnerToast(hit.ann); return; }
                 const { wx, wy } = canvasToWrapperXY(hit.ann.x, hit.ann.y);
                 self._showTextInput(overlay.parentElement, pageIdx, hit.ann.x, hit.ann.y, paneId, hit.ann, hit.idx, wx, wy);
             }
@@ -977,11 +1014,38 @@ window.pcfViewer = {
             console.log('[txt-dbg] wrapper-dblclick hit=' + JSON.stringify(hit ? { idx: hit.idx, text: hit.ann.text } : null));
             if (hit) {
                 e.preventDefault();
+                if (!self._canEditAnn(hit.ann)) { self._showOwnerToast(hit.ann); return; }
                 window.getSelection()?.removeAllRanges();
                 const { wx, wy } = canvasToWrapperXY(hit.ann.x, hit.ann.y);
                 self._showTextInput(overlay.parentElement, pageIdx, hit.ann.x, hit.ann.y, paneId, hit.ann, hit.idx, wx, wy);
             }
         });
+
+        // Hover tooltip — show "Added by NAME · DATE" over text annotations.
+        // Uses a single shared element (see _ensureHoverTip). Hit-test is cheap
+        // (linear over text annotations on this page), so we run it on every
+        // pointermove without RAF throttling. Drawing/dragging suppress it via
+        // checks on toolMode + active stroke. This fires in BOTH annotation mode
+        // and text-select mode (overlay sees moves in annotation mode; wrapper
+        // sees them in text-select mode where the overlay is pointer-events:none).
+        const onHoverMove = (e) => {
+            const pane = self.panes[paneId];
+            if (!pane) return;
+            // Suppress while drawing a stroke (would jitter mid-stroke) or editing text
+            // (the editor input is on top; tooltip on top of it is just visual noise).
+            if (pane.currentStroke || self.textInputEl) { self._hideHoverTip(); return; }
+            const { x: hx, y: hy } = canvasXY(e);
+            const hit = self._hitTestText(pane, pageIdx, hx, hy);
+            if (hit && hit.ann && (hit.ann.createdByName || hit.ann.createdByUserId === self._currentUserId)) {
+                self._showHoverTipFor(hit.ann, e.clientX, e.clientY, paneId);
+            } else {
+                self._hideHoverTip();
+            }
+        };
+        overlay.addEventListener('pointermove', onHoverMove);
+        overlay.parentElement.addEventListener('pointermove', onHoverMove);
+        overlay.addEventListener('pointerleave', () => self._hideHoverTip());
+        overlay.parentElement.addEventListener('pointerleave', () => self._hideHoverTip());
 
         overlay.addEventListener('pointermove', (e) => {
             const pane = self.panes[paneId];
@@ -995,7 +1059,15 @@ window.pcfViewer = {
             const pane = self.panes[paneId];
             if (drawing && pane && pane.currentStroke && pane.currentStroke.points.length > 1) {
                 const stamp = self._nowIso();
-                pane.annotations.push({ pageIdx, type: 'draw', stroke: pane.currentStroke, createdAt: stamp, lastModifiedAt: stamp });
+                // Draw strokes get a guid + createdByUserId so the audit table (sys_pcfile_annotations)
+                // can enforce owner-only delete via undo. Without these the stroke is treated as
+                // legacy/locked and undo would skip it (so the user couldn't even undo their own).
+                const drawAnn = { pageIdx, type: 'draw', stroke: pane.currentStroke, createdAt: stamp, lastModifiedAt: stamp,
+                                  guid: self._newGuid(),
+                                  createdByUserId: self._currentUserId || 0,
+                                  createdByName:   self._currentUserName || '' };
+                pane.annotations.push(drawAnn);
+                self._postAnnEvent('upsert', drawAnn, paneId);
                 self._notifyChange();
             }
             drawing = false;
@@ -1152,9 +1224,133 @@ window.pcfViewer = {
         catch (e) { return ""; }
     },
 
-    /// Fire-and-forget POST to the persistent annotation audit log
-    /// (sys_text_annotations table). Independent of bake/sidecar — the row survives
+    /// True if the calling user owns this annotation, i.e. may edit/delete/drag it.
+    /// Rules (no Admin override):
+    ///   - text/draw with createdByUserId === current user → editable.
+    ///   - text/draw with createdByUserId === some other user → locked.
+    ///   - text/draw with NO createdByUserId (legacy, or DB row missing) → locked for everyone.
+    ///   - bg-change → no ownership concept; always editable (caller checks type before invoking).
+    _canEditAnn(ann) {
+        if (!ann) return false;
+        if (ann.type === 'bg-change') return true;
+        // Locked unless we have a positive owner match. Also requires currentUserId > 0
+        // (defensive — an unauthenticated/unknown caller cannot edit anything).
+        return !!ann.createdByUserId
+            && this._currentUserId > 0
+            && ann.createdByUserId === this._currentUserId;
+    },
+
+    /// Display name of the annotation's author, for tooltip + toast text.
+    /// Server stamps `createdByName` on read; for annotations created in THIS session
+    /// (which haven't been re-merged from DB yet) we fall back to currentUserName.
+    _authorNameForAnn(ann) {
+        if (!ann) return '';
+        if (ann.createdByName) return ann.createdByName;
+        if (ann.createdByUserId && ann.createdByUserId === this._currentUserId) return this._currentUserName || 'you';
+        return '';
+    },
+
+    /// Floating toast shown when a user attempts a blocked edit/delete/drag.
+    /// Per spec: toast every time (no debounce on intent — only a tiny re-trigger guard
+    /// so a single click that fires multiple gates doesn't render two toasts on top).
+    _showOwnerToast(ann) {
+        const name = this._authorNameForAnn(ann);
+        const msg = name
+            ? `Only ${name} can edit this`
+            : `Locked — original author unknown`;
+
+        // Remove any existing toast immediately so the new one isn't stacked behind it.
+        const old = document.querySelector('.pcf-owner-toast');
+        if (old) old.remove();
+
+        const tip = document.createElement('div');
+        tip.className = 'pcf-owner-toast';
+        tip.textContent = msg;
+        // Inline styles so this works without a stylesheet edit. Visually distinct from mh-toast.
+        tip.style.cssText = [
+            'position:fixed','left:50%','top:24px','transform:translateX(-50%)',
+            'background:rgba(15,23,42,0.95)','color:#fef3c7',
+            'border:1px solid rgba(251,191,36,0.55)','border-radius:10px',
+            'padding:10px 16px','font:600 13px/1.4 system-ui,Segoe UI,sans-serif',
+            'box-shadow:0 8px 24px rgba(0,0,0,0.45)','z-index:99999',
+            'pointer-events:none','animation:pcfOwnerToastIn .15s ease'
+        ].join(';');
+        document.body.appendChild(tip);
+        // Inject the keyframes once.
+        if (!document.getElementById('pcf-owner-toast-style')) {
+            const s = document.createElement('style');
+            s.id = 'pcf-owner-toast-style';
+            s.textContent = '@keyframes pcfOwnerToastIn{from{opacity:0;transform:translate(-50%,-6px)}to{opacity:1;transform:translate(-50%,0)}}';
+            document.head.appendChild(s);
+        }
+        clearTimeout(this._ownerToastTimer);
+        this._ownerToastTimer = setTimeout(() => { tip.remove(); }, 1900);
+    },
+
+    /// Lazy-create the shared hover tooltip element. One element for all panes.
+    _ensureHoverTip() {
+        if (this._hoverTip && document.body.contains(this._hoverTip)) return this._hoverTip;
+        const t = document.createElement('div');
+        t.className = 'pcf-ann-tooltip';
+        t.style.cssText = [
+            'position:fixed','pointer-events:none','z-index:99800',
+            'background:rgba(17,24,39,0.96)','color:#e5e7eb',
+            'border:1px solid rgba(99,102,241,0.45)','border-radius:8px',
+            'padding:6px 10px','font:600 12px/1.3 system-ui,Segoe UI,sans-serif',
+            'box-shadow:0 6px 18px rgba(0,0,0,0.45)','white-space:nowrap','display:none'
+        ].join(';');
+        document.body.appendChild(t);
+        this._hoverTip = t;
+        return t;
+    },
+
+    _hideHoverTip() {
+        if (this._hoverTip) this._hoverTip.style.display = 'none';
+        this._hoverTipPaneId = null;
+        this._hoverTipGuid = null;
+    },
+
+    /// Format an ISO timestamp as "dd/MM HH:mm" for hover tooltip. Local time.
+    _formatTipTs(iso) {
+        if (!iso) return '';
+        try {
+            const d = new Date(iso);
+            if (isNaN(d.getTime())) return '';
+            const pad = (n) => (n < 10 ? '0' + n : '' + n);
+            return pad(d.getDate()) + '/' + pad(d.getMonth() + 1) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+        } catch { return ''; }
+    },
+
+    /// Position + show the tooltip near the cursor (pageIdx-agnostic — pure viewport coords).
+    /// Skips the textContent write when hovering the same annotation continuously, since hit-test
+    /// fires on every pointermove and most moves don't change which annotation is under the cursor.
+    _showHoverTipFor(ann, clientX, clientY, paneId) {
+        const name = this._authorNameForAnn(ann);
+        if (!name) { this._hideHoverTip(); return; }
+        const tip = this._ensureHoverTip();
+        const sig = (ann.guid || '?') + '|' + paneId;
+        if (this._hoverTipGuid !== sig) {
+            const ts = this._formatTipTs(ann.createdAt);
+            tip.textContent = ts ? `Added by ${name} · ${ts}` : `Added by ${name}`;
+            this._hoverTipGuid = sig;
+            this._hoverTipPaneId = paneId;
+        }
+        // Position with a small offset; clamp to viewport so it never clips off-screen.
+        const W = window.innerWidth, H = window.innerHeight;
+        tip.style.display = 'block';
+        const tw = tip.offsetWidth, th = tip.offsetHeight;
+        let x = clientX + 14, y = clientY + 14;
+        if (x + tw + 8 > W) x = W - tw - 8;
+        if (y + th + 8 > H) y = clientY - th - 14;
+        tip.style.left = Math.max(4, x) + 'px';
+        tip.style.top  = Math.max(4, y) + 'px';
+    },
+
+    /// Fire-and-forget POST to the persistent annotation audit log (sys_text_annotations table,
+    /// AnnType column distinguishes text vs draw). Independent of bake/sidecar — the row survives
     /// burn-and-bake. Failures are logged but never block the UI.
+    /// 403 responses are normal when a non-owner attempts to modify (the gate should prevent the
+    /// call, but the server enforces); we silently swallow since the user already got a toast.
     async _postAnnEvent(action, ann, paneId) {
         const pane = this.panes[paneId || this.activePane];
         if (!pane || !pane.filePath || !this._pcId || !ann || !ann.guid) return;
@@ -1162,14 +1358,15 @@ window.pcfViewer = {
         const url = (action === 'delete')
             ? `/api/text-ann/delete?pcId=${this._pcId}&path=${encodeURIComponent(pane.filePath)}${soloParam}`
             : `/api/text-ann/upsert?pcId=${this._pcId}&path=${encodeURIComponent(pane.filePath)}${soloParam}`;
+        const annType = ann.type || 'text';
         const body = (action === 'delete')
             ? JSON.stringify({ guid: ann.guid })
-            : JSON.stringify({ guid: ann.guid, pageIdx: ann.pageIdx ?? 0, text: ann.text || '' });
+            : JSON.stringify({ guid: ann.guid, annType, pageIdx: ann.pageIdx ?? 0, text: annType === 'draw' ? '' : (ann.text || '') });
         try {
             await fetch(url, { method: 'POST', credentials: 'include',
                 body, headers: { 'Content-Type': 'application/json' } });
         } catch (e) {
-            console.warn('[text-ann] ' + action + ' failed for guid=' + ann.guid + ': ' + (e && e.message));
+            console.warn('[ann-audit] ' + action + ' (' + annType + ') failed for guid=' + ann.guid + ': ' + (e && e.message));
         }
     },
 
@@ -1296,6 +1493,10 @@ window.pcfViewer = {
     },
 
     _showTextInput(wrapper, pageIdx, x, y, paneId, existingAnn, existingIdx, inputX, inputY) {
+        // Hide any visible owner-hover tooltip immediately. Otherwise it lingers until the next
+        // pointermove (which is suppressed while the editor is open), leaving a stale tooltip
+        // hovering over the new editor input.
+        this._hideHoverTip();
         if (this.textInputEl) {
             this.textInputEl.remove();
             this.textInputEl = null;
@@ -1597,6 +1798,22 @@ window.pcfViewer = {
                 const lines = text ? computeWrappedLines(text) : null;
                 const stamp = self._nowIso();
                 if (isEditing && existingIdx >= 0) {
+                    // Defense in depth: re-check ownership at commit time AND guard against a
+                    // stale existingIdx (e.g., something spliced pane.annotations during the
+                    // edit and the index now points past the end or at a different annotation).
+                    // The dblclick gate caught the original click; this protects subsequent
+                    // mutations from racing with array changes.
+                    const target = pane.annotations[existingIdx];
+                    if (!target) {
+                        console.warn('[txt-dbg] commit aborted — existingIdx=' + existingIdx + ' is now stale (length=' + pane.annotations.length + ')');
+                        cleanup();
+                        return;
+                    }
+                    if (!self._canEditAnn(target)) {
+                        console.warn('[txt-dbg] commit blocked — caller does not own existing ann guid=' + target.guid);
+                        cleanup();
+                        return;
+                    }
                     if (text) {
                         // Update existing annotation — apply current color/fontSize/position from toolbar + drag
                         const cur = pane.annotations[existingIdx];
@@ -1619,8 +1836,14 @@ window.pcfViewer = {
                         if (removed && removed.guid) self._postAnnEvent('delete', removed, paneId);
                     }
                 } else if (text) {
-                    // New annotation (also handles restore-as-new when existingIdx = -1)
-                    const newAnn = { pageIdx, type: 'text', text, lines, x, y, color, fontSize, maxWidth: input.offsetWidth, rtl, guid: self._newGuid(), createdAt: stamp, lastModifiedAt: stamp };
+                    // New annotation (also handles restore-as-new when existingIdx = -1).
+                    // Stamp ownership immediately so tooltips render "you" without waiting for
+                    // a reload, and so the local _canEditAnn check passes for subsequent edits.
+                    // The DB row (sys_text_annotations.CreatedBy) is the authoritative owner,
+                    // written by the /api/text-ann/upsert endpoint from the cookie's UserId claim.
+                    const newAnn = { pageIdx, type: 'text', text, lines, x, y, color, fontSize, maxWidth: input.offsetWidth, rtl, guid: self._newGuid(), createdAt: stamp, lastModifiedAt: stamp,
+                                     createdByUserId: self._currentUserId || 0,
+                                     createdByName:   self._currentUserName || '' };
                     pane.annotations.push(newAnn);
                     console.log('[txt-dbg] pushed annotation: pageIdx=' + pageIdx + ' x=' + x.toFixed(1) + ' y=' + y.toFixed(1) + ' maxWidth=' + input.offsetWidth + ' lines=' + (lines?.length ?? 0) + ' text="' + text + '" total=' + pane.annotations.length);
                     self._postAnnEvent('upsert', newAnn, paneId);
@@ -1697,7 +1920,30 @@ window.pcfViewer = {
         paneId = paneId || this.activePane;
         const pane = this.panes[paneId];
         if (!pane || pane.annotations.length === 0) return;
-        const removed = pane.annotations.pop();
+        // Walk from the end and skip text/draw entries the caller does not own (foreign or legacy/locked).
+        // bg-change and blank-page have no ownership concept — anyone can undo them.
+        let removeIdx = -1;
+        for (let i = pane.annotations.length - 1; i >= 0; i--) {
+            const a = pane.annotations[i];
+            if (a.type === 'text' || a.type === 'draw') {
+                if (!this._canEditAnn(a)) continue;
+            }
+            removeIdx = i;
+            break;
+        }
+        if (removeIdx < 0) {
+            // Nothing the caller is allowed to undo. Toast on the most recent locked entry so
+            // the user understands why nothing happened.
+            const last = pane.annotations[pane.annotations.length - 1];
+            if (last && (last.type === 'text' || last.type === 'draw')) this._showOwnerToast(last);
+            return;
+        }
+        const removed = pane.annotations.splice(removeIdx, 1)[0];
+        // Post a delete event to the audit log so the row is soft-deleted server-side.
+        // (Server still enforces owner-only on the endpoint as a defense-in-depth check.)
+        if (removed.guid && (removed.type === 'text' || removed.type === 'draw')) {
+            this._postAnnEvent('delete', removed, paneId);
+        }
         if (removed.type === 'blank-page') {
             // Remove the blank page from DOM and pane.pages by its pageIdx
             const idx = removed.pageIdx;
