@@ -3940,5 +3940,390 @@ public class PdfService
             });
         }).GeneratePdf();
     }
+
+    // ────────────────────────────────────────────────────────────────────────────
+    //  Balance Breakdown PDF — printable account statement for a PC owner.
+    //  Mirrors the on-screen "Balance Breakdown" modal layout (PCs.razor) with
+    //  client-friendly explanatory text. The endpoint passes whichever sections
+    //  are visible on screen at click time (sessions table is opt-in).
+    //  English-only by spec; QuestPDF Community license.
+    // ────────────────────────────────────────────────────────────────────────────
+
+    private static string BB_Sym(string code) => code switch { "USD" => "$", "EUR" => "€", _ => "₪" };
+
+    private static string BB_Hours(double hours)
+    {
+        if (double.IsNaN(hours) || double.IsInfinity(hours)) return "—";
+        bool neg = hours < 0;
+        var abs = Math.Abs(hours);
+        int h = (int)Math.Floor(abs);
+        int m = (int)Math.Round((abs - h) * 60);
+        if (m == 60) { h++; m = 0; }
+        return (neg ? "-" : "") + $"{h}h {m:D2}m";
+    }
+
+    private static string BB_Hmm(int seconds)
+    {
+        if (seconds <= 0) return "0:00";
+        int totalMin = (int)Math.Round(seconds / 60.0);
+        int h = totalMin / 60, m = totalMin % 60;
+        return $"{h}:{m:D2}";
+    }
+
+    public byte[] GenerateBalanceBreakdownPdf(
+        string pcName,
+        PcBalanceExplanation explanation,
+        List<WalletBalance> walletBalances,
+        List<PcSessionCostRow>? sessionDetails,   // null => session details section omitted
+        List<SoloCsReviewCostRow>? soloDetails,   // null => solo CS section omitted
+        bool hideImported)
+    {
+        QuestPDF.Settings.License = LicenseType.Community;
+
+        var generated = DateTime.Now.ToString("dd MMM yyyy · HH:mm");
+        var resetDate = explanation.ResetDate;
+
+        // Pre-filter session/solo lists per the on-screen "Hide imported" toggle.
+        // Pre-reset rows are kept so the PDF can still show them faded with a "pre" badge,
+        // matching the modal's behaviour.
+        var sessionsForPdf = sessionDetails == null
+            ? null
+            : (hideImported ? sessionDetails.Where(s => !s.IsImported).ToList() : sessionDetails);
+        var soloForPdf = soloDetails == null
+            ? null
+            : (hideImported ? soloDetails.Where(s => !s.IsImported).ToList() : soloDetails);
+
+        return Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4);
+                page.Margin(28);
+                page.DefaultTextStyle(x => x.FontSize(10).FontFamily("DejaVu Sans", "Noto Sans Hebrew"));
+
+                // ── Header ──
+                page.Header().Column(col =>
+                {
+                    col.Item().Background("#1e293b").Padding(14).Row(r =>
+                    {
+                        r.RelativeItem().Column(c =>
+                        {
+                            c.Item().Text("Account Balance Statement")
+                                .SemiBold().FontSize(16).FontColor("#ffffff");
+                            c.Item().Text(pcName).FontSize(12).FontColor("#cbd5e1");
+                        });
+                        r.ConstantItem(180).AlignRight().Column(c =>
+                        {
+                            c.Item().Text("Generated").FontSize(8).FontColor("#94a3b8");
+                            c.Item().Text(generated).FontSize(10).FontColor("#e2e8f0");
+                        });
+                    });
+
+                    if (resetDate != null)
+                    {
+                        col.Item().PaddingTop(6).Background("#7c2d12").Padding(8).Row(r =>
+                        {
+                            r.RelativeItem().Text(t =>
+                            {
+                                t.Span("Budget Reset: ").SemiBold().FontColor("#fbbf24");
+                                t.Span(resetDate).FontColor("#fef3c7");
+                                t.Span("  ·  Balance is calculated from this date forward. Earlier sessions are shown faded.")
+                                    .FontSize(8).FontColor("#fde68a");
+                            });
+                        });
+                    }
+                });
+
+                // ── Body ──
+                page.Content().PaddingVertical(10).Column(col =>
+                {
+                    col.Spacing(14);
+
+                    // ── Auditing Purchases ──
+                    BB_RenderSection(col, "Auditing Purchases",
+                        "These are payments that have been credited to your account, grouped by wallet.",
+                        "#16a34a",
+                        body =>
+                        {
+                            if (!explanation.Purchases.Any())
+                            {
+                                body.Item().Text("No auditing purchases on file.")
+                                    .Italic().FontColor("#64748b");
+                                return;
+                            }
+                            var groups = explanation.Purchases
+                                .GroupBy(p => (p.WalletId, p.WalletName, p.Currency))
+                                .OrderBy(g => g.Key.WalletId ?? int.MaxValue);
+                            foreach (var g in groups)
+                            {
+                                var sym = BB_Sym(g.Key.Currency);
+                                var label = g.Key.WalletName ?? "(no wallet)";
+                                var subtotal = g.Sum(p => p.AmountNis);
+                                body.Item().PaddingTop(4).Background("#dbeafe").Padding(5)
+                                    .Text($"{sym} {label} ({g.Key.Currency})")
+                                    .SemiBold().FontSize(9).FontColor("#1e40af");
+                                body.Item().Table(tbl =>
+                                {
+                                    tbl.ColumnsDefinition(c => { c.RelativeColumn(2); c.RelativeColumn(2); c.RelativeColumn(2); });
+                                    tbl.Header(h =>
+                                    {
+                                        h.Cell().Background("#ecfdf5").Padding(4).Text("Date").SemiBold().FontSize(8).FontColor("#166534");
+                                        h.Cell().Background("#ecfdf5").Padding(4).AlignCenter().Text("Hours").SemiBold().FontSize(8).FontColor("#166534");
+                                        h.Cell().Background("#ecfdf5").Padding(4).AlignRight().Text("Amount").SemiBold().FontSize(8).FontColor("#166534");
+                                    });
+                                    foreach (var p in g)
+                                    {
+                                        tbl.Cell().BorderBottom(0.5f).BorderColor("#e5e7eb").Padding(4).Text(p.Date).FontSize(9);
+                                        tbl.Cell().BorderBottom(0.5f).BorderColor("#e5e7eb").Padding(4).AlignCenter()
+                                            .Text(BB_Hours(p.Hours)).FontSize(9);
+                                        tbl.Cell().BorderBottom(0.5f).BorderColor("#e5e7eb").Padding(4).AlignRight()
+                                            .Text($"{sym}{p.AmountNis:N0}").SemiBold().FontSize(9)
+                                            .FontColor(p.AmountNis >= 0 ? "#16a34a" : "#dc2626");
+                                    }
+                                    tbl.Cell().Background("#dcfce7").Padding(4).Text("Subtotal").SemiBold().FontSize(9).FontColor("#166534");
+                                    tbl.Cell().Background("#dcfce7").Padding(4);
+                                    tbl.Cell().Background("#dcfce7").Padding(4).AlignRight()
+                                        .Text($"{sym}{subtotal:N0}").SemiBold().FontSize(9).FontColor("#166534");
+                                });
+                            }
+                        });
+
+                    // ── Per-Wallet Balance ──
+                    if (walletBalances.Count > 0)
+                    {
+                        BB_RenderSection(col, "Per-Wallet Balance",
+                            "Your balance is tracked separately for each wallet/currency. " +
+                            "\"Used\" includes both auditing sessions and Solo CS reviews.",
+                            "#1e40af",
+                            body =>
+                            {
+                                body.Item().Table(tbl =>
+                                {
+                                    tbl.ColumnsDefinition(c =>
+                                    {
+                                        c.RelativeColumn(3);  // Wallet
+                                        c.RelativeColumn(2);  // Purchased
+                                        c.RelativeColumn(2);  // Used
+                                        c.RelativeColumn(2);  // Remaining
+                                        c.RelativeColumn(2);  // Rate
+                                        c.RelativeColumn(2);  // Hours left
+                                    });
+                                    tbl.Header(h =>
+                                    {
+                                        h.Cell().Background("#f1f5f9").Padding(5).Text("Wallet").SemiBold().FontSize(8).FontColor("#475569");
+                                        h.Cell().Background("#f1f5f9").Padding(5).AlignRight().Text("Purchased").SemiBold().FontSize(8).FontColor("#475569");
+                                        h.Cell().Background("#f1f5f9").Padding(5).AlignRight().Text("Used").SemiBold().FontSize(8).FontColor("#475569");
+                                        h.Cell().Background("#f1f5f9").Padding(5).AlignRight().Text("Remaining").SemiBold().FontSize(8).FontColor("#475569");
+                                        h.Cell().Background("#f1f5f9").Padding(5).AlignRight().Text("Rate /hr").SemiBold().FontSize(8).FontColor("#475569");
+                                        h.Cell().Background("#f1f5f9").Padding(5).AlignRight().Text("Hours left").SemiBold().FontSize(8).FontColor("#475569");
+                                    });
+                                    foreach (var wb in walletBalances)
+                                    {
+                                        var sym = BB_Sym(wb.Currency);
+                                        var used = (wb.UsedSessionCents + wb.UsedCsReviewCents) / 100.0;
+                                        tbl.Cell().BorderBottom(0.5f).BorderColor("#e5e7eb").Padding(5)
+                                            .Text($"{sym} {wb.Name} ({wb.Currency})").SemiBold().FontSize(9).FontColor("#1e40af");
+                                        tbl.Cell().BorderBottom(0.5f).BorderColor("#e5e7eb").Padding(5).AlignRight()
+                                            .Text($"{sym}{(wb.PurchasedCents / 100.0):N0}").FontSize(9);
+                                        tbl.Cell().BorderBottom(0.5f).BorderColor("#e5e7eb").Padding(5).AlignRight()
+                                            .Text($"{sym}{used:N0}").FontSize(9).FontColor("#64748b");
+                                        tbl.Cell().BorderBottom(0.5f).BorderColor("#e5e7eb").Padding(5).AlignRight()
+                                            .Text($"{sym}{(wb.RemainingCents / 100.0):N0}").SemiBold().FontSize(9)
+                                            .FontColor(wb.RemainingCents >= 0 ? "#16a34a" : "#dc2626");
+                                        tbl.Cell().BorderBottom(0.5f).BorderColor("#e5e7eb").Padding(5).AlignRight()
+                                            .Text(wb.EffectiveRateCentsPerHour > 0 ? $"{sym}{wb.EffectiveRateCentsPerHour / 100}" : "—").FontSize(9);
+                                        tbl.Cell().BorderBottom(0.5f).BorderColor("#e5e7eb").Padding(5).AlignRight()
+                                            .Text(wb.EffectiveRateCentsPerHour > 0 ? BB_Hours(wb.RemainingHours) : "—").FontSize(9);
+                                    }
+                                });
+                            });
+
+                        // ── Hours Remaining (per wallet) ──
+                        BB_RenderSection(col, "Hours Remaining",
+                            "Estimated auditing hours left in each wallet at the current hourly rate.",
+                            "#7c3aed",
+                            body =>
+                            {
+                                foreach (var wb in walletBalances)
+                                {
+                                    var sym = BB_Sym(wb.Currency);
+                                    var balance = wb.RemainingCents / 100m;
+                                    body.Item().PaddingTop(4).Background("#f5f3ff").Padding(8).Row(r =>
+                                    {
+                                        r.ConstantItem(140).Text(t =>
+                                        {
+                                            t.Span($"{sym} ").SemiBold().FontColor("#7c3aed");
+                                            t.Span(wb.Name).SemiBold().FontColor("#1e40af");
+                                            t.Span($"  ({wb.Currency})").FontSize(8).FontColor("#94a3b8");
+                                        });
+                                        r.RelativeItem().AlignRight().Text(t =>
+                                        {
+                                            t.Span($"{sym}{balance:N2}").SemiBold().FontColor("#16a34a");
+                                            t.Span("  ÷  ").FontColor("#64748b");
+                                            if (wb.EffectiveRateCentsPerHour > 0)
+                                            {
+                                                t.Span($"{sym}{wb.EffectiveRateCentsPerHour / 100}/hr").SemiBold().FontColor("#1e40af");
+                                                t.Span("  =  ").FontColor("#64748b");
+                                                t.Span(BB_Hours(wb.RemainingHours)).Bold().FontSize(13).FontColor("#7c3aed");
+                                            }
+                                            else
+                                            {
+                                                t.Span("Rate not set").Italic().FontColor("#94a3b8");
+                                                t.Span("  =  ").FontColor("#64748b");
+                                                t.Span("—").FontColor("#94a3b8");
+                                            }
+                                        });
+                                    });
+                                }
+                            });
+                    }
+
+                    // ── Session Details (optional) ──
+                    if (sessionsForPdf != null && sessionsForPdf.Count > 0)
+                    {
+                        BB_RenderSection(col, "Session Details",
+                            "Every auditing session counted toward your balance. " +
+                            "Cost = rate × (length + admin time).",
+                            "#0f172a",
+                            body =>
+                            {
+                                body.Item().Table(tbl =>
+                                {
+                                    tbl.ColumnsDefinition(c =>
+                                    {
+                                        c.ConstantColumn(40);  // # — wide enough for 5-digit session IDs
+                                        c.RelativeColumn(2);   // Date
+                                        c.RelativeColumn(3);   // Auditor
+                                        c.RelativeColumn(2);   // Wallet
+                                        c.RelativeColumn(1.3f); // Length
+                                        c.RelativeColumn(1.3f); // Admin
+                                        c.RelativeColumn(1.5f); // Rate
+                                        c.RelativeColumn(2);   // Cost
+                                    });
+                                    tbl.Header(h =>
+                                    {
+                                        h.Cell().Background("#f1f5f9").Padding(5).AlignCenter().Text("#").SemiBold().FontSize(8).FontColor("#475569");
+                                        h.Cell().Background("#f1f5f9").Padding(5).Text("Date").SemiBold().FontSize(8).FontColor("#475569");
+                                        h.Cell().Background("#f1f5f9").Padding(5).Text("Auditor").SemiBold().FontSize(8).FontColor("#475569");
+                                        h.Cell().Background("#f1f5f9").Padding(5).Text("Wallet").SemiBold().FontSize(8).FontColor("#475569");
+                                        h.Cell().Background("#f1f5f9").Padding(5).AlignCenter().Text("Length").SemiBold().FontSize(8).FontColor("#475569");
+                                        h.Cell().Background("#f1f5f9").Padding(5).AlignCenter().Text("Admin").SemiBold().FontSize(8).FontColor("#475569");
+                                        h.Cell().Background("#f1f5f9").Padding(5).AlignCenter().Text("Rate /hr").SemiBold().FontSize(8).FontColor("#475569");
+                                        h.Cell().Background("#f1f5f9").Padding(5).AlignRight().Text("Cost").SemiBold().FontSize(8).FontColor("#475569");
+                                    });
+                                    foreach (var s in sessionsForPdf)
+                                    {
+                                        var faded = s.IsBeforeReset;
+                                        var color = faded ? "#94a3b8" : "#0f172a";
+                                        var sym = BB_Sym(s.Currency);
+                                        tbl.Cell().BorderBottom(0.5f).BorderColor("#e5e7eb").Padding(3).AlignCenter()
+                                            .Text(s.SessionId.ToString()).FontSize(8).FontColor(color);
+                                        tbl.Cell().BorderBottom(0.5f).BorderColor("#e5e7eb").Padding(3)
+                                            .Text(s.Date + (faded ? "  (pre)" : "")).FontSize(8).FontColor(color);
+                                        tbl.Cell().BorderBottom(0.5f).BorderColor("#e5e7eb").Padding(3)
+                                            .Text(s.AuditorName).FontSize(8).FontColor(color);
+                                        tbl.Cell().BorderBottom(0.5f).BorderColor("#e5e7eb").Padding(3)
+                                            .Text(s.WalletName ?? "—").FontSize(8).FontColor(color);
+                                        tbl.Cell().BorderBottom(0.5f).BorderColor("#e5e7eb").Padding(3).AlignCenter()
+                                            .Text(BB_Hmm(s.LengthSec)).FontSize(8).FontColor(color);
+                                        tbl.Cell().BorderBottom(0.5f).BorderColor("#e5e7eb").Padding(3).AlignCenter()
+                                            .Text(BB_Hmm(s.AdminSec)).FontSize(8).FontColor(color);
+                                        tbl.Cell().BorderBottom(0.5f).BorderColor("#e5e7eb").Padding(3).AlignCenter()
+                                            .Text($"{sym}{s.RateCentsUsed / 100}").FontSize(8).FontColor(color);
+                                        tbl.Cell().BorderBottom(0.5f).BorderColor("#e5e7eb").Padding(3).AlignRight()
+                                            .Text($"{sym}{s.CostNis:N2}").SemiBold().FontSize(8)
+                                            .FontColor(faded ? "#94a3b8" : "#dc2626");
+                                    }
+                                });
+                            });
+                    }
+
+                    // ── Solo CS Reviews (optional) ──
+                    if (soloForPdf != null && soloForPdf.Count > 0)
+                    {
+                        BB_RenderSection(col, "Solo CS Reviews",
+                            "Solo CS reviews charged to your account. Reviews marked \"Free\" are not charged.",
+                            "#7c3aed",
+                            body =>
+                            {
+                                body.Item().Table(tbl =>
+                                {
+                                    tbl.ColumnsDefinition(c =>
+                                    {
+                                        c.ConstantColumn(40);  // # — wide enough for 5-digit session IDs
+                                        c.RelativeColumn(2);
+                                        c.RelativeColumn(2);
+                                        c.RelativeColumn(1.3f);
+                                        c.RelativeColumn(1.5f);
+                                        c.RelativeColumn(2);
+                                    });
+                                    tbl.Header(h =>
+                                    {
+                                        h.Cell().Background("#f1f5f9").Padding(5).AlignCenter().Text("#").SemiBold().FontSize(8).FontColor("#475569");
+                                        h.Cell().Background("#f1f5f9").Padding(5).Text("Date").SemiBold().FontSize(8).FontColor("#475569");
+                                        h.Cell().Background("#f1f5f9").Padding(5).Text("Wallet").SemiBold().FontSize(8).FontColor("#475569");
+                                        h.Cell().Background("#f1f5f9").Padding(5).AlignCenter().Text("Time").SemiBold().FontSize(8).FontColor("#475569");
+                                        h.Cell().Background("#f1f5f9").Padding(5).AlignCenter().Text("Rate /hr").SemiBold().FontSize(8).FontColor("#475569");
+                                        h.Cell().Background("#f1f5f9").Padding(5).AlignRight().Text("Cost").SemiBold().FontSize(8).FontColor("#475569");
+                                    });
+                                    foreach (var sr in soloForPdf)
+                                    {
+                                        var faded = sr.IsBeforeReset;
+                                        var color = faded ? "#94a3b8" : "#0f172a";
+                                        var sym = BB_Sym(sr.Currency);
+                                        tbl.Cell().BorderBottom(0.5f).BorderColor("#e5e7eb").Padding(3).AlignCenter()
+                                            .Text(sr.SessionId.ToString()).FontSize(8).FontColor(color);
+                                        tbl.Cell().BorderBottom(0.5f).BorderColor("#e5e7eb").Padding(3)
+                                            .Text(sr.Date + (faded ? "  (pre)" : "")).FontSize(8).FontColor(color);
+                                        tbl.Cell().BorderBottom(0.5f).BorderColor("#e5e7eb").Padding(3)
+                                            .Text(sr.WalletName ?? "—").FontSize(8).FontColor(color);
+                                        tbl.Cell().BorderBottom(0.5f).BorderColor("#e5e7eb").Padding(3).AlignCenter()
+                                            .Text(BB_Hmm(sr.ReviewLengthSec)).FontSize(8).FontColor(color);
+                                        tbl.Cell().BorderBottom(0.5f).BorderColor("#e5e7eb").Padding(3).AlignCenter()
+                                            .Text($"{sym}{sr.RateCents / 100}").FontSize(8).FontColor(color);
+                                        if (sr.IsFree)
+                                        {
+                                            tbl.Cell().BorderBottom(0.5f).BorderColor("#e5e7eb").Padding(3).AlignRight()
+                                                .Text("Free").FontSize(8).FontColor("#10b981").SemiBold();
+                                        }
+                                        else
+                                        {
+                                            tbl.Cell().BorderBottom(0.5f).BorderColor("#e5e7eb").Padding(3).AlignRight()
+                                                .Text($"{sym}{sr.CostNis:N2}").SemiBold().FontSize(8)
+                                                .FontColor(faded ? "#94a3b8" : "#7c3aed");
+                                        }
+                                    }
+                                });
+                            });
+                    }
+                });
+
+                // ── Footer ──
+                page.Footer().AlignCenter().Text(t =>
+                {
+                    t.Span("LPM · Account Balance Statement").FontSize(8).FontColor("#94a3b8");
+                    t.Span("    ·    Page ").FontSize(8).FontColor("#94a3b8");
+                    t.CurrentPageNumber().FontSize(8).FontColor("#94a3b8");
+                    t.Span(" of ").FontSize(8).FontColor("#94a3b8");
+                    t.TotalPages().FontSize(8).FontColor("#94a3b8");
+                });
+            });
+        }).GeneratePdf();
+    }
+
+    private static void BB_RenderSection(ColumnDescriptor col, string title, string blurb, string accentColor,
+        Action<ColumnDescriptor> body)
+    {
+        col.Item().Column(c =>
+        {
+            c.Item().BorderLeft(3).BorderColor(accentColor).PaddingLeft(8).Column(inner =>
+            {
+                inner.Item().Text(title).Bold().FontSize(13).FontColor(accentColor);
+                inner.Item().PaddingTop(2).Text(blurb).FontSize(9).FontColor("#64748b").Italic();
+            });
+            c.Item().PaddingTop(6).Column(body);
+        });
+    }
+
 }
 

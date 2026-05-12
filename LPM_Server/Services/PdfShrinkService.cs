@@ -91,6 +91,7 @@ public class PdfShrinkService(
     private async Task RunCycleAsync(CancellationToken ct)
     {
         await Task.CompletedTask; Console.WriteLine($"[PdfShrink] DISABLED — remove this line in PdfShrinkService.RunCycleAsync to re-enable"); return;
+#pragma warning disable CS0162 // Unreachable code — intentional, "DISABLED" guard above is removed when re-enabling.
         var now = DateTime.Now;
         Console.WriteLine($"[PdfShrink] {now:yyyy-MM-dd HH:mm:ss} — Starting nightly PDF shrink cycle");
 
@@ -191,6 +192,7 @@ public class PdfShrinkService(
                 Console.WriteLine($"[PdfShrink] Pruned {pruned} file audit entries older than 6 months");
         }
         catch (Exception ex) { Console.WriteLine($"[PdfShrink] Audit prune error: {ex.Message}"); }
+#pragma warning restore CS0162
     }
 
     private static void PruneOldBackupDirs(string backupBase)

@@ -4037,20 +4037,167 @@ public class FolderService
         return ms.ToArray();
     }
 
-    public byte[] CreateDummySessionPdf(double widthPt = 595.28, double heightPt = 841.89)
+    public record SessionPdfInfo(
+        string PcName,
+        DateOnly SessionDate,
+        string AuditorName,
+        string CsName,
+        int SessionMinutes,
+        int AdminMinutes,
+        bool IsFree,
+        string CreatedByName,
+        string Notes,
+        string FileName
+    );
+
+    public byte[] CreateDummySessionPdf(SessionPdfInfo info, double widthPt = 595.28, double heightPt = 841.89)
     {
         using var ms = new MemoryStream();
         var doc = new PdfSharpCore.Pdf.PdfDocument();
+
+        const double Margin = 50;
         var page = doc.AddPage();
         page.Width  = PdfSharpCore.Drawing.XUnit.FromPoint(widthPt);
         page.Height = PdfSharpCore.Drawing.XUnit.FromPoint(heightPt);
         var gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(page);
-        var font = new PdfSharpCore.Drawing.XFont("Arial", 48, PdfSharpCore.Drawing.XFontStyle.Bold);
-        var size = gfx.MeasureString("Dummy session", font);
-        gfx.DrawString("Dummy session", font,
-            PdfSharpCore.Drawing.XBrushes.DarkGray,
-            (page.Width - size.Width) / 2, page.Height / 2,
-            PdfSharpCore.Drawing.XStringFormats.Default);
+
+        var titleFont  = new PdfSharpCore.Drawing.XFont("Arial", 22, PdfSharpCore.Drawing.XFontStyle.Bold);
+        var smallFont  = new PdfSharpCore.Drawing.XFont("Arial",  9, PdfSharpCore.Drawing.XFontStyle.Regular);
+        var labelFont  = new PdfSharpCore.Drawing.XFont("Arial", 11, PdfSharpCore.Drawing.XFontStyle.Bold);
+        var valueFont  = new PdfSharpCore.Drawing.XFont("Arial", 11, PdfSharpCore.Drawing.XFontStyle.Regular);
+        var notesHdr   = new PdfSharpCore.Drawing.XFont("Arial", 16, PdfSharpCore.Drawing.XFontStyle.Bold);
+        var notesFont  = new PdfSharpCore.Drawing.XFont("Arial", 14, PdfSharpCore.Drawing.XFontStyle.Regular);
+
+        double y = Margin;
+        double contentWidth = page.Width.Point - 2 * Margin;
+
+        // ── Title ────────────────────────────────────────────────────────────
+        gfx.DrawString("Manually-Added Session", titleFont,
+            PdfSharpCore.Drawing.XBrushes.Black, Margin, y + 22);
+        y += 30;
+        gfx.DrawString($"Generated {DateTime.Now:yyyy-MM-dd HH:mm}", smallFont,
+            PdfSharpCore.Drawing.XBrushes.Gray, Margin, y);
+        y += 14;
+        gfx.DrawLine(PdfSharpCore.Drawing.XPens.LightGray, Margin, y, Margin + contentWidth, y);
+        y += 14;
+
+        // ── Two-column key/value grid ────────────────────────────────────────
+        var rows = new (string Label, string Value)[]
+        {
+            ("PC",                info.PcName),
+            ("Session Date",      info.SessionDate.ToString("yyyy-MM-dd")),
+            ("Auditor",           info.AuditorName),
+            ("Case Supervisor",   info.CsName),
+            ("Session Time",      $"{info.SessionMinutes} min"),
+            ("Admin Time",        $"{info.AdminMinutes} min"),
+            ("Free Session",      info.IsFree ? "Yes" : "No"),
+            ("Created By",        info.CreatedByName),
+            ("File Name",         info.FileName),
+        };
+
+        const double LabelColWidth = 140;
+        foreach (var (label, value) in rows)
+        {
+            gfx.DrawString(label, labelFont, PdfSharpCore.Drawing.XBrushes.Black, Margin, y + 12);
+            gfx.DrawString(string.IsNullOrWhiteSpace(value) ? "—" : value, valueFont,
+                PdfSharpCore.Drawing.XBrushes.Black, Margin + LabelColWidth, y + 12);
+            y += 20;
+        }
+
+        y += 8;
+        gfx.DrawLine(PdfSharpCore.Drawing.XPens.LightGray, Margin, y, Margin + contentWidth, y);
+        y += 18;
+
+        // ── Notes heading ────────────────────────────────────────────────────
+        gfx.DrawString("Notes", notesHdr, PdfSharpCore.Drawing.XBrushes.Black, Margin, y + 16);
+        y += 26;
+
+        // ── Notes body (word-wrapped, multi-line, multi-page) ────────────────
+        var notes = (info.Notes ?? "").Replace("\r\n", "\n").Replace("\r", "\n");
+        double lineHeight = notesFont.GetHeight() * 1.15;
+        double pageBottom = page.Height.Point - Margin;
+
+        void EnsureSpace()
+        {
+            if (y + lineHeight <= pageBottom) return;
+            gfx.Dispose();
+            page = doc.AddPage();
+            page.Width  = PdfSharpCore.Drawing.XUnit.FromPoint(widthPt);
+            page.Height = PdfSharpCore.Drawing.XUnit.FromPoint(heightPt);
+            gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(page);
+            y = Margin;
+        }
+
+        if (string.IsNullOrWhiteSpace(notes))
+        {
+            gfx.DrawString("—", notesFont, PdfSharpCore.Drawing.XBrushes.Black, Margin, y + lineHeight);
+            y += lineHeight;
+        }
+        else
+        {
+            foreach (var paragraph in notes.Split('\n'))
+            {
+                if (paragraph.Length == 0)
+                {
+                    y += lineHeight;
+                    EnsureSpace();
+                    continue;
+                }
+
+                var words = paragraph.Split(' ');
+                var line = "";
+                foreach (var word in words)
+                {
+                    var trial = line.Length == 0 ? word : $"{line} {word}";
+                    var trialWidth = gfx.MeasureString(trial, notesFont).Width;
+                    if (trialWidth <= contentWidth)
+                    {
+                        line = trial;
+                    }
+                    else
+                    {
+                        if (line.Length > 0)
+                        {
+                            gfx.DrawString(line, notesFont, PdfSharpCore.Drawing.XBrushes.Black, Margin, y + lineHeight);
+                            y += lineHeight;
+                            EnsureSpace();
+                        }
+                        // Single word longer than line: hard-break by characters
+                        if (gfx.MeasureString(word, notesFont).Width > contentWidth)
+                        {
+                            var chunk = "";
+                            foreach (var ch in word)
+                            {
+                                var t = chunk + ch;
+                                if (gfx.MeasureString(t, notesFont).Width <= contentWidth)
+                                {
+                                    chunk = t;
+                                }
+                                else
+                                {
+                                    gfx.DrawString(chunk, notesFont, PdfSharpCore.Drawing.XBrushes.Black, Margin, y + lineHeight);
+                                    y += lineHeight;
+                                    EnsureSpace();
+                                    chunk = ch.ToString();
+                                }
+                            }
+                            line = chunk;
+                        }
+                        else
+                        {
+                            line = word;
+                        }
+                    }
+                }
+                if (line.Length > 0)
+                {
+                    gfx.DrawString(line, notesFont, PdfSharpCore.Drawing.XBrushes.Black, Margin, y + lineHeight);
+                    y += lineHeight;
+                    EnsureSpace();
+                }
+            }
+        }
+
         gfx.Dispose();
         doc.Save(ms);
         return ms.ToArray();

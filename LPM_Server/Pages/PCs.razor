@@ -1879,8 +1879,8 @@
                 </div>
 
                 <div class="pcs-block-meta">
-                    <div><span class="pcs-block-k">PC</span><span class="pcs-block-v">@_detail.FullName</span></div>
-                    <div><span class="pcs-block-k">PC ID</span><span class="pcs-block-v">@_detail.PcId</span></div>
+                    <div><span class="pcs-block-k">PC</span><span class="pcs-block-v">@_detail!.FullName</span></div>
+                    <div><span class="pcs-block-k">PC ID</span><span class="pcs-block-v">@_detail!.PcId</span></div>
                     <div><span class="pcs-block-k">Requested by</span><span class="pcs-block-v">@_username</span></div>
                     <div><span class="pcs-block-k">Affected rows</span><span class="pcs-block-v">@_delPurchInfo.TotalRowCount</span></div>
                     <div><span class="pcs-block-k">fin_purchases</span><span class="pcs-block-v">@_delPurchInfo.Purchases.Count row(s)</span></div>
@@ -2658,6 +2658,21 @@
                         <div class="bal-modal-title">@LS.T("pcs.balanceBreakdown")</div>
                         <div class="bal-modal-subtitle">@_balancePcName</div>
                     </div>
+                    <button type="button" class="btn btn-sm me-2 d-flex align-items-center gap-1"
+                            style="background:rgba(255,255,255,.18); color:#fff; border:1px solid rgba(255,255,255,.4); font-size:.8rem; padding:.3rem .7rem;"
+                            title="Generate a printable PDF of the current balance view"
+                            @onclick="PrintBalanceBreakdown" disabled="@_balPrintBusy">
+                        @if (_balPrintBusy)
+                        {
+                            <span class="spinner-border spinner-border-sm" role="status"></span>
+                            <span>Generating&hellip;</span>
+                        }
+                        else
+                        {
+                            <i class="ri-printer-line"></i>
+                            <span>Print</span>
+                        }
+                    </button>
                     <button type="button" class="btn-close btn-close-white" @onclick="CloseBalanceModal"></button>
                 </div>
 
@@ -2767,15 +2782,6 @@
                         </div>
                     }
 
-                    @* ── Used Money ── *@
-                    <div class="bal-section bal-sec-used">
-                        <div class="bal-sec-title"><i class="ri-time-line"></i> @LS.T("pcs.usedMoney") <span class="badge bg-secondary ms-1">@(ex.BillableSessionCount + ex.SoloReviewCount) @LS.T("pcs.sessions")</span></div>
-                        <div class="d-flex justify-content-between align-items-center px-3 py-2">
-                            <span class="small" style="color:#991b1b;">@LS.T("pcs.totalSessionCost")</span>
-                            <span class="fw-bold" style="color:#dc2626;">-@CurrSym(balCurr)@(ex.TotalUsedNis.ToString("N2"))</span>
-                        </div>
-                    </div>
-
                     @* ── Balance Result ── *@
                     <div class="bal-result-card">
                         <div class="bal-result-label">@LS.T("pcs.balance")</div>
@@ -2784,29 +2790,45 @@
                         </div>
                     </div>
 
-                    @* ── Hours Calculation ── *@
+                    @* ── Hours Remaining (per wallet) ── *@
                     <div class="bal-section bal-sec-hours">
                         <div class="bal-sec-title"><i class="ri-hourglass-line"></i> @LS.T("pcs.hoursRemaining")</div>
-                        <div class="bal-formula px-3 py-2">
-                            <span class="bal-formula-item">@CurrSym(balCurr)@(ex.BalanceNis.ToString("N2"))</span>
-                            <span class="bal-formula-op">&divide;</span>
-                            <span class="bal-formula-item">@CurrSym(balCurr)@(ex.EffectiveRateCents / 100)/hr</span>
-                            <span class="bal-formula-op">=</span>
-                            <span class="bal-formula-result">@(ex.EffectiveRateCents > 0 ? $"{(ex.HoursLeft < 0 ? "-" : "")}{FormatHoursMinutes(ex.HoursLeft)}" : "\u2014")</span>
-                        </div>
-                        <div class="px-3 pb-2 small">
-                            <span style="color:#475569;">@LS.T("pcs.rateUsed"): <strong>@CurrSym(balCurr)@(ex.EffectiveRateCents / 100)/hr</strong></span>
-                            <span class="text-muted ms-1">(@ex.RateSource)</span>
-                            @if (ex.PurchaseRateCents > 0 && ex.EffectiveRateCents != ex.PurchaseRateCents)
+                        @if (walletBals.Count == 0)
+                        {
+                            <div class="px-3 py-2 small text-muted">No wallets configured for this PC.</div>
+                        }
+                        else
+                        {
+                            @foreach (var wb in walletBals)
                             {
-                                <div class="mt-1">
-                                    <span class="badge bal-badge-warn">
-                                        <i class="ri-alert-line"></i>
-                                        @LS.T("pcs.purchaseRate"): @CurrSym(balCurr)@(ex.PurchaseRateCents / 100)/hr
+                                var wRateCents = wb.EffectiveRateCentsPerHour;
+                                var wBalance   = wb.RemainingCents / 100m;
+                                var wSym       = CurrSym(wb.Currency);
+                                <div class="px-3 pt-2">
+                                    <span style="display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:999px; font-size:0.72rem; font-weight:700; background:#dbeafe; color:#1e40af;">
+                                        <span style="font-weight:900; font-size:0.9rem;">@wSym</span>
+                                        @wb.Name
+                                        <span style="opacity:.7; font-weight:500;">(@wb.Currency)</span>
                                     </span>
                                 </div>
+                                <div class="bal-formula px-3 py-2">
+                                    <span class="bal-formula-item">@wSym@(wBalance.ToString("N2"))</span>
+                                    <span class="bal-formula-op">&divide;</span>
+                                    @if (wRateCents > 0)
+                                    {
+                                        <span class="bal-formula-item">@wSym@(wRateCents / 100)/hr</span>
+                                        <span class="bal-formula-op">=</span>
+                                        <span class="bal-formula-result">@(wb.RemainingHours < 0 ? "-" : "")@FormatHoursMinutes(wb.RemainingHours)</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="bal-formula-item text-muted">Rate not set</span>
+                                        <span class="bal-formula-op">=</span>
+                                        <span class="bal-formula-result">&mdash;</span>
+                                    }
+                                </div>
                             }
-                        </div>
+                        }
                     </div>
 
                     @* ── Session Details Toggle ── *@
@@ -2904,7 +2926,7 @@
                                         <th class="small text-center">#</th>
                                         <th class="small">@LS.T("pcs.date")</th>
                                         <th class="small">Wallet</th>
-                                        <th class="small text-center">@LS.T("pcs.duration")</th>
+                                        <th class="small text-center">Time</th>
                                         <th class="small text-center">@LS.T("pcs.rateLabel")</th>
                                         <th class="small text-center">Imported</th>
                                         <th class="small text-end">@LS.T("pcs.cost")</th>
@@ -4963,6 +4985,7 @@
     List<SoloCsReviewCostRow>? _balSoloDetails;
     bool _balShowSessions;
     bool _balHideImported;
+    bool _balPrintBusy;     // disables the Print button while the PDF is being generated/downloaded
 
     // Budget reset
     bool     _showResetModal;
@@ -5820,7 +5843,7 @@
     // the clipboard and flashes a "Copied!" toast in the blocked panel.
     async Task CopyHardDeletePurchaseDetails()
     {
-        if (_delPurchInfo == null) return;
+        if (_delPurchInfo == null || _detail == null) return;
         var sb = new System.Text.StringBuilder();
         sb.AppendLine("ADMIN ACTION NEEDED — Hard-Delete Purchase");
         sb.AppendLine();
@@ -5887,6 +5910,7 @@
     // Same idea for the budget-reset path.
     async Task CopyDeleteResetDetails()
     {
+        if (_detail == null) return;
         var resetRow = _resetHistory.FirstOrDefault(h => h.Id == _resetDeleteId);
         var sb = new System.Text.StringBuilder();
         sb.AppendLine("ADMIN ACTION NEEDED — Delete Budget Reset");
@@ -6612,6 +6636,46 @@
         _balSoloDetails = null;
         _balShowSessions = false;
         _balHideImported = false;
+        _balPrintBusy = false;
+    }
+
+    /// <summary>
+    /// Generates a printable PDF of the Balance Breakdown and triggers the browser to download it.
+    /// The server re-fetches data, so the snapshot is current at click time. Session/Solo tables
+    /// are included only when those toggles are visible on screen (matches what the user sees).
+    /// </summary>
+    async Task PrintBalanceBreakdown()
+    {
+        if (_balancePcId <= 0 || _balPrintBusy) return;
+        _balPrintBusy = true;
+        try
+        {
+            // Generate the PDF server-side and push the bytes through SignalR via base64 —
+            // same pattern as Home.razor's PrintTable. Avoids the HTTP endpoint route entirely
+            // (no auth redirect, no Blazor enhanced-nav interception, no caching games).
+            var explanation = PcSvc.GetPcBalanceExplanation(_balancePcId);
+            var wallets     = WalletSvc.GetBalancesForPc(_balancePcId);
+            var sessions    = _balShowSessions ? PcSvc.GetPcSessionCostDetails(_balancePcId)    : null;
+            var solos       = _balShowSessions ? PcSvc.GetSoloCsReviewCostDetails(_balancePcId) : null;
+            var pcName      = string.IsNullOrEmpty(_balancePcName) ? $"PC #{_balancePcId}" : _balancePcName;
+
+            var pdfBytes = PdfSvc.GenerateBalanceBreakdownPdf(
+                pcName, explanation, wallets, sessions, solos, _balHideImported);
+
+            var safeName = string.Join("_", pcName.Split(System.IO.Path.GetInvalidFileNameChars()));
+            var fileName = $"Balance Statement - {safeName}.pdf";
+            await JS.InvokeVoidAsync("downloadFile", fileName, Convert.ToBase64String(pdfBytes));
+            Console.WriteLine($"[PCs] Generated Balance Statement PDF for PC '{pcName}' ({_balancePcId}) — {pdfBytes.Length} bytes by '{_username}'");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[PCs] Balance PDF generation failed for pcId={_balancePcId}: {ex.Message}");
+            await JS.InvokeVoidAsync("alert", "Could not generate the balance PDF.\n\n" + ex.Message);
+        }
+        finally
+        {
+            _balPrintBusy = false;
+        }
     }
 
     void OpenSessionFromBalance(int sessionId)

@@ -670,6 +670,50 @@ window.lpmTriggerDownload = function (url, filename) {
     document.body.removeChild(a);
 };
 
+// Authenticated PDF download — fetches with credentials, validates content-type,
+// then triggers a blob download. Use this instead of lpmTriggerDownload when the
+// endpoint requires authentication: the <a download> click can race with Blazor's
+// enhanced-nav interception or be redirected to /login if the auth cookie isn't
+// honored, leading to the user downloading an HTML page with a .pdf extension.
+// Returns a string starting with "OK:" on success, or "ERR:..." on failure (so the
+// caller can show a user-visible error toast).
+window.lpmDownloadPdf = async function (url, filename) {
+    try {
+        const resp = await fetch(url, {
+            credentials: 'include',
+            headers: { 'Accept': 'application/pdf' },
+            redirect: 'manual'
+        });
+        // 'manual' redirect mode → opaqueredirect or 0 status when auth tries to bounce us to /login.
+        if (resp.type === 'opaqueredirect' || resp.status === 0) {
+            return 'ERR: authentication required (server redirected to login). Please refresh the page and try again.';
+        }
+        if (!resp.ok) {
+            return 'ERR: server returned HTTP ' + resp.status + ' ' + (resp.statusText || '');
+        }
+        const ct = (resp.headers.get('content-type') || '').toLowerCase();
+        if (!ct.includes('application/pdf')) {
+            return 'ERR: server returned non-PDF content (' + (ct || 'unknown') + '). Endpoint may be missing or auth failed.';
+        }
+        const blob = await resp.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        try {
+            const a = document.createElement('a');
+            a.href = blobUrl;
+            a.download = filename || 'download.pdf';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        } finally {
+            // Defer revoke so the browser has time to start the download.
+            setTimeout(() => { try { URL.revokeObjectURL(blobUrl); } catch(_) {} }, 1500);
+        }
+        return 'OK: ' + blob.size + ' bytes';
+    } catch (e) {
+        return 'ERR: ' + (e && e.message ? e.message : String(e));
+    }
+};
+
 // Click a hidden input/button by element ID — id is a C# constant, never user input
 window.lpmClickById = function (id) {
     var el = document.getElementById(id);

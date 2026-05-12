@@ -4478,7 +4478,7 @@
                                 <i class="ri-error-warning-fill sm-del-icon"></i>
                                 <div class="sm-del-title">Permanently Delete Session?</div>
                                 <div class="sm-del-text">
-                                    This will delete session <strong>#@_smDetail.SessionId</strong> (@_smDetail.Name),
+                                    This will delete session <strong>#@_smDetail!.SessionId</strong> (@_smDetail!.Name),
                                     all CS reviews, folder summaries, attachments, and worksheet files.<br />
                                     <strong>This action cannot be undone.</strong>
                                 </div>
@@ -9745,7 +9745,7 @@
                 await InvokeAsync(StateHasChanged);
                 var firstDate = capturedSections.FirstOrDefault()?.Date is string fd && DateOnly.TryParse(fd, out var fpd)
                     ? fpd.ToString("dd/MM/yy") : DateTime.Today.ToString("dd/MM/yy");
-                string? nextCsFooter = DashSvc.GetCsNameForPc(capturedPcId);
+                string? nextCsFooter = DashSvc.GetCsNameForPc(capturedPcId, preferSolo: true);
                 nextCsPdfBytes = PdfSvc.GenerateNextCsPdf(
                     capturedPcName, firstDate,
                     capturedUsername, "", "",
@@ -10214,7 +10214,7 @@
                 // For solo PCs the footer shows the CS name instead of the auditor.
                 sNextCs.Status = 1;
                 await InvokeAsync(StateHasChanged);
-                string? nextCsFooter = capturedIsSolo ? DashSvc.GetCsNameForPc(capturedPcId) : null;
+                string? nextCsFooter = capturedIsSolo ? DashSvc.GetCsNameForPc(capturedPcId, preferSolo: true) : null;
                 nextCsPdfBytes = PdfSvc.GenerateNextCsPdf(
                     capturedPcName, capturedDate,
                     capturedAuditorName, capturedStep3Top, capturedStep3Bottom,
@@ -11064,6 +11064,23 @@ string _actionPcSearch = "";
             var adminSec = _smAddAdminMin * 60;
             bool isSolo = auditorId == null;
 
+            // Resolve display names on UI thread before Task.Run captures them.
+            var pcName       = _actionAllPcs.FirstOrDefault(p => p.PcId == _smAddPcId)?.FullName ?? $"PC #{_smAddPcId}";
+            var auditorName  = auditorId.HasValue
+                ? (_smAddAuditorList.FirstOrDefault(a => a.PersonId == auditorId.Value).FullName ?? $"#{auditorId.Value}")
+                : "Solo (no auditor)";
+            var csName       = _smAddCsId > 0
+                ? (_smCsList.FirstOrDefault(c => c.PersonId == _smAddCsId).FullName ?? $"#{_smAddCsId}")
+                : "None";
+            var createdByName = _msgUserId.HasValue
+                ? (DashSvc.GetPersonName(_msgUserId.Value) ?? _logUsername)
+                : _logUsername;
+            var sessionDate  = _smAddDate;
+            var sessionMin   = _smAddLenMin;
+            var adminMin     = _smAddAdminMin;
+            var isFree       = _smAddIsFree;
+            var notes        = _smAddNotes ?? "";
+
             await Task.Run(() =>
             {
                 if (isSolo)
@@ -11086,13 +11103,25 @@ string _actionPcSearch = "";
                 // The save is attempted with overwrite=false — if it fails (file appeared between
                 // the check and the save, or couldn't be written), we advance to the next index.
                 var datePrefix = DateTime.Now.ToString("yyMMdd");
-                var pdfBytes   = FolderSvc.CreateDummySessionPdf();
                 string sessionName = "";
                 for (int i = 1; i <= 100; i++)
                 {
                     var candidate = $"{datePrefix} Added manual session {i}";
                     if (FolderSvc.SectionFileExistsAtPath(_smAddPcId, "WorkSheets", $"{candidate}.pdf", solo: isSolo))
                         continue;
+
+                    var pdfBytes = FolderSvc.CreateDummySessionPdf(new FolderService.SessionPdfInfo(
+                        PcName:         pcName,
+                        SessionDate:    sessionDate,
+                        AuditorName:    auditorName,
+                        CsName:         csName,
+                        SessionMinutes: sessionMin,
+                        AdminMinutes:   adminMin,
+                        IsFree:         isFree,
+                        CreatedByName:  createdByName,
+                        Notes:          notes,
+                        FileName:       candidate));
+
                     if (FolderSvc.SaveSectionFileToPath(_smAddPcId, "WorkSheets", $"{candidate}.pdf", pdfBytes, solo: isSolo))
                     {
                         sessionName = candidate;
@@ -12981,7 +13010,7 @@ string _actionPcSearch = "";
                 // Step 1: Generate PDF
                 sGen.Status = 1;
                 await InvokeAsync(StateHasChanged);
-                string? footer = capturedSolo ? DashSvc.GetCsNameForPc(capturedPcId) : null;
+                string? footer = capturedSolo ? DashSvc.GetCsNameForPc(capturedPcId, preferSolo: true) : null;
                 var pdfBytes = PdfSvc.GenerateNextCsPdf(
                     capturedPcName, capturedDateStr,
                     capturedAuditorName, capturedTopHtml, capturedBottomHtml,

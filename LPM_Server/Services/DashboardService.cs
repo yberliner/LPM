@@ -3010,9 +3010,13 @@ public class DashboardService
     }
 
     /// <summary>
-    /// Returns the full name of the CS assigned to the given PC (last entry in sys_staff_pc_list).
+    /// Returns the full name of a CS-capable staff member assigned to the given PC.
+    /// When <paramref name="preferSolo"/> is true, CS-Solo capacities (CSSolo, AuditorAndCSSolo)
+    /// are ranked first — used by the Next-CS PDF footer for solo sessions, where the CS-Solo
+    /// person is the right name to show. Within each rank, picks the most recently added staff
+    /// (highest spl.Id). Without preferSolo, falls back to plain "most recent" ordering.
     /// </summary>
-    public string? GetCsNameForPc(int pcId)
+    public string? GetCsNameForPc(int pcId, bool preferSolo = false)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -3022,9 +3026,12 @@ public class DashboardService
             FROM sys_staff_pc_list spl
             JOIN core_persons p ON p.PersonId = spl.UserId
             WHERE spl.PcId = @pcId AND spl.WorkCapacity IN {StaffRoles.SqlInCsCapacity()}
-            ORDER BY spl.Id DESC
+            ORDER BY
+                CASE WHEN @preferSolo = 1 AND spl.WorkCapacity IN ('CSSolo','AuditorAndCSSolo') THEN 0 ELSE 1 END,
+                spl.Id DESC
             LIMIT 1";
         cmd.Parameters.AddWithValue("@pcId", pcId);
+        cmd.Parameters.AddWithValue("@preferSolo", preferSolo ? 1 : 0);
         var result = cmd.ExecuteScalar();
         return result is string s && !string.IsNullOrWhiteSpace(s) ? s : null;
     }
