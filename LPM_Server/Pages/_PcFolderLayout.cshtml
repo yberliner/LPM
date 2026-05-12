@@ -68,12 +68,16 @@
         };
     </script>
 
-    <!-- PDF.js and PC Folder viewer must load before Blazor connects to avoid race condition -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <!-- PDF.js (self-hosted: CSP worker-src='self' blocks cross-origin workers, and some client
+         networks/extensions block cdnjs — both manifest as the missing-global error in pcf-viewer.js) -->
+    <script src="/assets/libs/pdfjs/pdf.min.js?v=3.11.174"
+            onerror="window._pdfJsFailedToLoad=true;console.error('[pdfjs] script failed to load');"></script>
     <script>
         if (window['pdfjs-dist/build/pdf']) {
             window['pdfjs-dist/build/pdf'].GlobalWorkerOptions.workerSrc =
-                'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+                '/assets/libs/pdfjs/pdf.worker.min.js?v=3.11.174';
+        } else {
+            window._pdfJsFailedToLoad = true;
         }
     </script>
 

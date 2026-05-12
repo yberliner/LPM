@@ -519,12 +519,15 @@
                                             <i class="ri-trophy-line" style="color:#a855f7;"></i>@LS.T("actions.finishGrade")
                                         </a>
                                     </li>
+                                    @if (_isAdmin)
+                                    {
                                     <li>
                                         <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
                                            @onclick="OpenTransferModal">
                                             <i class="ri-exchange-funds-line" style="color:#0ea5e9;"></i>@LS.T("actions.transferBalance")
                                         </a>
                                     </li>
+                                    }
                                     <li>
                                         <a class="dropdown-item d-flex align-items-center gap-2" href="javascript:void(0);"
                                            @onclick="OpenFileHistory">
@@ -4355,44 +4358,100 @@
                 @if (_smDelStage1)
                 {
                     <div class="sm-del-overlay">
-                        <div class="sm-del-card @(_smDelStage2 ? "" : "sm-del-pulse")">
-                            <i class="ri-error-warning-fill sm-del-icon"></i>
-                            <div class="sm-del-title">Permanently Delete Session?</div>
-                            <div class="sm-del-text">
-                                This will delete session <strong>#@_smDetail.SessionId</strong> (@_smDetail.Name),
-                                all CS reviews, folder summaries, attachments, and worksheet files.<br />
-                                <strong>This action cannot be undone.</strong>
-                            </div>
-                            @if (!_smDelStage2)
-                            {
-                                <div class="d-flex gap-2 mt-3">
-                                    <button class="btn btn-sm btn-outline-light" @onclick="() => _smDelStage1 = false">@LS.T("common.cancel")</button>
-                                    <button class="btn btn-sm btn-danger" @onclick="() => _smDelStage2 = true">
-                                        <i class="ri-delete-bin-line me-1"></i>Yes, I want to delete
+                        @if (_smDelBlocked && _smDetail != null)
+                        {
+                            <div class="sm-del-block-card">
+                                <div class="sm-del-block-aurora" aria-hidden="true"></div>
+                                <div class="sm-del-block-shield">
+                                    <span class="sm-del-block-pulse"></span>
+                                    <span class="sm-del-block-pulse sm-del-block-pulse-2"></span>
+                                    <i class="ri-shield-keyhole-fill"></i>
+                                </div>
+                                <div class="sm-del-block-title">Only&nbsp;Admin can delete a session</div>
+                                <div class="sm-del-block-text">
+                                    Please contact your administrator and share the session details below
+                                    so they know exactly which session to delete.
+                                </div>
+
+                                <div class="sm-del-block-sid">
+                                    <span class="sm-del-block-sid-label">Session ID</span>
+                                    <span class="sm-del-block-sid-num">#@_smDetail.SessionId</span>
+                                </div>
+
+                                <div class="sm-del-block-meta">
+                                    @if (!string.IsNullOrEmpty(_smDetail.Name))
+                                    { <div><span class="sm-del-block-k">Name</span><span class="sm-del-block-v">@_smDetail.Name</span></div> }
+                                    @if (!string.IsNullOrEmpty(_smPcName))
+                                    { <div><span class="sm-del-block-k">PC</span><span class="sm-del-block-v">@_smPcName</span></div> }
+                                    @if (!string.IsNullOrEmpty(_smDetail.SessionDate))
+                                    { <div><span class="sm-del-block-k">Date</span><span class="sm-del-block-v">@_smDetail.SessionDate</span></div> }
+                                    @if (!string.IsNullOrEmpty(_smDetail.AuditorName))
+                                    { <div><span class="sm-del-block-k">Auditor</span><span class="sm-del-block-v">@_smDetail.AuditorName</span></div> }
+                                    @if (!string.IsNullOrEmpty(_smDetail.CsName))
+                                    { <div><span class="sm-del-block-k">CS</span><span class="sm-del-block-v">@_smDetail.CsName</span></div> }
+                                    <div><span class="sm-del-block-k">Length</span><span class="sm-del-block-v">@SecToHhmm(_smDetail.LengthSeconds)</span></div>
+                                    @if (!string.IsNullOrEmpty(_smDetail.VerifiedStatus))
+                                    { <div><span class="sm-del-block-k">Status</span><span class="sm-del-block-v">@_smDetail.VerifiedStatus</span></div> }
+                                </div>
+
+                                <div class="sm-del-block-actions">
+                                    <button class="btn btn-sm sm-del-block-copy-btn d-flex align-items-center gap-1"
+                                            @onclick="SmCopyBlockedDetails">
+                                        <i class="ri-clipboard-line"></i> Copy to clipboard
+                                    </button>
+                                    @if (!string.IsNullOrEmpty(_smDelBlockedCopied))
+                                    {
+                                        <span class="sm-del-block-copied">
+                                            <i class="ri-check-line"></i> @_smDelBlockedCopied
+                                        </span>
+                                    }
+                                    <button class="btn btn-sm btn-outline-light ms-auto" @onclick="SmCancelDelete">
+                                        Close
                                     </button>
                                 </div>
-                            }
-                            else
-                            {
-                                <div class="mt-3">
-                                    <label class="sm-del-confirm-label">Type <strong>delete</strong> to confirm:</label>
-                                    <input class="form-control form-control-sm sm-del-input" autocomplete="off"
-                                           @bind="_smDelInput" @bind:event="oninput" placeholder="delete" />
-                                    @if (!string.IsNullOrEmpty(_smDelError))
-                                    {
-                                        <div class="text-danger mt-1" style="font-size:.78rem;">@_smDelError</div>
-                                    }
-                                    <div class="d-flex gap-2 mt-2">
-                                        <button class="btn btn-sm btn-outline-light" @onclick="SmCancelDelete">@LS.T("common.cancel")</button>
-                                        <button class="btn btn-sm btn-danger" disabled="@(!string.Equals(_smDelInput?.Trim(), "delete", StringComparison.OrdinalIgnoreCase) || _smDeleting)"
-                                                @onclick="SmDeleteConfirmed">
-                                            @if (_smDeleting) { <span class="spinner-border spinner-border-sm me-1"></span> }
-                                            <i class="ri-delete-bin-2-line me-1"></i>Confirm Delete
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="sm-del-card @(_smDelStage2 ? "" : "sm-del-pulse")">
+                                <i class="ri-error-warning-fill sm-del-icon"></i>
+                                <div class="sm-del-title">Permanently Delete Session?</div>
+                                <div class="sm-del-text">
+                                    This will delete session <strong>#@_smDetail.SessionId</strong> (@_smDetail.Name),
+                                    all CS reviews, folder summaries, attachments, and worksheet files.<br />
+                                    <strong>This action cannot be undone.</strong>
+                                </div>
+                                @if (!_smDelStage2)
+                                {
+                                    <div class="d-flex gap-2 mt-3">
+                                        <button class="btn btn-sm btn-outline-light" @onclick="() => _smDelStage1 = false">@LS.T("common.cancel")</button>
+                                        <button class="btn btn-sm btn-danger" @onclick="() => _smDelStage2 = true">
+                                            <i class="ri-delete-bin-line me-1"></i>Yes, I want to delete
                                         </button>
                                     </div>
-                                </div>
-                            }
-                        </div>
+                                }
+                                else
+                                {
+                                    <div class="mt-3">
+                                        <label class="sm-del-confirm-label">Type <strong>delete</strong> to confirm:</label>
+                                        <input class="form-control form-control-sm sm-del-input" autocomplete="off"
+                                               @bind="_smDelInput" @bind:event="oninput" placeholder="delete" />
+                                        @if (!string.IsNullOrEmpty(_smDelError))
+                                        {
+                                            <div class="text-danger mt-1" style="font-size:.78rem;">@_smDelError</div>
+                                        }
+                                        <div class="d-flex gap-2 mt-2">
+                                            <button class="btn btn-sm btn-outline-light" @onclick="SmCancelDelete">@LS.T("common.cancel")</button>
+                                            <button class="btn btn-sm btn-danger" disabled="@(!string.Equals(_smDelInput?.Trim(), "delete", StringComparison.OrdinalIgnoreCase) || _smDeleting)"
+                                                    @onclick="SmDeleteConfirmed">
+                                                @if (_smDeleting) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                                                <i class="ri-delete-bin-2-line me-1"></i>Confirm Delete
+                                            </button>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
                     </div>
                 }
 
@@ -4566,6 +4625,139 @@
     }
     .sm-del-input:focus { border-color: #ef4444; box-shadow: 0 0 0 3px rgba(239,68,68,.3); }
 
+    /* ── Non-admin "blocked" delete panel ── */
+    .sm-del-block-card {
+        position: relative; overflow: hidden;
+        background: linear-gradient(155deg, #0f172a 0%, #1e1b4b 60%, #312e81 100%);
+        border: 2px solid rgba(167,139,250,.55);
+        border-radius: 20px;
+        padding: 28px 30px 22px;
+        width: min(520px, 92vw);
+        color: #e2e8f0;
+        box-shadow: 0 30px 70px rgba(0,0,0,.55), 0 0 0 1px rgba(167,139,250,.18) inset;
+        animation: sm-block-pop .55s cubic-bezier(.18,.89,.32,1.28) both;
+    }
+    @@keyframes sm-block-pop {
+        0%   { opacity: 0; transform: scale(.78) translateY(14px); }
+        60%  { opacity: 1; transform: scale(1.03) translateY(-2px); }
+        100% { opacity: 1; transform: scale(1)    translateY(0); }
+    }
+    .sm-del-block-aurora {
+        position: absolute; inset: -40%; pointer-events: none; z-index: 0;
+        background: conic-gradient(from 0deg,
+            rgba(167,139,250,.0)   0deg,
+            rgba(167,139,250,.18) 60deg,
+            rgba(244,114,182,.18) 140deg,
+            rgba(96,165,250,.18)  220deg,
+            rgba(167,139,250,.0)  360deg);
+        filter: blur(28px);
+        animation: sm-block-aurora 11s linear infinite;
+    }
+    @@keyframes sm-block-aurora {
+        0%   { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    .sm-del-block-card > *:not(.sm-del-block-aurora) { position: relative; z-index: 1; }
+
+    .sm-del-block-shield {
+        position: relative;
+        width: 72px; height: 72px;
+        margin: 0 auto 10px;
+        display: flex; align-items: center; justify-content: center;
+    }
+    .sm-del-block-shield i {
+        font-size: 3rem; color: #fbbf24;
+        text-shadow: 0 0 18px rgba(251,191,36,.65);
+        animation: sm-block-shield-bob 2.4s ease-in-out infinite;
+    }
+    @@keyframes sm-block-shield-bob {
+        0%, 100% { transform: translateY(0)   scale(1); }
+        50%      { transform: translateY(-3px) scale(1.04); }
+    }
+    .sm-del-block-pulse {
+        position: absolute; inset: 0; border-radius: 50%;
+        border: 2px solid rgba(251,191,36,.65);
+        animation: sm-block-pulse 1.8s ease-out infinite;
+    }
+    .sm-del-block-pulse-2 { animation-delay: .9s; }
+    @@keyframes sm-block-pulse {
+        0%   { transform: scale(.6); opacity: .9; }
+        100% { transform: scale(1.9); opacity: 0; }
+    }
+
+    .sm-del-block-title {
+        font-size: 1.35rem; font-weight: 800; text-align: center;
+        color: #fef9c3; margin-bottom: 6px;
+        text-shadow: 0 1px 12px rgba(251,191,36,.35);
+    }
+    .sm-del-block-text {
+        font-size: .88rem; line-height: 1.5; text-align: center;
+        color: #cbd5e1; margin-bottom: 16px;
+    }
+
+    .sm-del-block-sid {
+        background: rgba(15,23,42,.55);
+        border: 1px solid rgba(251,191,36,.4);
+        border-radius: 12px;
+        padding: 12px 16px;
+        text-align: center;
+        margin-bottom: 16px;
+    }
+    .sm-del-block-sid-label {
+        display: block; font-size: .72rem; letter-spacing: 2px;
+        text-transform: uppercase; color: #fcd34d; margin-bottom: 4px;
+    }
+    .sm-del-block-sid-num {
+        display: inline-block;
+        font-family: 'Courier New', ui-monospace, monospace;
+        font-size: 2.6rem; font-weight: 900;
+        color: #fde047;
+        letter-spacing: 2px;
+        animation: sm-block-sid-flash 1.1s ease-in-out infinite alternate;
+    }
+    @@keyframes sm-block-sid-flash {
+        0%   { transform: scale(1);    text-shadow: 0 0 8px  rgba(253,224,71,.45),
+                                                    0 0 18px rgba(253,224,71,.25); color: #fde047; }
+        100% { transform: scale(1.08); text-shadow: 0 0 22px rgba(253,224,71,.95),
+                                                    0 0 44px rgba(244,114,182,.55); color: #fff; }
+    }
+
+    .sm-del-block-meta {
+        display: grid; grid-template-columns: 1fr 1fr; gap: 6px 18px;
+        background: rgba(15,23,42,.35);
+        border: 1px solid rgba(148,163,184,.18);
+        border-radius: 10px;
+        padding: 10px 14px;
+        margin-bottom: 14px;
+        font-size: .82rem;
+    }
+    .sm-del-block-meta > div { display: flex; gap: 6px; min-width: 0; }
+    .sm-del-block-k { color: #94a3b8; font-weight: 600; white-space: nowrap; }
+    .sm-del-block-v { color: #f1f5f9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .sm-del-block-actions {
+        display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+    }
+    .sm-del-block-copy-btn {
+        background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+        color: #1e1b4b; border: none; font-weight: 700;
+        box-shadow: 0 4px 14px rgba(251,191,36,.35);
+        transition: transform .15s ease, box-shadow .15s ease;
+    }
+    .sm-del-block-copy-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 6px 18px rgba(251,191,36,.55);
+        color: #1e1b4b;
+    }
+    .sm-del-block-copied {
+        font-size: .82rem; font-weight: 600; color: #4ade80;
+        animation: sm-block-fade-in .25s ease both;
+    }
+    @@keyframes sm-block-fade-in {
+        0%   { opacity: 0; transform: translateX(-4px); }
+        100% { opacity: 1; transform: translateX(0); }
+    }
+
     /* Save success overlay */
     .sm-save-overlay {
         position: absolute; inset: 0; z-index: 20;
@@ -4621,6 +4813,9 @@
         .sm-footer { padding: 10px 14px; }
         .sm-field input, .sm-field select, .sm-field textarea { font-size: 16px; }
         .sm-del-card { padding: 20px 20px; margin: 0 10px; }
+        .sm-del-block-card { padding: 22px 20px 18px; }
+        .sm-del-block-title { font-size: 1.15rem; }
+        .sm-del-block-sid-num { font-size: 2.1rem; }
         .sm-pc-select { max-width: 100%; }
         .sm-solo-select { font-size: 16px; }
     }
@@ -4629,6 +4824,9 @@
         .sm-field-row { flex-direction: column; gap: 10px; }
         .sm-table { font-size: .75rem; }
         .sm-table th, .sm-table td { padding: 6px 6px; }
+        .sm-del-block-meta { grid-template-columns: 1fr; gap: 4px 0; }
+        .sm-del-block-sid-num { font-size: 1.9rem; }
+        .sm-del-block-title { font-size: 1.05rem; }
     }
 </style>
 
@@ -7641,6 +7839,7 @@
     private bool _isAllowAll;   // true when logged-in user has AllowAll = 1 in core_users
     private bool _isSeniorCS;  // true when logged-in user has StaffRole = 'SeniorCS'
     private bool _isRestrictedAud;  // true when logged-in user has core_users.PermissionsLevel = 1 (RestrictedAuditor)
+    private bool _isAdmin;     // true when logged-in user is in role "Admin"
     private string? _impersonatingAs;  // non-null when Yaniv is impersonating another user
 
     // ── Add PC state ──
@@ -7805,6 +8004,9 @@
     string _smDelInput = "";
     bool _smDeleting;
     string _smDelError = "";
+    // Non-admin guard: shown after the user typed "delete" but isn't an Admin
+    bool _smDelBlocked;
+    string _smDelBlockedCopied = "";
     // Session Manager solo view
     bool _smSoloMode;
     int _smSoloDays = 7;
@@ -10096,10 +10298,11 @@ string _actionPcSearch = "";
         _impersonatingAs = auth.User.FindFirst("OriginalUser")?.Value != null ? name : null;
 
         var apcStaffRole = auth.User.FindFirst("StaffRole")?.Value ?? "";
+        _isAdmin      = auth.User.IsInRole("Admin");
         _isSoloUser   = apcStaffRole == StaffRoles.Solo;
         _isSeniorCS   = apcStaffRole == StaffRoles.SeniorCS;
-        _apcIsAuditor = StaffRoles.IsAuditorOrCS(apcStaffRole) || auth.User.IsInRole("Admin");
-        _apcIsCS      = StaffRoles.IsCS(apcStaffRole)          || auth.User.IsInRole("Admin");
+        _apcIsAuditor = StaffRoles.IsAuditorOrCS(apcStaffRole) || _isAdmin;
+        _apcIsCS      = StaffRoles.IsCS(apcStaffRole)          || _isAdmin;
         _isRestrictedAud = PermissionsLevels.IsRestrictedAuditor(PermissionsLevels.FromClaims(auth.User));
 
         // Load existing PC names for duplicate detection
@@ -10386,6 +10589,7 @@ string _actionPcSearch = "";
     {
         _smDetail = null; _smError = "";
         _smDelStage1 = false; _smDelStage2 = false;
+        _smDelBlocked = false; _smDelBlockedCopied = "";
         if (_smSoloMode) SmLoadSoloSessions();
         else SmLoadPage(_smPage);
     }
@@ -10469,7 +10673,8 @@ string _actionPcSearch = "";
                     _smEditLenSec, _smEditAdminSec, _smEditIsFree, _smEditVerified,
                     string.IsNullOrWhiteSpace(_smEditNotes) ? null : _smEditNotes,
                     _smEditChargeSec, _smEditChargedRate, _smEditAudSalary,
-                    _smEditAuditorId > 0 ? (int?)_smEditAuditorId : null);
+                    _smEditAuditorId > 0 ? (int?)_smEditAuditorId : null,
+                    _currentCoreUserId);
 
                 if (_smEditWalletId != (detail.WalletId ?? 0))
                     DashSvc.UpdateSessionWallet(detail.SessionId, _smEditWalletId > 0 ? (int?)_smEditWalletId : null);
@@ -10553,17 +10758,32 @@ string _actionPcSearch = "";
     {
         _smDelStage1 = true; _smDelStage2 = false;
         _smDelInput = ""; _smDelError = "";
+        _smDelBlocked = false; _smDelBlockedCopied = "";
     }
 
     void SmCancelDelete()
     {
         _smDelStage1 = false; _smDelStage2 = false;
         _smDelInput = ""; _smDelError = "";
+        _smDelBlocked = false; _smDelBlockedCopied = "";
     }
 
     async Task SmDeleteConfirmed()
     {
         if (_smDetail == null) return;
+
+        // Hard server-side guard: only Admin may execute a delete. If the user
+        // typed "delete" and clicked Confirm but isn't Admin, swap the dialog to
+        // the animated "Only admin can delete" panel and bail out.
+        if (!_isAdmin)
+        {
+            _smDelBlocked = true;
+            _smDelStage2  = false;
+            _smDelInput   = "";
+            _smDelError   = "";
+            return;
+        }
+
         _smDeleting = true; _smDelError = "";
         try
         {
@@ -10590,6 +10810,39 @@ string _actionPcSearch = "";
         }
         catch (Exception ex) { _smDelError = $"Delete failed: {ex.Message}"; }
         finally { _smDeleting = false; }
+    }
+
+    // Builds a plain-text block describing the current session, copies it to
+    // the clipboard, and shows a brief "Copied!" confirmation in the panel.
+    async Task SmCopyBlockedDetails()
+    {
+        if (_smDetail == null) return;
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("Please delete the following session:");
+        sb.AppendLine($"Session ID: #{_smDetail.SessionId}");
+        if (!string.IsNullOrEmpty(_smDetail.Name))         sb.AppendLine($"Name: {_smDetail.Name}");
+        if (!string.IsNullOrEmpty(_smPcName))              sb.AppendLine($"PC: {_smPcName}");
+        if (!string.IsNullOrEmpty(_smDetail.SessionDate))  sb.AppendLine($"Date: {_smDetail.SessionDate}");
+        if (!string.IsNullOrEmpty(_smDetail.AuditorName))  sb.AppendLine($"Auditor: {_smDetail.AuditorName}");
+        if (!string.IsNullOrEmpty(_smDetail.CsName))       sb.AppendLine($"CS: {_smDetail.CsName}");
+        sb.AppendLine($"Length: {SecToHhmm(_smDetail.LengthSeconds)}");
+        sb.AppendLine($"Admin time: {SecToHhmm(_smDetail.AdminSeconds)}");
+        if (!string.IsNullOrEmpty(_smDetail.VerifiedStatus)) sb.AppendLine($"Status: {_smDetail.VerifiedStatus}");
+        sb.AppendLine($"Imported: {(_smDetail.IsImported ? "yes" : "no")}");
+        if (!string.IsNullOrEmpty(_smDetail.CreatedAt))    sb.AppendLine($"Created: {_smDetail.CreatedAt}");
+        if (!string.IsNullOrEmpty(_smDetail.ApprovedNotes)) sb.AppendLine($"Notes: {_smDetail.ApprovedNotes}");
+        sb.Append($"Requested by: {_logUsername}");
+        var text = sb.ToString();
+
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("navigator.clipboard.writeText", text);
+            _smDelBlockedCopied = "Copied!";
+        }
+        catch
+        {
+            _smDelBlockedCopied = "Press Ctrl+C to copy";
+        }
     }
 
     static string SmStatusBadge(string status) => status switch
@@ -11493,6 +11746,7 @@ string _actionPcSearch = "";
     void OpenTransferModal()
     {
         if (_isRestrictedAud) return;
+        if (!_isAdmin) return;
         _showTransfer = true;
         _xferFromPcId = 0;
         _xferToPcId = 0;
@@ -11585,6 +11839,8 @@ string _actionPcSearch = "";
     {
         _xferError = "";
         _xferSuccess = "";
+
+        if (!_isAdmin) { _xferError = "Admin privileges required"; return; }
 
         if (_xferFromPcId == 0 || _xferToPcId == 0 || _xferFromPcId == _xferToPcId)
         { _xferError = "Select different From and To PCs"; return; }

@@ -14,6 +14,7 @@
 @inject LPM.Services.UserActivityService ActivitySvc
 @inject LPM.Services.PcService PcSvc
 @inject LPM.Services.SmsService SmsSvc
+@inject LPM.Services.SessionManagerLauncher SmLauncher
 @inject IJSRuntime JS
 
 <PageTitle>Diagnosis — LPM</PageTitle>
@@ -2138,6 +2139,9 @@
                                 class="btn @(_originFilter == "SessionManager" ? "btn-primary" : "btn-outline-primary")"
                                 @onclick='() => SetOriginFilter("SessionManager")'>Session Manager</button>
                         <button type="button"
+                                class="btn @(_originFilter == "Edited" ? "btn-primary" : "btn-outline-primary")"
+                                @onclick='() => SetOriginFilter("Edited")' title="Sessions that were edited via Session Manager">Edited</button>
+                        <button type="button"
                                 class="btn @(_originFilter == "PcNoShow" ? "btn-primary" : "btn-outline-primary")"
                                 @onclick='() => SetOriginFilter("PcNoShow")'>PC No-Show</button>
                         <button type="button"
@@ -2177,38 +2181,51 @@
             }
             else
             {
+                var showEditedCols = _originFilter == "Edited";
+                var sortedRows = SortOriginRows(_originRows);
                 <div class="table-responsive">
-                    <table class="table table-sm align-middle small mb-0">
+                    <table class="table table-sm align-middle small mb-0 diag-origin-table">
                         <thead class="table-light">
                             <tr>
-                                <th style="width:80px;">SessionId</th>
-                                <th style="width:110px;">Date</th>
-                                <th>PC</th>
-                                <th>Auditor</th>
-                                <th>Session Name</th>
-                                <th class="text-end" style="width:90px;">Length</th>
-                                <th class="text-end" style="width:90px;">Admin</th>
-                                <th style="width:120px;">Created By</th>
-                                <th style="width:140px;">Origin</th>
-                                <th style="width:160px;">Created At</th>
+                                <th style="width:80px;"> @OriginSortHeader("SessionId", "SessionId") </th>
+                                <th style="width:110px;">@OriginSortHeader("Date", "SessionDate")</th>
+                                <th>                     @OriginSortHeader("PC", "PcName")</th>
+                                <th>                     @OriginSortHeader("Auditor", "AuditorName")</th>
+                                <th>                     @OriginSortHeader("Session Name", "SessionName")</th>
+                                <th class="text-end" style="width:90px;"> @OriginSortHeader("Length", "LengthSec")</th>
+                                <th class="text-end" style="width:90px;"> @OriginSortHeader("Admin", "AdminSec")</th>
+                                <th style="width:120px;">@OriginSortHeader("Created By", "CreatedByUser")</th>
+                                <th style="width:140px;">@OriginSortHeader("Origin", "Origin")</th>
+                                <th style="width:160px;">@OriginSortHeader("Created At", "CreatedAt")</th>
+                                @if (showEditedCols)
+                                {
+                                    <th style="width:120px;">@OriginSortHeader("Edited By", "EditedByUser")</th>
+                                    <th style="width:160px;">@OriginSortHeader("Edited At", "EditedAt")</th>
+                                }
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var row in _originRows)
+                            @foreach (var row in sortedRows)
                             {
-                                <tr>
-                                    <td class="text-muted">@row.SessionId</td>
-                                    <td>@row.SessionDate</td>
-                                    <td class="fw-semibold">@row.PcName</td>
-                                    <td>@(row.IsSolo ? "(Solo)" : (row.AuditorName ?? "—"))</td>
-                                    <td class="text-muted">@(string.IsNullOrEmpty(row.SessionName) ? "—" : row.SessionName)</td>
-                                    <td class="text-end font-monospace">@FmtSec(row.LengthSec)</td>
-                                    <td class="text-end font-monospace">@FmtSec(row.AdminSec)</td>
-                                    <td>@(row.CreatedByUser ?? "—")</td>
+                                var thisRow = row;
+                                <tr class="diag-origin-row" @onclick="() => OpenSessionInManager(thisRow.SessionId)" title="Click to open in Session Manager">
+                                    <td class="text-muted">@thisRow.SessionId</td>
+                                    <td>@thisRow.SessionDate</td>
+                                    <td class="fw-semibold">@thisRow.PcName</td>
+                                    <td>@(thisRow.IsSolo ? "(Solo)" : (thisRow.AuditorName ?? "—"))</td>
+                                    <td class="text-muted">@(string.IsNullOrEmpty(thisRow.SessionName) ? "—" : thisRow.SessionName)</td>
+                                    <td class="text-end font-monospace">@FmtSec(thisRow.LengthSec)</td>
+                                    <td class="text-end font-monospace">@FmtSec(thisRow.AdminSec)</td>
+                                    <td>@(thisRow.CreatedByUser ?? "—")</td>
                                     <td>
-                                        <span class="origin-badge origin-@row.Origin.ToLower()">@OriginDisplay(row.Origin)</span>
+                                        <span class="origin-badge origin-@thisRow.Origin.ToLower()">@OriginDisplay(thisRow.Origin)</span>
                                     </td>
-                                    <td class="text-muted">@row.CreatedAt</td>
+                                    <td class="text-muted">@thisRow.CreatedAt</td>
+                                    @if (showEditedCols)
+                                    {
+                                        <td class="fw-semibold">@(thisRow.EditedByUser ?? "—")</td>
+                                        <td class="text-muted">@(thisRow.EditedAt ?? "—")</td>
+                                    }
                                 </tr>
                             }
                         </tbody>
@@ -2226,6 +2243,7 @@
         .origin-count-card.origin-memo           { border-color: #f9a8d4; background: #fdf2f8; }
         .origin-count-card.origin-nextcs         { border-color: #5eead4; background: #f0fdfa; }
         .origin-count-card.origin-sessionmanager { border-color: #93c5fd; background: #eff6ff; }
+        .origin-count-card.origin-edited         { border-color: #fdba74; background: #fff7ed; }
         .origin-count-card.origin-pcnoshow       { border-color: #dc2626; background: #fef2f2; }
         .origin-count-card.origin-import         { border-color: #cbd5e1; background: #f8fafc; }
         .origin-count-card.origin-unknown        { border-color: #fca5a5; background: #fef2f2; }
@@ -2239,9 +2257,30 @@
         .origin-badge.origin-memo           { background: #fce7f3; color: #9d174d; }
         .origin-badge.origin-nextcs         { background: #ccfbf1; color: #115e59; }
         .origin-badge.origin-sessionmanager { background: #dbeafe; color: #1e40af; }
+        .origin-badge.origin-edited         { background: #ffedd5; color: #9a3412; }
         .origin-badge.origin-pcnoshow       { background: #fecaca; color: #7f1d1d; }
         .origin-badge.origin-import         { background: #f1f5f9; color: #475569; }
         .origin-badge.origin-unknown        { background: #fee2e2; color: #b91c1c; }
+
+        /* Sortable column headers + clickable rows */
+        .diag-origin-table th { white-space: nowrap; }
+        .diag-sort-btn {
+            background: transparent; border: 0; padding: 0; margin: 0;
+            font: inherit; color: inherit; font-weight: 700;
+            cursor: pointer; display: inline-flex; align-items: center; gap: 4px;
+        }
+        .diag-sort-btn:hover { color: #2563eb; }
+        .diag-sort-ind {
+            font-size: .7rem; opacity: .55;
+        }
+        .diag-sort-ind.active { opacity: 1; color: #2563eb; }
+        .diag-origin-row { cursor: pointer; transition: background-color .12s ease; }
+        .diag-origin-row:hover { background-color: #eff6ff; }
+
+        @@media (max-width: 768px) {
+            .diag-origin-table { font-size: .75rem; }
+            .diag-origin-table th, .diag-origin-table td { padding: 6px 6px; }
+        }
     </style>
 }
 
@@ -2536,6 +2575,9 @@
     string? _originFilter;
     List<LPM.Services.DashboardService.SessionOriginRow> _originRows = new();
     Dictionary<string, int> _originCounts = new();
+    // Sort state — covers both Origin and Edited views (only one table on screen at a time).
+    string _originSortCol = "CreatedAt";
+    string _originSortDir = "desc"; // "asc" | "desc"
 
     void SwitchToOriginTab()
     {
@@ -2547,7 +2589,9 @@
     {
         try
         {
-            _originRows   = DashSvc.GetSessionsByOrigin(_originLimit, _originFilter);
+            _originRows = _originFilter == "Edited"
+                ? DashSvc.GetEditedSessions(_originLimit)
+                : DashSvc.GetSessionsByOrigin(_originLimit, _originFilter);
             _originCounts = DashSvc.GetSessionOriginCounts();
         }
         catch (Exception ex)
@@ -2561,6 +2605,11 @@
     void SetOriginFilter(string? src)
     {
         _originFilter = src;
+        // Reset sort to default when filter changes — avoids stale sort on a
+        // column that doesn't exist in the new view (e.g. EditedBy on All).
+        var defaultSortCol = src == "Edited" ? "EditedAt" : "CreatedAt";
+        _originSortCol = defaultSortCol;
+        _originSortDir = "desc";
         LoadOriginData();
     }
 
@@ -2568,6 +2617,90 @@
     {
         _originLimit = limit;
         LoadOriginData();
+    }
+
+    // Click handler for sortable column headers: same column → toggle direction,
+    // different column → switch to it (asc for text, desc for numbers/dates).
+    void SortOriginBy(string col)
+    {
+        if (_originSortCol == col)
+        {
+            _originSortDir = _originSortDir == "asc" ? "desc" : "asc";
+        }
+        else
+        {
+            _originSortCol = col;
+            _originSortDir = col is "SessionId" or "LengthSec" or "AdminSec" or "CreatedAt" or "EditedAt" or "SessionDate"
+                ? "desc"
+                : "asc";
+        }
+    }
+
+    // Sorts the current rows in memory using a key selector keyed on the
+    // current _originSortCol. Numeric columns sort as ints; everything else
+    // sorts as strings. Falls back to CreatedAt DESC if column is unknown.
+    List<LPM.Services.DashboardService.SessionOriginRow> SortOriginRows(
+        List<LPM.Services.DashboardService.SessionOriginRow> rows)
+    {
+        bool isNumeric = _originSortCol is "SessionId" or "LengthSec" or "AdminSec";
+        if (isNumeric)
+        {
+            int IntKey(LPM.Services.DashboardService.SessionOriginRow r) => _originSortCol switch
+            {
+                "SessionId" => r.SessionId,
+                "LengthSec" => r.LengthSec,
+                "AdminSec"  => r.AdminSec,
+                _           => 0
+            };
+            return _originSortDir == "asc"
+                ? rows.OrderBy(IntKey).ToList()
+                : rows.OrderByDescending(IntKey).ToList();
+        }
+
+        string StrKey(LPM.Services.DashboardService.SessionOriginRow r) => _originSortCol switch
+        {
+            "SessionDate"   => r.SessionDate ?? "",
+            "PcName"        => r.PcName ?? "",
+            "AuditorName"   => r.IsSolo ? "(Solo)" : (r.AuditorName ?? ""),
+            "SessionName"   => r.SessionName ?? "",
+            "CreatedByUser" => r.CreatedByUser ?? "",
+            "Origin"        => r.Origin ?? "",
+            "CreatedAt"     => r.CreatedAt ?? "",
+            "EditedByUser"  => r.EditedByUser ?? "",
+            "EditedAt"      => r.EditedAt ?? "",
+            _               => r.CreatedAt ?? ""
+        };
+        return _originSortDir == "asc"
+            ? rows.OrderBy(StrKey, StringComparer.OrdinalIgnoreCase).ToList()
+            : rows.OrderByDescending(StrKey, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    // Fragment for a sortable column header. Renders the label as a button with
+    // an asc/desc/neutral arrow that reflects current sort state.
+    RenderFragment OriginSortHeader(string label, string col) => __builder =>
+    {
+        var isActive = _originSortCol == col;
+        var arrow = !isActive ? "⇅" : (_originSortDir == "asc" ? "▲" : "▼");
+        __builder.OpenElement(0, "button");
+        __builder.AddAttribute(1, "type", "button");
+        __builder.AddAttribute(2, "class", "diag-sort-btn");
+        __builder.AddAttribute(3, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create(this, () => SortOriginBy(col)));
+        __builder.AddAttribute(4, "title", $"Sort by {label}");
+        __builder.AddContent(5, label);
+        __builder.AddContent(6, " ");
+        __builder.OpenElement(7, "span");
+        __builder.AddAttribute(8, "class", isActive ? "diag-sort-ind active" : "diag-sort-ind");
+        __builder.AddContent(9, arrow);
+        __builder.CloseElement();
+        __builder.CloseElement();
+    };
+
+    // Click row → ask the always-mounted MainHeader to open the Session Manager
+    // for this session. SmLauncher is scoped (one per circuit) so the call lands
+    // on the same instance MainHeader subscribed to in its OnInitializedAsync.
+    void OpenSessionInManager(int sessionId)
+    {
+        SmLauncher.RequestOpen(sessionId);
     }
 
     static string OriginDisplay(string origin) => origin switch

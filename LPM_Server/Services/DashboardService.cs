@@ -4572,12 +4572,14 @@ public class DashboardService
     public void UpdateSessionAdmin(int sessionId, string name, string sessionDate,
         int lengthSec, int adminSec, bool isFree, string verifiedStatus,
         string? approvedNotes, int chargeSec, int chargedRate, int auditorSalaryRate,
-        int? auditorId)
+        int? auditorId, int? editedByUserId = null)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
         using var cmd = conn.CreateCommand();
         // IsFreeSession=1 forces salary, charged rate, and charge seconds to 0 regardless of caller input.
+        // NOTE: OriginSource is intentionally NOT touched here — it must reflect how the row was first
+        // created (Wizard / Import / etc.). LastSmEditedByUserId + LastSmEditedAt track edits separately.
         cmd.CommandText = @"
             UPDATE sess_sessions SET
                 Name = @name, SessionDate = @date,
@@ -4588,7 +4590,8 @@ public class DashboardService
                 ChargeSeconds             = CASE WHEN @free = 1 THEN 0 ELSE @charge      END,
                 ChargedRateCentsPerHour   = CASE WHEN @free = 1 THEN 0 ELSE @chargedRate END,
                 AuditorSalaryCentsPerHour = CASE WHEN @free = 1 THEN 0 ELSE @audSalary   END,
-                OriginSource              = 'SessionManager'
+                LastSmEditedByUserId      = @editor,
+                LastSmEditedAt            = datetime('now', 'localtime')
             WHERE SessionId = @sid";
         cmd.Parameters.AddWithValue("@sid", sessionId);
         cmd.Parameters.AddWithValue("@name", name);
@@ -4602,6 +4605,7 @@ public class DashboardService
         cmd.Parameters.AddWithValue("@charge", chargeSec);
         cmd.Parameters.AddWithValue("@chargedRate", chargedRate);
         cmd.Parameters.AddWithValue("@audSalary", auditorSalaryRate);
+        cmd.Parameters.AddWithValue("@editor", (object?)editedByUserId ?? DBNull.Value);
         cmd.ExecuteNonQuery();
 
         using var fsCmd = conn.CreateCommand();
@@ -4641,9 +4645,12 @@ public class DashboardService
     }
 
     // ── Sessions Origin (Diagnosis tab) ──────────────────────────────────────
+    // EditedByUser / EditedAt are only populated by GetEditedSessions — for the
+    // standard Origin query they're null.
     public record SessionOriginRow(int SessionId, string SessionDate, string PcName,
         string? AuditorName, bool IsSolo, string Origin, string CreatedAt,
-        int LengthSec, int AdminSec, string? CreatedByUser, string SessionName);
+        int LengthSec, int AdminSec, string? CreatedByUser, string SessionName,
+        string? EditedByUser = null, string? EditedAt = null);
 
     /// <summary>Returns the latest sessions ordered by CreatedAt DESC, optionally filtered by Origin and limited.</summary>
     public List<SessionOriginRow> GetSessionsByOrigin(int? limit, string? originFilter = null)
@@ -4701,7 +4708,67 @@ public class DashboardService
         return list;
     }
 
-    /// <summary>Returns count of sessions per OriginSource (across all rows).</summary>
+    /// <summary>
+    /// Returns sessions that were edited via the Session Manager (Diagnosis →
+    /// Session Origin → "Edited" pill). Rows are those with a non-null
+    /// LastSmEditedByUserId, ordered by LastSmEditedAt DESC.
+    /// </summary>
+    public List<SessionOriginRow> GetEditedSessions(int? limit)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        var limitClause = limit.HasValue ? "LIMIT @limit" : "";
+        cmd.CommandText = $@"
+            SELECT s.SessionId,
+                   s.SessionDate,
+                   TRIM(pc.FirstName || ' ' || COALESCE(NULLIF(pc.LastName,''), '')) AS PcName,
+                   CASE WHEN s.AuditorId IS NULL THEN NULL
+                        ELSE TRIM(ap.FirstName || ' ' || COALESCE(NULLIF(ap.LastName,''), ''))
+                   END AS AuditorName,
+                   CASE WHEN s.AuditorId IS NULL THEN 1 ELSE 0 END AS IsSolo,
+                   COALESCE(s.OriginSource,'Unknown') AS Origin,
+                   s.CreatedAt,
+                   COALESCE(s.LengthSeconds,0) AS LengthSec,
+                   COALESCE(s.AdminSeconds,0)  AS AdminSec,
+                   cu.Username                 AS CreatedByUser,
+                   COALESCE(s.Name,'')         AS SessionName,
+                   eu.Username                 AS EditedByUser,
+                   s.LastSmEditedAt            AS EditedAt
+            FROM sess_sessions s
+            JOIN core_persons pc      ON pc.PersonId = s.PcId
+            LEFT JOIN core_persons ap ON ap.PersonId = s.AuditorId
+            LEFT JOIN core_users cu   ON cu.Id       = s.CreatedByUserId
+            LEFT JOIN core_users eu   ON eu.Id       = s.LastSmEditedByUserId
+            WHERE s.LastSmEditedByUserId IS NOT NULL
+            ORDER BY s.LastSmEditedAt DESC
+            {limitClause}";
+        if (limit.HasValue) cmd.Parameters.AddWithValue("@limit", limit.Value);
+
+        var list = new List<SessionOriginRow>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            list.Add(new SessionOriginRow(
+                r.GetInt32(0),
+                r.GetString(1),
+                r.GetString(2),
+                r.IsDBNull(3) ? null : r.GetString(3),
+                r.GetInt32(4) == 1,
+                r.GetString(5),
+                r.GetString(6),
+                r.GetInt32(7),
+                r.GetInt32(8),
+                r.IsDBNull(9) ? null : r.GetString(9),
+                r.GetString(10),
+                r.IsDBNull(11) ? null : r.GetString(11),
+                r.IsDBNull(12) ? null : r.GetString(12)));
+        }
+        return list;
+    }
+
+    /// <summary>Returns count of sessions per OriginSource (across all rows).
+    /// Includes a synthetic "Edited" bucket counting rows where LastSmEditedByUserId IS NOT NULL.</summary>
     public Dictionary<string, int> GetSessionOriginCounts()
     {
         using var conn = new SqliteConnection(_connectionString);
@@ -4715,6 +4782,16 @@ public class DashboardService
         using var r = cmd.ExecuteReader();
         while (r.Read())
             dict[r.GetString(0)] = r.GetInt32(1);
+
+        // Synthetic "Edited" bucket — sessions that have been touched in Session
+        // Manager at any point. Not mutually exclusive with the origin buckets;
+        // shown as its own count tile / filter pill.
+        using (var ec = conn.CreateCommand())
+        {
+            ec.CommandText = "SELECT COUNT(*) FROM sess_sessions WHERE LastSmEditedByUserId IS NOT NULL";
+            var n = Convert.ToInt32(ec.ExecuteScalar() ?? 0);
+            if (n > 0) dict["Edited"] = n;
+        }
         return dict;
     }
 
