@@ -811,32 +811,6 @@
         </div>
     }
 
-    @* ── Upload overwrite confirmation modal ── *@
-    @if (_showOverwriteConfirm)
-    {
-        <div class="pcf-modal-backdrop" @onclick="CancelOverwrite">
-            <div class="pcf-modal-sm" @onclick:stopPropagation="true">
-                <div class="pcf-modal-icon-danger"><i class="ri-file-warning-line"></i></div>
-                <div style="font-weight:700; font-size:.95rem; margin-bottom:8px;">
-                    File@(_uploadDuplicateNames.Count > 1 ? "s" : "") already exist@(_uploadDuplicateNames.Count == 1 ? "s" : "")
-                </div>
-                <div style="font-size:.82rem; color:#94a3b8; margin-bottom:4px;">
-                    @foreach (var name in _uploadDuplicateNames)
-                    {
-                        <div style="color:#fbbf24; font-weight:600;">@name</div>
-                    }
-                </div>
-                <div style="font-size:.78rem; color:#64748b; margin-bottom:16px;">
-                    The existing file@(_uploadDuplicateNames.Count > 1 ? "s" : "") will be backed up before overwriting.
-                </div>
-                <div class="d-flex gap-2 justify-content-center">
-                    <button class="btn btn-sm btn-outline-secondary" @onclick="CancelOverwrite">@LS.T("common.cancel")</button>
-                    <button class="btn btn-sm btn-warning" @onclick="ConfirmOverwrite">Overwrite</button>
-                </div>
-            </div>
-        </div>
-    }
-
     @* ── Drag-drop confirmation modal ── *@
     @if (_showDragConfirm)
     {
@@ -4423,14 +4397,6 @@
     string _deleteTargetName = "";
     bool _deleteIsFolder;
 
-    // Upload overwrite confirmation
-    bool _showOverwriteConfirm;
-    // Temp-staged pending uploads. Each entry holds the path to a file in %TEMP%
-    // (raw upload bytes, NOT the final encrypted version). Bytes never sit in server
-    // RAM while the user mulls the overwrite dialog. Cleaned up in Confirm/Cancel/Dispose.
-    List<(string Name, string TempPath, bool EnforcePdf)> _uploadPendingFiles = [];
-    List<string> _uploadDuplicateNames = [];
-
     // Doc→PDF conversion toasts
     enum ConvStatus { Running, Done, Failed }
     record ConversionToast(Guid Id, string FileName) { public ConvStatus Status { get; set; } = ConvStatus.Running; }
@@ -7162,13 +7128,6 @@
         if (_csSessionId > 0 && !_csLocked
             && _activeCsSessions.TryGetValue(_csSessionId, out var lockInfo) && ReferenceEquals(lockInfo.Instance, this))
             _activeCsSessions.TryRemove(_csSessionId, out _);
-        // If the user closed the tab while the overwrite dialog was open, the staged
-        // temp files for pending uploads must be deleted — otherwise %TEMP% leaks on every
-        // abandoned upload session.
-        foreach (var (_, tempPath, _) in _uploadPendingFiles)
-        {
-            try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { /* best-effort */ }
-        }
         _dotNetRef?.Dispose();
         _dupeCts?.Dispose();
         _stopwatchCts?.Cancel();
@@ -8445,16 +8404,6 @@
 
     async Task NewMenuUploadFile(InputFileChangeEventArgs e)
     {
-        // Belt-and-suspenders: if a prior upload session left pending entries (shouldn't
-        // normally happen — Confirm/Cancel both delete + clear — but if the user spam-
-        // clicks or the dialog gets dismissed externally, stale temp paths could survive
-        // in the list. Delete them before clearing so we never leak %TEMP%.
-        foreach (var (_, tempPath, _) in _uploadPendingFiles)
-        {
-            try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { }
-        }
-        _uploadPendingFiles.Clear();
-        _uploadDuplicateNames.Clear();
         _uploadRejectedFiles.Clear();
         _showUploadError = false;
         _programRedirectFiles.Clear();
@@ -8492,42 +8441,49 @@
             }
             else if (ImageExtensions.Contains(ext))
             {
-                // Save image as-is (no PDF conversion)
-                if (FolderSvc.SectionFileExistsAtPath(PcId, parentFolder, file.Name, Solo, enforcePdf: false))
-                {
-                    var staged = StageUploadTempFile(rawBytes);
-                    _uploadPendingFiles.Add((file.Name, staged, false));
-                    _uploadDuplicateNames.Add(file.Name);
-                }
-                else if (ShouldRedirectToProgram(file.Name, parentFolder))
+                // Save image as-is (no PDF conversion). Auto-rename on collision.
+                if (ShouldRedirectToProgram(file.Name, parentFolder))
                 {
                     SaveToProgram(file.Name, rawBytes, enforcePdf: false);
                 }
                 else
                 {
-                    Console.WriteLine($"[PcFolder] Uploaded image '{file.Name}' to '{parentFolder}' by '{_userName}' — PC {PcId}");
-                    FolderSvc.SaveSectionFileToPath(PcId, parentFolder, file.Name, rawBytes, solo: Solo, enforcePdf: false);
-                    ActivitySvc.RecordActivity(_loginUsername, $"Uploaded file '{file.Name}' to {parentFolder} for: {_pcName}", "folder");
+                    var savedName = ResolveUniqueFileName(parentFolder, file.Name, enforcePdf: false);
+                    FolderSvc.SaveSectionFileToPath(PcId, parentFolder, savedName, rawBytes, solo: Solo, enforcePdf: false);
+                    if (savedName == file.Name)
+                    {
+                        Console.WriteLine($"[PcFolder] Uploaded image '{file.Name}' to '{parentFolder}' by '{_userName}' — PC {PcId}");
+                        ActivitySvc.RecordActivity(_loginUsername, $"Uploaded file '{file.Name}' to {parentFolder} for: {_pcName}", "folder");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"[PcFolder] Uploaded image '{file.Name}' as '{savedName}' (auto-renamed, original existed) to '{parentFolder}' by '{_userName}' — PC {PcId}");
+                        ActivitySvc.RecordActivity(_loginUsername, $"Uploaded file '{file.Name}' (renamed to '{savedName}' — original existed) to {parentFolder} for: {_pcName}", "folder");
+                    }
                 }
             }
             else if (ext.Equals(".xlsx", StringComparison.OrdinalIgnoreCase))
             {
                 // Save xlsx as-is so it remains editable in the in-browser Excel viewer.
-                if (FolderSvc.SectionFileExistsAtPath(PcId, parentFolder, file.Name, Solo, enforcePdf: false))
-                {
-                    var staged = StageUploadTempFile(rawBytes);
-                    _uploadPendingFiles.Add((file.Name, staged, false));
-                    _uploadDuplicateNames.Add(file.Name);
-                }
-                else if (ShouldRedirectToProgram(file.Name, parentFolder))
+                // Auto-rename on collision instead of overwriting.
+                if (ShouldRedirectToProgram(file.Name, parentFolder))
                 {
                     SaveToProgram(file.Name, rawBytes, enforcePdf: false);
                 }
                 else
                 {
-                    Console.WriteLine($"[PcFolder] Uploaded xlsx '{file.Name}' to '{parentFolder}' by '{_userName}' — PC {PcId}");
-                    FolderSvc.SaveSectionFileToPath(PcId, parentFolder, file.Name, rawBytes, solo: Solo, enforcePdf: false);
-                    ActivitySvc.RecordActivity(_loginUsername, $"Uploaded file '{file.Name}' to {parentFolder} for: {_pcName}", "folder");
+                    var savedName = ResolveUniqueFileName(parentFolder, file.Name, enforcePdf: false);
+                    FolderSvc.SaveSectionFileToPath(PcId, parentFolder, savedName, rawBytes, solo: Solo, enforcePdf: false);
+                    if (savedName == file.Name)
+                    {
+                        Console.WriteLine($"[PcFolder] Uploaded xlsx '{file.Name}' to '{parentFolder}' by '{_userName}' — PC {PcId}");
+                        ActivitySvc.RecordActivity(_loginUsername, $"Uploaded file '{file.Name}' to {parentFolder} for: {_pcName}", "folder");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"[PcFolder] Uploaded xlsx '{file.Name}' as '{savedName}' (auto-renamed, original existed) to '{parentFolder}' by '{_userName}' — PC {PcId}");
+                        ActivitySvc.RecordActivity(_loginUsername, $"Uploaded file '{file.Name}' (renamed to '{savedName}' — original existed) to {parentFolder} for: {_pcName}", "folder");
+                    }
                 }
             }
             else if (ext.Equals(".xls", StringComparison.OrdinalIgnoreCase))
@@ -8548,24 +8504,28 @@
             _ = AutoDismissUploadError();
         }
 
-        // Handle plain PDF uploads (enforcePdf = true)
+        // Handle plain PDF uploads (enforcePdf = true). Auto-rename on collision
+        // instead of overwriting — never clobber an existing file.
         foreach (var (name, data) in pdfsToSave)
         {
-            if (FolderSvc.SectionFileExistsAtPath(PcId, parentFolder, name, Solo))
-            {
-                var staged = StageUploadTempFile(data);
-                _uploadPendingFiles.Add((name, staged, true));
-                _uploadDuplicateNames.Add(name);
-            }
-            else if (ShouldRedirectToProgram(name, parentFolder))
+            if (ShouldRedirectToProgram(name, parentFolder))
             {
                 SaveToProgram(name, data);
             }
             else
             {
-                Console.WriteLine($"[PcFolder] Uploaded file '{name}' to '{parentFolder}' by '{_userName}' — PC {PcId}");
-                FolderSvc.SaveSectionFileToPath(PcId, parentFolder, name, data, solo: Solo);
-                ActivitySvc.RecordActivity(_loginUsername, $"Uploaded file '{name}' to {parentFolder} for: {_pcName}", "folder");
+                var savedName = ResolveUniqueFileName(parentFolder, name, enforcePdf: true);
+                FolderSvc.SaveSectionFileToPath(PcId, parentFolder, savedName, data, solo: Solo);
+                if (savedName == name)
+                {
+                    Console.WriteLine($"[PcFolder] Uploaded file '{name}' to '{parentFolder}' by '{_userName}' — PC {PcId}");
+                    ActivitySvc.RecordActivity(_loginUsername, $"Uploaded file '{name}' to {parentFolder} for: {_pcName}", "folder");
+                }
+                else
+                {
+                    Console.WriteLine($"[PcFolder] Uploaded file '{name}' as '{savedName}' (auto-renamed, original existed) to '{parentFolder}' by '{_userName}' — PC {PcId}");
+                    ActivitySvc.RecordActivity(_loginUsername, $"Uploaded file '{name}' (renamed to '{savedName}' — original existed) to {parentFolder} for: {_pcName}", "folder");
+                }
             }
         }
 
@@ -8575,16 +8535,8 @@
             _ = AutoDismissProgramRedirect();
         }
 
-        if (_uploadDuplicateNames.Count > 0)
-        {
-            _showOverwriteConfirm = true;
-            CloseNewMenu();
-        }
-        else
-        {
-            RefreshFolder();
-            CloseNewMenu();
-        }
+        RefreshFolder();
+        CloseNewMenu();
     }
 
     async Task RunConversionAsync(ConversionToast toast, byte[] docBytes, string originalName, string parentFolder)
@@ -8600,7 +8552,7 @@
                 return;
             }
 
-            // Save (overwrite if exists — doc upload implies intent to replace)
+            // Save with auto-rename on collision — never overwrite an existing PDF.
             if (ShouldRedirectToProgram(pdfName, parentFolder))
             {
                 SaveToProgram(pdfName, pdfBytes);
@@ -8609,10 +8561,18 @@
             }
             else
             {
-                var overwrite = FolderSvc.SectionFileExistsAtPath(PcId, parentFolder, pdfName, Solo);
-                FolderSvc.SaveSectionFileToPath(PcId, parentFolder, pdfName, pdfBytes, overwrite, Solo);
-                Console.WriteLine($"[PcFolder] Converted+saved '{pdfName}' to '{parentFolder}' by '{_userName}' — PC {PcId}");
-                ActivitySvc.RecordActivity(_loginUsername, $"Uploaded file '{originalName}' (converted to PDF) to {parentFolder} for: {_pcName}", "folder");
+                var savedName = ResolveUniqueFileName(parentFolder, pdfName, enforcePdf: true);
+                FolderSvc.SaveSectionFileToPath(PcId, parentFolder, savedName, pdfBytes, solo: Solo);
+                if (savedName == pdfName)
+                {
+                    Console.WriteLine($"[PcFolder] Converted+saved '{pdfName}' to '{parentFolder}' by '{_userName}' — PC {PcId}");
+                    ActivitySvc.RecordActivity(_loginUsername, $"Uploaded file '{originalName}' (converted to PDF) to {parentFolder} for: {_pcName}", "folder");
+                }
+                else
+                {
+                    Console.WriteLine($"[PcFolder] Converted+saved '{pdfName}' as '{savedName}' (auto-renamed, original existed) to '{parentFolder}' by '{_userName}' — PC {PcId}");
+                    ActivitySvc.RecordActivity(_loginUsername, $"Uploaded file '{originalName}' (converted to PDF, renamed to '{savedName}' — original existed) to {parentFolder} for: {_pcName}", "folder");
+                }
             }
 
             toast.Status = ConvStatus.Done;
@@ -8653,10 +8613,18 @@
             }
             else
             {
-                var overwrite = FolderSvc.SectionFileExistsAtPath(PcId, parentFolder, xlsxName, Solo, enforcePdf: false);
-                FolderSvc.SaveSectionFileToPath(PcId, parentFolder, xlsxName, xlsxBytes, overwrite, Solo, enforcePdf: false);
-                Console.WriteLine($"[PcFolder] Converted+saved '{xlsxName}' to '{parentFolder}' by '{_userName}' — PC {PcId}");
-                ActivitySvc.RecordActivity(_loginUsername, $"Uploaded file '{originalName}' (converted to XLSX) to {parentFolder} for: {_pcName}", "folder");
+                var savedName = ResolveUniqueFileName(parentFolder, xlsxName, enforcePdf: false);
+                FolderSvc.SaveSectionFileToPath(PcId, parentFolder, savedName, xlsxBytes, solo: Solo, enforcePdf: false);
+                if (savedName == xlsxName)
+                {
+                    Console.WriteLine($"[PcFolder] Converted+saved '{xlsxName}' to '{parentFolder}' by '{_userName}' — PC {PcId}");
+                    ActivitySvc.RecordActivity(_loginUsername, $"Uploaded file '{originalName}' (converted to XLSX) to {parentFolder} for: {_pcName}", "folder");
+                }
+                else
+                {
+                    Console.WriteLine($"[PcFolder] Converted+saved '{xlsxName}' as '{savedName}' (auto-renamed, original existed) to '{parentFolder}' by '{_userName}' — PC {PcId}");
+                    ActivitySvc.RecordActivity(_loginUsername, $"Uploaded file '{originalName}' (converted to XLSX, renamed to '{savedName}' — original existed) to {parentFolder} for: {_pcName}", "folder");
+                }
             }
 
             toast.Status = ConvStatus.Done;
@@ -8675,57 +8643,36 @@
         }
     }
 
-    // Stage upload bytes into a temp file under %TEMP% so the server doesn't sit on raw
-    // bytes while waiting for the user to confirm the overwrite dialog. Returns the
-    // absolute temp path. Cleanup is the caller's responsibility (Confirm/Cancel/Dispose).
-    static string StageUploadTempFile(byte[] data)
+    // Resolves a non-colliding filename so uploads NEVER overwrite an existing file.
+    // If the original name is free → returns it unchanged.
+    // Otherwise tries "<base> 1.<ext>" through "<base> 100.<ext>" in order and returns
+    // the first available variant. If all 100 are taken, falls back to a Unix-timestamp
+    // suffix (with a tiny retry loop in case the timestamp is also colliding).
+    string ResolveUniqueFileName(string parentFolder, string originalName, bool enforcePdf)
     {
-        var path = Path.Combine(Path.GetTempPath(), "lpm-up-" + Guid.NewGuid().ToString("N") + ".bin");
-        File.WriteAllBytes(path, data);
-        return path;
-    }
+        if (!FolderSvc.SectionFileExistsAtPath(PcId, parentFolder, originalName, Solo, enforcePdf: enforcePdf))
+            return originalName;
 
-    void ConfirmOverwrite()
-    {
-        foreach (var (name, tempPath, enforcePdf) in _uploadPendingFiles)
+        var baseName = Path.GetFileNameWithoutExtension(originalName);
+        var ext      = Path.GetExtension(originalName); // includes the dot, or "" when no extension
+        for (int i = 1; i <= 100; i++)
         {
-            // Each item is independent — one failure must NOT abort the rest of the
-            // batch (would leave the user staring at a half-written set of files plus
-            // orphaned temps). Catch + continue, with the finally guaranteeing temp
-            // cleanup whether the move succeeded, returned false, or threw.
-            try
-            {
-                Console.WriteLine($"[PcFolder] Overwriting file '{name}' in '{_newMenuParentFolder}' by '{_userName}' — PC {PcId}");
-                var ok = FolderSvc.SaveSectionFileFromTempPath(PcId, _newMenuParentFolder, name, tempPath, overwrite: true, solo: Solo, enforcePdf: enforcePdf);
-                if (ok)
-                    ActivitySvc.RecordActivity(_loginUsername, $"Uploaded file '{name}' (overwrite) to {_newMenuParentFolder} for: {_pcName}", "folder");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[PcFolder] Overwrite of '{name}' FAILED: {ex.Message}");
-            }
-            finally
-            {
-                try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { /* best-effort */ }
-            }
+            var candidate = $"{baseName} {i}{ext}";
+            if (!FolderSvc.SectionFileExistsAtPath(PcId, parentFolder, candidate, Solo, enforcePdf: enforcePdf))
+                return candidate;
         }
-        _uploadPendingFiles.Clear();
-        _uploadDuplicateNames.Clear();
-        _showOverwriteConfirm = false;
-        RefreshFolder();
-    }
 
-    void CancelOverwrite()
-    {
-        // Drop all staged temp files — user chose not to overwrite.
-        foreach (var (_, tempPath, _) in _uploadPendingFiles)
+        // 100 collisions is extreme — fall back to timestamp suffix, with a small retry
+        // loop just in case the per-second clock also collides.
+        var ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        for (int j = 0; j < 5; j++)
         {
-            try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { /* best-effort */ }
+            var candidate = $"{baseName} {ts + j}{ext}";
+            if (!FolderSvc.SectionFileExistsAtPath(PcId, parentFolder, candidate, Solo, enforcePdf: enforcePdf))
+                return candidate;
         }
-        _uploadPendingFiles.Clear();
-        _uploadDuplicateNames.Clear();
-        _showOverwriteConfirm = false;
-        RefreshFolder(); // still refresh for non-duplicate files that were saved
+        // Last resort — return a timestamp+guid name that's guaranteed unique.
+        return $"{baseName} {ts}-{Guid.NewGuid():N}{ext}";
     }
 
     async Task AutoDismissUploadError()

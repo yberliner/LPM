@@ -1551,6 +1551,146 @@
             .delpurch-title { font-size: 1.15rem !important; }
             .delpurch-fk-table th, .delpurch-fk-table td { font-size: .68rem; padding: 3px 6px; }
         }
+
+        /* ── Non-admin blocked panel (shared by hard-delete purchase + delete budget reset) ── */
+        .pcs-block-card {
+            position: relative; overflow: hidden;
+            background: linear-gradient(155deg, #0f172a 0%, #1e1b4b 60%, #312e81 100%);
+            border: 2px solid rgba(167,139,250,.55);
+            border-radius: 20px;
+            padding: 28px 30px 22px;
+            width: min(560px, 92vw);
+            color: #e2e8f0;
+            box-shadow: 0 30px 70px rgba(0,0,0,.55), 0 0 0 1px rgba(167,139,250,.18) inset;
+            animation: pcs-block-pop .55s cubic-bezier(.18,.89,.32,1.28) both;
+        }
+        @@keyframes pcs-block-pop {
+            0%   { opacity: 0; transform: scale(.78) translateY(14px); }
+            60%  { opacity: 1; transform: scale(1.03) translateY(-2px); }
+            100% { opacity: 1; transform: scale(1)    translateY(0); }
+        }
+        .pcs-block-aurora {
+            position: absolute; inset: -40%; pointer-events: none; z-index: 0;
+            background: conic-gradient(from 0deg,
+                rgba(167,139,250,.0)   0deg,
+                rgba(167,139,250,.18) 60deg,
+                rgba(244,114,182,.18) 140deg,
+                rgba(96,165,250,.18)  220deg,
+                rgba(167,139,250,.0)  360deg);
+            filter: blur(28px);
+            animation: pcs-block-aurora 11s linear infinite;
+        }
+        @@keyframes pcs-block-aurora {
+            0%   { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .pcs-block-card > *:not(.pcs-block-aurora) { position: relative; z-index: 1; }
+
+        .pcs-block-shield {
+            position: relative; width: 72px; height: 72px; margin: 0 auto 10px;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .pcs-block-shield i {
+            font-size: 3rem; color: #fbbf24;
+            text-shadow: 0 0 18px rgba(251,191,36,.65);
+            animation: pcs-block-shield-bob 2.4s ease-in-out infinite;
+        }
+        @@keyframes pcs-block-shield-bob {
+            0%, 100% { transform: translateY(0)    scale(1); }
+            50%      { transform: translateY(-3px) scale(1.04); }
+        }
+        .pcs-block-pulse {
+            position: absolute; inset: 0; border-radius: 50%;
+            border: 2px solid rgba(251,191,36,.65);
+            animation: pcs-block-pulse 1.8s ease-out infinite;
+        }
+        .pcs-block-pulse-2 { animation-delay: .9s; }
+        @@keyframes pcs-block-pulse {
+            0%   { transform: scale(.6); opacity: .9; }
+            100% { transform: scale(1.9); opacity: 0; }
+        }
+
+        .pcs-block-title {
+            font-size: 1.35rem; font-weight: 800; text-align: center;
+            color: #fef9c3; margin-bottom: 6px;
+            text-shadow: 0 1px 12px rgba(251,191,36,.35);
+        }
+        .pcs-block-text {
+            font-size: .88rem; line-height: 1.5; text-align: center;
+            color: #cbd5e1; margin-bottom: 16px;
+        }
+
+        .pcs-block-sid {
+            background: rgba(15,23,42,.55);
+            border: 1px solid rgba(251,191,36,.4);
+            border-radius: 12px;
+            padding: 12px 16px;
+            text-align: center;
+            margin-bottom: 16px;
+        }
+        .pcs-block-sid-label {
+            display: block; font-size: .72rem; letter-spacing: 2px;
+            text-transform: uppercase; color: #fcd34d; margin-bottom: 4px;
+        }
+        .pcs-block-sid-num {
+            display: inline-block;
+            font-family: 'Courier New', ui-monospace, monospace;
+            font-size: 2.6rem; font-weight: 900;
+            color: #fde047;
+            letter-spacing: 2px;
+            animation: pcs-block-sid-flash 1.1s ease-in-out infinite alternate;
+        }
+        @@keyframes pcs-block-sid-flash {
+            0%   { transform: scale(1);    text-shadow: 0 0 8px  rgba(253,224,71,.45),
+                                                        0 0 18px rgba(253,224,71,.25); color: #fde047; }
+            100% { transform: scale(1.08); text-shadow: 0 0 22px rgba(253,224,71,.95),
+                                                        0 0 44px rgba(244,114,182,.55); color: #fff; }
+        }
+
+        .pcs-block-meta {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 6px 18px;
+            background: rgba(15,23,42,.35);
+            border: 1px solid rgba(148,163,184,.18);
+            border-radius: 10px;
+            padding: 10px 14px;
+            margin-bottom: 14px;
+            font-size: .82rem;
+        }
+        .pcs-block-meta > div { display: flex; gap: 6px; min-width: 0; }
+        .pcs-block-k { color: #94a3b8; font-weight: 600; white-space: nowrap; }
+        .pcs-block-v { color: #f1f5f9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        .pcs-block-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        .pcs-block-copy-btn {
+            background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+            color: #1e1b4b; border: none; font-weight: 700;
+            box-shadow: 0 4px 14px rgba(251,191,36,.35);
+            transition: transform .15s ease, box-shadow .15s ease;
+        }
+        .pcs-block-copy-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 18px rgba(251,191,36,.55);
+            color: #1e1b4b;
+        }
+        .pcs-block-copied {
+            font-size: .82rem; font-weight: 600; color: #4ade80;
+            animation: pcs-block-fade-in .25s ease both;
+        }
+        @@keyframes pcs-block-fade-in {
+            0%   { opacity: 0; transform: translateX(-4px); }
+            100% { opacity: 1; transform: translateX(0); }
+        }
+
+        @@media (max-width: 768px) {
+            .pcs-block-card  { padding: 22px 20px 18px; }
+            .pcs-block-title { font-size: 1.15rem; }
+            .pcs-block-sid-num { font-size: 2.1rem; }
+        }
+        @@media (max-width: 480px) {
+            .pcs-block-meta    { grid-template-columns: 1fr; gap: 4px 0; }
+            .pcs-block-sid-num { font-size: 1.9rem; }
+            .pcs-block-title   { font-size: 1.05rem; }
+        }
     </style>
 
     <div style="position:fixed;inset:0;z-index:10200;background:rgba(0,0,0,.82);display:flex;align-items:center;justify-content:center;padding:16px;overflow-y:auto;">
@@ -1714,6 +1854,58 @@
                 <div class="spinner-border" style="width:3.2rem;height:3.2rem;border-width:4px;color:#ef4444;margin-bottom:20px;" role="status"></div>
                 <div style="font-size:1rem;font-weight:700;color:#fca5a5;">@LS.T("pcs.delete.deleting")</div>
                 <div style="font-size:.78rem;color:#991b1b;margin-top:6px;">@LS.T("pcs.delete.pleaseWait")</div>
+            </div>
+        }
+
+        @* ── Step 99: BLOCKED — non-admin tried to hard-delete ── *@
+        @if (_delPurchStep == 99 && _delPurchInfo != null)
+        {
+            <div class="pcs-block-card">
+                <div class="pcs-block-aurora" aria-hidden="true"></div>
+                <div class="pcs-block-shield">
+                    <span class="pcs-block-pulse"></span>
+                    <span class="pcs-block-pulse pcs-block-pulse-2"></span>
+                    <i class="ri-shield-keyhole-fill"></i>
+                </div>
+                <div class="pcs-block-title">Only&nbsp;Admin can hard-delete a purchase</div>
+                <div class="pcs-block-text">
+                    This action cascades across <strong>@_delPurchInfo.TotalRowCount</strong> rows in 5 financial
+                    tables and cannot be undone. Please contact your administrator and share the details below.
+                </div>
+
+                <div class="pcs-block-sid">
+                    <span class="pcs-block-sid-label">Purchase ID</span>
+                    <span class="pcs-block-sid-num">#@_delPurchInfo.PrimaryPurchaseId</span>
+                </div>
+
+                <div class="pcs-block-meta">
+                    <div><span class="pcs-block-k">PC</span><span class="pcs-block-v">@_detail.FullName</span></div>
+                    <div><span class="pcs-block-k">PC ID</span><span class="pcs-block-v">@_detail.PcId</span></div>
+                    <div><span class="pcs-block-k">Requested by</span><span class="pcs-block-v">@_username</span></div>
+                    <div><span class="pcs-block-k">Affected rows</span><span class="pcs-block-v">@_delPurchInfo.TotalRowCount</span></div>
+                    <div><span class="pcs-block-k">fin_purchases</span><span class="pcs-block-v">@_delPurchInfo.Purchases.Count row(s)</span></div>
+                    @foreach (var fk in _delPurchInfo.FkTables)
+                    {
+                        <div><span class="pcs-block-k">@fk.Table</span><span class="pcs-block-v">@fk.Rows.Count row(s)</span></div>
+                    }
+                    <div><span class="pcs-block-k">@_delPurchInfo.Enrollments.Table</span><span class="pcs-block-v">@_delPurchInfo.Enrollments.Rows.Count row(s)</span></div>
+                </div>
+
+                <div class="pcs-block-actions">
+                    <button class="btn btn-sm pcs-block-copy-btn d-flex align-items-center gap-1"
+                            @onclick="CopyHardDeletePurchaseDetails">
+                        <i class="ri-clipboard-line"></i> Copy to clipboard
+                    </button>
+                    @if (!string.IsNullOrEmpty(_delPurchBlockedCopied))
+                    {
+                        <span class="pcs-block-copied">
+                            <i class="ri-check-line"></i> @_delPurchBlockedCopied
+                        </span>
+                    }
+                    <button class="btn btn-sm btn-outline-light ms-auto" @onclick="CancelDeletePurchase">
+                        Close
+                    </button>
+                </div>
             </div>
         }
 
@@ -1914,6 +2106,61 @@
                         </div>
                         <div class="reset-success-title" style="color:#ef4444;">Reset Removed!</div>
                         <div class="reset-success-sub">Balance now includes all historical transactions again</div>
+                    </div>
+                }
+                else if (_delResetBlocked)
+                {
+                    var resetRow = _resetHistory.FirstOrDefault(h => h.Id == _resetDeleteId);
+                    <div class="modal-body" style="padding:0;">
+                        <div class="pcs-block-card" style="width:100%;max-width:none;border-radius:0;">
+                            <div class="pcs-block-aurora" aria-hidden="true"></div>
+                            <div class="pcs-block-shield">
+                                <span class="pcs-block-pulse"></span>
+                                <span class="pcs-block-pulse pcs-block-pulse-2"></span>
+                                <i class="ri-shield-keyhole-fill"></i>
+                            </div>
+                            <div class="pcs-block-title">Only&nbsp;Admin can delete a budget reset</div>
+                            <div class="pcs-block-text">
+                                Removing a budget reset retroactively changes the PC's balance, hours-left and cost.
+                                Please contact your administrator and share the details below.
+                            </div>
+
+                            <div class="pcs-block-sid">
+                                <span class="pcs-block-sid-label">Budget Reset ID</span>
+                                <span class="pcs-block-sid-num">#@_resetDeleteId</span>
+                            </div>
+
+                            <div class="pcs-block-meta">
+                                <div><span class="pcs-block-k">PC</span><span class="pcs-block-v">@_detail.FullName</span></div>
+                                <div><span class="pcs-block-k">PC ID</span><span class="pcs-block-v">@_detail.PcId</span></div>
+                                <div><span class="pcs-block-k">Requested by</span><span class="pcs-block-v">@_username</span></div>
+                                <div><span class="pcs-block-k">Reset date</span><span class="pcs-block-v">@_resetDeleteDate</span></div>
+                                @if (resetRow != null)
+                                {
+                                    <div><span class="pcs-block-k">Created by</span><span class="pcs-block-v">@resetRow.CreatedBy</span></div>
+                                    <div><span class="pcs-block-k">Created at</span><span class="pcs-block-v">@resetRow.CreatedAt</span></div>
+                                    @if (!string.IsNullOrEmpty(resetRow.Notes))
+                                    { <div><span class="pcs-block-k">Notes</span><span class="pcs-block-v">@resetRow.Notes</span></div> }
+                                }
+                            </div>
+
+                            <div class="pcs-block-actions">
+                                <button class="btn btn-sm pcs-block-copy-btn d-flex align-items-center gap-1"
+                                        @onclick="CopyDeleteResetDetails">
+                                    <i class="ri-clipboard-line"></i> Copy to clipboard
+                                </button>
+                                @if (!string.IsNullOrEmpty(_delResetBlockedCopied))
+                                {
+                                    <span class="pcs-block-copied">
+                                        <i class="ri-check-line"></i> @_delResetBlockedCopied
+                                    </span>
+                                }
+                                <button class="btn btn-sm btn-outline-light ms-auto"
+                                        @onclick="() => { _delResetBlocked = false; _delResetBlockedCopied = string.Empty; }">
+                                    Close
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 }
                 else if (_resetConfirmDelete)
@@ -4820,7 +5067,7 @@
     int? _confirmDeletePurchaseId;
     string _origPurchaseSnapshot = "";
 
-    // Hard-delete purchase confirmation flow (0=idle, 1=preview, 2=type-to-confirm, 3=deleting, 4=done)
+    // Hard-delete purchase confirmation flow (0=idle, 1=preview, 2=type-to-confirm, 3=deleting, 4=done, 99=non-admin blocked)
     int    _delPurchStep;
     string _delPurchInput = "";
     string _delPurchError = "";
@@ -4828,6 +5075,11 @@
     int    _delPurchRowsDeleted;
     int    _delPurchLoadToken;
     PurchaseDeleteInfo? _delPurchInfo;
+    // Non-admin guard for purchase hard-delete: shown after user typed "delete" but isn't Admin
+    string _delPurchBlockedCopied = "";
+    // Non-admin guard for budget reset delete
+    bool   _delResetBlocked;
+    string _delResetBlockedCopied = "";
 
     bool   _skipSignature;
     bool   _hasSigned;
@@ -5553,18 +5805,140 @@
 
     void CancelDeletePurchase()
     {
-        _delPurchStep        = 0;
-        _delPurchInput       = "";
-        _delPurchError       = "";
-        _delPurchBusy        = false;
-        _delPurchInfo        = null;
-        _delPurchRowsDeleted = 0;
+        _delPurchStep          = 0;
+        _delPurchInput         = "";
+        _delPurchError         = "";
+        _delPurchBusy          = false;
+        _delPurchInfo          = null;
+        _delPurchRowsDeleted   = 0;
         _delPurchLoadToken++;
+        _delPurchBlockedCopied = "";
+    }
+
+    // Builds a plain-text dump of everything the admin needs to perform the
+    // hard-delete in the same place (this PC's purchase modal). Copies it to
+    // the clipboard and flashes a "Copied!" toast in the blocked panel.
+    async Task CopyHardDeletePurchaseDetails()
+    {
+        if (_delPurchInfo == null) return;
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("ADMIN ACTION NEEDED — Hard-Delete Purchase");
+        sb.AppendLine();
+        sb.AppendLine($"Requested by: {_username}");
+        sb.AppendLine($"PC: {_detail.FullName} (PC ID: {_detail.PcId})");
+        sb.AppendLine($"Purchase ID: #{_delPurchInfo.PrimaryPurchaseId}");
+        sb.AppendLine($"Total rows that will be deleted: {_delPurchInfo.TotalRowCount}");
+        sb.AppendLine();
+
+        if (_delPurchInfo.Purchases.Count > 0)
+        {
+            sb.AppendLine($"--- fin_purchases ({_delPurchInfo.Purchases.Count} row(s)) ---");
+            foreach (var p in _delPurchInfo.Purchases)
+            {
+                sb.AppendLine("  " + string.Join(" | ", p.Cols.Zip(p.Values, (c, v) => $"{c}={v}")));
+            }
+            sb.AppendLine();
+        }
+
+        foreach (var fk in _delPurchInfo.FkTables)
+        {
+            sb.AppendLine($"--- {fk.Table} ({fk.Rows.Count} row(s)) ---");
+            if (fk.Rows.Count == 0)
+            {
+                sb.AppendLine("  (none)");
+            }
+            else
+            {
+                foreach (var row in fk.Rows)
+                    sb.AppendLine("  " + string.Join(" | ", fk.Cols.Zip(row, (c, v) => $"{c}={v}")));
+            }
+            sb.AppendLine();
+        }
+
+        sb.AppendLine($"--- {_delPurchInfo.Enrollments.Table} ({_delPurchInfo.Enrollments.Rows.Count} row(s)) ---");
+        if (_delPurchInfo.Enrollments.Rows.Count == 0)
+        {
+            sb.AppendLine("  (none)");
+        }
+        else
+        {
+            foreach (var row in _delPurchInfo.Enrollments.Rows)
+                sb.AppendLine("  " + string.Join(" | ", _delPurchInfo.Enrollments.Cols.Zip(row, (c, v) => $"{c}={v}")));
+        }
+        sb.AppendLine();
+
+        sb.AppendLine("Action for admin:");
+        sb.AppendLine($"  1. Log in as Admin.");
+        sb.AppendLine($"  2. Open the PCs page → {_detail.FullName} → Purchases tab.");
+        sb.AppendLine($"  3. Click Edit on purchase #{_delPurchInfo.PrimaryPurchaseId} → Delete.");
+        sb.AppendLine($"  4. Click \"Yes, continue\" → type \"delete\" → Confirm.");
+
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", sb.ToString());
+            _delPurchBlockedCopied = "Copied!";
+        }
+        catch
+        {
+            _delPurchBlockedCopied = "Press Ctrl+C to copy";
+        }
+    }
+
+    // Same idea for the budget-reset path.
+    async Task CopyDeleteResetDetails()
+    {
+        var resetRow = _resetHistory.FirstOrDefault(h => h.Id == _resetDeleteId);
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("ADMIN ACTION NEEDED — Delete Budget Reset");
+        sb.AppendLine();
+        sb.AppendLine($"Requested by: {_username}");
+        sb.AppendLine($"PC: {_detail.FullName} (PC ID: {_detail.PcId})");
+        sb.AppendLine($"Budget Reset ID: #{_resetDeleteId}");
+        sb.AppendLine($"Reset date: {_resetDeleteDate}");
+        if (resetRow != null)
+        {
+            sb.AppendLine($"Created by: {resetRow.CreatedBy}");
+            sb.AppendLine($"Created at: {resetRow.CreatedAt}");
+            if (!string.IsNullOrEmpty(resetRow.Notes))
+                sb.AppendLine($"Notes: {resetRow.Notes}");
+            sb.AppendLine($"Currently active: {(resetRow.IsActive ? "yes" : "no")}");
+        }
+        sb.AppendLine();
+        sb.AppendLine("Action for admin:");
+        sb.AppendLine($"  1. Log in as Admin.");
+        sb.AppendLine($"  2. Open the PCs page → {_detail.FullName} → click \"Reset Budget\".");
+        sb.AppendLine($"  3. In the \"Previous Resets\" table, click the trash icon on the row dated {_resetDeleteDate}.");
+        sb.AppendLine($"  4. Click \"Yes, Delete Reset\".");
+
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", sb.ToString());
+            _delResetBlockedCopied = "Copied!";
+        }
+        catch
+        {
+            _delResetBlockedCopied = "Press Ctrl+C to copy";
+        }
     }
 
     async Task ExecuteHardDeletePurchase()
     {
         if (_delPurchInput != "delete" || !_editingPurchaseId.HasValue) return;
+
+        // Server-side admin guard. Hard-delete cascades across 5 financial
+        // tables and is irrecoverable without DB restore — Admin only. Show
+        // an animated panel with full info + Copy-to-clipboard so the user
+        // can hand the details to an admin.
+        if (!_isAdmin)
+        {
+            _delPurchStep         = 99;
+            _delPurchInput        = "";
+            _delPurchError        = "";
+            _delPurchBlockedCopied = "";
+            StateHasChanged();
+            return;
+        }
+
         _delPurchBusy  = true;
         _delPurchError = "";
         _delPurchStep  = 3;
@@ -6256,6 +6630,8 @@
         _resetSuccess = false;
         _resetDeleted = false;
         _resetConfirmDelete = false;
+        _delResetBlocked       = false;
+        _delResetBlockedCopied = "";
         _resetHistory = PcSvc.GetBudgetResets(_selPcId.Value);
         var activeReset = _resetHistory.FirstOrDefault(r => r.IsActive);
         _existingResetDate = activeReset?.ResetDate;
@@ -6289,6 +6665,17 @@
 
     async Task ExecuteDeleteReset()
     {
+        // Server-side admin guard. Deleting a budget reset retroactively
+        // changes the PC's balance / hours-left / cost. Admin only.
+        if (!_isAdmin)
+        {
+            _resetConfirmDelete    = false;
+            _delResetBlocked       = true;
+            _delResetBlockedCopied = "";
+            StateHasChanged();
+            return;
+        }
+
         PcSvc.DeleteBudgetReset(_resetDeleteId);
         Console.WriteLine($"[PCs] Deleted budget reset #{_resetDeleteId} (date {_resetDeleteDate}) for PC {_selPcId} by '{_username}'");
         _resetConfirmDelete = false;
