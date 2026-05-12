@@ -3118,7 +3118,9 @@ public class DashboardService
     }
 
     /// <summary>Returns the Free/Bill status of the most recent solo CS review for this PC.
-    /// True = free (default when no previous review exists).</summary>
+    /// True = free only when the previous review's Notes is explicitly "Free". Anything else
+    /// (no previous review, null/empty Notes, "Bill", legacy text) defaults to billed — matches
+    /// the system-wide billing rule used by PcService and WalletService (Notes != 'Free' = billed).</summary>
     public bool GetPreviousCsFreeStatus(int pcId)
     {
         using var conn = new SqliteConnection(_connectionString);
@@ -3133,8 +3135,7 @@ public class DashboardService
             LIMIT 1";
         cmd.Parameters.AddWithValue("@pcId", pcId);
         var result = cmd.ExecuteScalar() as string;
-        // No previous review → default free; 'Bill' → not free; anything else → free
-        return result != "Bill";
+        return result == "Free";
     }
 
     public string GetSessionDate(int sessionId)
