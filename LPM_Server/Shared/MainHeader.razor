@@ -14,6 +14,7 @@
 @inject LPM.Services.EffortService EffortSvc
 @inject LPM.Services.AcademyService AcademySvc
 @inject LPM.Services.SessionDataService SdSvc
+@inject LPM.Services.SoloRecordService SoloRecSvc
 @inject LPM.Services.WalletService WltSvc
 @inject LPM.Services.StatisticsService StatSvc
 @inject LPM.Services.SessionManagerLauncher SmLauncher
@@ -1584,6 +1585,82 @@
                         <button class="solo-add-btn" @onclick="() => _soloSections.Add(new SoloSection())">
                             <i class="ri-add-circle-line me-1"></i> Add session summary
                         </button>
+
+                        @* ── Add SOLO Record (Excal / Phoenix / OT12-Spot) — purple, glowing ── *@
+                        <div class="mt-3 solo-rec-section">
+                            <button type="button" class="solo-rec-add-btn" @onclick="AddSoloRecordRow">
+                                <i class="ri-flashlight-line"></i>
+                                <span>+ Add SOLO Record</span>
+                                <i class="ri-sparkling-2-line solo-rec-add-btn-spark"></i>
+                            </button>
+
+                            @if (_addSoloRecordRows.Count > 0)
+                            {
+                                <div class="asd-rows mt-2">
+                                    @for (int i = 0; i < _addSoloRecordRows.Count; i++)
+                                    {
+                                        var idx = i;
+                                        var row = _addSoloRecordRows[idx];
+                                        <div class="asd-row" @key="row">
+                                            <select class="asd-type" value="@row.Type"
+                                                    @onchange="e => OnSoloRecordTypeChanged(idx, e.Value?.ToString() ?? string.Empty)">
+                                                <option value="">— pick type —</option>
+                                                <option value="Excal">Excal</option>
+                                                <option value="Phoenix">Phoenix</option>
+                                                <option value="Ot12Spot">OT12 - Spot</option>
+                                            </select>
+
+                                            <div class="asd-fields">
+                                                @if (row.Type == "Excal")
+                                                {
+                                                    <input class="asd-input" placeholder="Area" value="@row.Area"
+                                                           @oninput="e => row.Area = e.Value?.ToString() ?? string.Empty" />
+                                                    <input class="asd-input" type="number" inputmode="numeric" placeholder="# Plugs" value="@row.NumPlugs"
+                                                           @oninput="e => row.NumPlugs = e.Value?.ToString() ?? string.Empty" />
+                                                    <input class="asd-input" type="date" placeholder="Date EP" value="@row.DateEp"
+                                                           @oninput="e => row.DateEp = e.Value?.ToString() ?? string.Empty" />
+                                                }
+                                                else if (row.Type == "Phoenix")
+                                                {
+                                                    <input class="asd-input" placeholder="Item" value="@row.Item"
+                                                           @oninput="e => row.Item = e.Value?.ToString() ?? string.Empty" />
+                                                    <input class="asd-input" placeholder="TAA" value="@row.TAA"
+                                                           @oninput="e => row.TAA = e.Value?.ToString() ?? string.Empty" />
+                                                    <input class="asd-input" placeholder="Formulating" value="@row.Formulating"
+                                                           @oninput="e => row.Formulating = e.Value?.ToString() ?? string.Empty" />
+                                                    <input class="asd-input" placeholder="OT9" value="@row.OT9"
+                                                           @oninput="e => row.OT9 = e.Value?.ToString() ?? string.Empty" />
+                                                    <input class="asd-input" placeholder="OT10" value="@row.OT10"
+                                                           @oninput="e => row.OT10 = e.Value?.ToString() ?? string.Empty" />
+                                                    <input class="asd-input" placeholder="OT11" value="@row.OT11"
+                                                           @oninput="e => row.OT11 = e.Value?.ToString() ?? string.Empty" />
+                                                }
+                                                else if (row.Type == "Ot12Spot")
+                                                {
+                                                    <input class="asd-input" type="date" placeholder="Date Start" value="@row.DateStart"
+                                                           @oninput="e => row.DateStart = e.Value?.ToString() ?? string.Empty" />
+                                                    <input class="asd-input" placeholder="Ability" value="@row.Ability"
+                                                           @oninput="e => row.Ability = e.Value?.ToString() ?? string.Empty" />
+                                                    <input class="asd-input" type="number" inputmode="numeric" placeholder="Number of creations" value="@row.NumCreations"
+                                                           @oninput="e => row.NumCreations = e.Value?.ToString() ?? string.Empty" />
+                                                    <input class="asd-input" type="date" placeholder="Date End" value="@row.DateEnd"
+                                                           @oninput="e => row.DateEnd = e.Value?.ToString() ?? string.Empty" />
+                                                }
+                                                else
+                                                {
+                                                    <span class="asd-hint">Pick a type to fill in fields…</span>
+                                                }
+                                            </div>
+
+                                            <button type="button" class="asd-x" title="Remove this row"
+                                                    @onclick="() => RemoveSoloRecordRow(idx)">
+                                                <i class="ri-close-line"></i>
+                                            </button>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
                         }
                         else
                         {
@@ -6607,6 +6684,26 @@
     @@keyframes asd-shift { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
     @@keyframes asd-spark { from { transform: rotate(-12deg) scale(.9); opacity:.6; } to { transform: rotate(12deg) scale(1.1); opacity:1; } }
 
+    /* ── Add SOLO Record (wizard, solo single-page) — purple/violet with pulsing glow ── */
+    .solo-rec-section { display:flex; flex-direction:column; gap:6px; }
+    .solo-rec-add-btn {
+        position:relative; width:100%; padding:11px 16px; border:0; border-radius:12px;
+        background: linear-gradient(135deg, #8b5cf6 0%, #a78bfa 45%, #c084fc 100%);
+        background-size: 200% 200%;
+        color:#fff; font-size:.95rem; font-weight:700; letter-spacing:.02em;
+        display:flex; align-items:center; justify-content:center; gap:9px;
+        cursor:pointer; transition: transform .15s;
+        animation: solo-rec-glow 2.4s ease-in-out infinite, solo-rec-shift 6s linear infinite;
+        box-shadow: 0 0 0 0 rgba(139,92,246,.55);
+    }
+    .solo-rec-add-btn:hover { transform: translateY(-1px); }
+    .solo-rec-add-btn-spark { font-size:.95rem; opacity:.85; animation: asd-spark 1.6s ease-in-out infinite alternate; }
+    @@keyframes solo-rec-glow {
+        0%,100% { box-shadow: 0 0 0 0 rgba(139,92,246,.65), 0 0 24px rgba(192,132,252,.4); }
+        50%     { box-shadow: 0 0 0 10px rgba(139,92,246,0), 0 0 42px rgba(192,132,252,.75); }
+    }
+    @@keyframes solo-rec-shift { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+
     .asd-rows { display:flex; flex-direction:column; gap:8px; }
     .asd-row {
         display:flex; align-items:flex-start; gap:8px;
@@ -8179,6 +8276,44 @@
     List<SoloSection> _soloSections = [new SoloSection()];
     static string SoloTodayStr() => DateTime.Today.ToString("yyyy-MM-dd");
 
+    // ── Add SOLO Record state (Excal / Phoenix / OT12-Spot) ──
+    class SoloRecordRow
+    {
+        public string Type { get; set; } = "";  // "Excal" | "Phoenix" | "Ot12Spot"
+        // Excal
+        public string Area      { get; set; } = "";
+        public string NumPlugs  { get; set; } = "";
+        public string DateEp    { get; set; } = "";
+        // Phoenix
+        public string Item        { get; set; } = "";
+        public string TAA         { get; set; } = "";
+        public string Formulating { get; set; } = "";
+        public string OT9         { get; set; } = "";
+        public string OT10        { get; set; } = "";
+        public string OT11        { get; set; } = "";
+        // OT12-Spot
+        public string DateStart    { get; set; } = "";
+        public string Ability      { get; set; } = "";
+        public string NumCreations { get; set; } = "";
+        public string DateEnd      { get; set; } = "";
+    }
+    List<SoloRecordRow> _addSoloRecordRows = new();
+    void AddSoloRecordRow() => _addSoloRecordRows.Add(new SoloRecordRow());
+    void RemoveSoloRecordRow(int idx)
+    {
+        if (idx >= 0 && idx < _addSoloRecordRows.Count) _addSoloRecordRows.RemoveAt(idx);
+    }
+    void OnSoloRecordTypeChanged(int idx, string newType)
+    {
+        if (idx < 0 || idx >= _addSoloRecordRows.Count) return;
+        var row = _addSoloRecordRows[idx];
+        if (row.Type == newType) return;
+        row.Type = newType;
+        row.Area = ""; row.NumPlugs = ""; row.DateEp = "";
+        row.Item = ""; row.TAA = ""; row.Formulating = ""; row.OT9 = ""; row.OT10 = ""; row.OT11 = "";
+        row.DateStart = ""; row.Ability = ""; row.NumCreations = ""; row.DateEnd = "";
+    }
+
     List<string> GetSoloGoReasons()
     {
         var reasons = new List<string>();
@@ -9133,6 +9268,7 @@
         _step3Visited = false;
         _arfTables = [new ArfTable()];
         _addSessDataRows.Clear();
+        _addSoloRecordRows.Clear();
         // Auto-load files from scan inbox (PWA share target)
         LoadInboxFiles();
         _showImportWizard = true;
@@ -9677,6 +9813,17 @@
             AdminSec = ArfTimeToMinutes(FormatArfTime(s.AdminTime.Trim())) * 60,
             Summary = s.Summary.Trim()
         }).ToList();
+        // Capture Add-SOLO-Record rows (Excal / Phoenix / OT12-Spot) — value-copy so the
+        // background task is not racing with UI mutations after the modal closes.
+        var capturedSoloRecRows = _addSoloRecordRows.Select(r => new SoloRecordRow
+        {
+            Type = r.Type,
+            Area = r.Area, NumPlugs = r.NumPlugs, DateEp = r.DateEp,
+            Item = r.Item, TAA = r.TAA, Formulating = r.Formulating,
+            OT9 = r.OT9, OT10 = r.OT10, OT11 = r.OT11,
+            DateStart = r.DateStart, Ability = r.Ability,
+            NumCreations = r.NumCreations, DateEnd = r.DateEnd
+        }).ToList();
 
         // Calculate totals
         var totalLengthSec = capturedSections.Sum(s => Math.Max(0, s.LengthSec));
@@ -9701,6 +9848,7 @@
         _importNormalizedDate    = DateTime.Today;
         _importAttachments.Clear();
         _importAttachmentBytes.Clear();
+        _addSoloRecordRows.Clear();
         _importPcId      = 0;
         _importStep      = 1;
         _importError     = "";
@@ -9768,6 +9916,51 @@
                                 lengthSeconds: lenSec,
                                 adminSeconds: admSec,
                                 folderSummaryDate: dbDate);
+                        }
+                        // Insert SOLO Records (Excal / Phoenix / OT12-Spot) linked to this session
+                        if (capturedSoloRecRows.Count > 0 && capturedCoreUserId.HasValue && capturedCoreUserId.Value > 0)
+                        {
+                            int createdBy = capturedCoreUserId.Value;
+                            foreach (var r in capturedSoloRecRows)
+                            {
+                                try
+                                {
+                                    if (r.Type == "Excal")
+                                    {
+                                        int? plugs = int.TryParse(r.NumPlugs, out var np) ? np : null;
+                                        SoloRecSvc.InsertExcal(capturedPcId, sessionId, createdAt: null,
+                                            string.IsNullOrWhiteSpace(r.Area) ? null : r.Area.Trim(),
+                                            plugs,
+                                            string.IsNullOrWhiteSpace(r.DateEp) ? null : r.DateEp.Trim(),
+                                            createdBy);
+                                    }
+                                    else if (r.Type == "Phoenix")
+                                    {
+                                        SoloRecSvc.InsertPhoenix(capturedPcId, sessionId, createdAt: null,
+                                            string.IsNullOrWhiteSpace(r.Item) ? null : r.Item.Trim(),
+                                            string.IsNullOrWhiteSpace(r.TAA) ? null : r.TAA.Trim(),
+                                            string.IsNullOrWhiteSpace(r.Formulating) ? null : r.Formulating.Trim(),
+                                            string.IsNullOrWhiteSpace(r.OT9) ? null : r.OT9.Trim(),
+                                            string.IsNullOrWhiteSpace(r.OT10) ? null : r.OT10.Trim(),
+                                            string.IsNullOrWhiteSpace(r.OT11) ? null : r.OT11.Trim(),
+                                            createdBy);
+                                    }
+                                    else if (r.Type == "Ot12Spot")
+                                    {
+                                        int? nc = int.TryParse(r.NumCreations, out var n) ? n : null;
+                                        SoloRecSvc.InsertOt12Spot(capturedPcId, sessionId, createdAt: null,
+                                            string.IsNullOrWhiteSpace(r.DateStart) ? null : r.DateStart.Trim(),
+                                            string.IsNullOrWhiteSpace(r.Ability) ? null : r.Ability.Trim(),
+                                            nc,
+                                            string.IsNullOrWhiteSpace(r.DateEnd) ? null : r.DateEnd.Trim(),
+                                            createdBy);
+                                    }
+                                }
+                                catch (Exception sex)
+                                {
+                                    Console.WriteLine($"[SoloImport] SOLO Record insert failed (Type={r.Type}): {sex.Message}");
+                                }
+                            }
                         }
                         await Advance(sCreate, 2);
                     }),

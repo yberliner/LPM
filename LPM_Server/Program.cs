@@ -134,6 +134,7 @@ builder.Services.AddSingleton<UserDb>();
 builder.Services.AddSingleton<LPM.Services.HtmlSanitizerService>();
 builder.Services.AddSingleton<LPM.Services.DashboardService>();
 builder.Services.AddSingleton<LPM.Services.SessionDataService>();
+builder.Services.AddSingleton<LPM.Services.SoloRecordService>();
 builder.Services.AddSingleton<LPM.Services.PcService>();
 builder.Services.AddSingleton<LPM.Services.AuditorService>();
 builder.Services.AddSingleton<LPM.Services.AcademyService>();

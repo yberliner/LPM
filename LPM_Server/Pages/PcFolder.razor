@@ -204,6 +204,33 @@
                 </div>
             }
 
+            @* ── Solo Records mega-button (Excal / Phoenix / OT12 - Spot) — solo folders only ── *@
+            @if (Solo && _currentUserId > 0)
+            {
+                <div class="pcf-sd-mega-wrap pcf-sd-mega-solo-wrap">
+                    <button class="pcf-sd-mega-btn pcf-sd-mega-solo-btn" @onclick="OpenSoloRecordModal"
+                            title="Open Solo Records — Excal / Phoenix / OT12 - Spot">
+                        <div class="pcf-sd-mega-icon"><i class="ri-flashlight-line"></i></div>
+                        <div class="pcf-sd-mega-text">
+                            <span class="pcf-sd-mega-title">Solo Records</span>
+                            <span class="pcf-sd-mega-sub">Excal · Phoenix · OT12 - Spot</span>
+                        </div>
+                        <i class="ri-arrow-right-s-line pcf-sd-mega-arrow"></i>
+                    </button>
+                    <div class="pcf-sd-mega-cards">
+                        <div class="pcf-sd-mega-card pcf-sd-card-excal"   @onclick='() => OpenSoloRecordModalTab("Excal")'>
+                            <i class="ri-plug-line"></i><span>Excal</span>
+                        </div>
+                        <div class="pcf-sd-mega-card pcf-sd-card-phoenix" @onclick='() => OpenSoloRecordModalTab("Phoenix")'>
+                            <i class="ri-fire-line"></i><span>Phoenix</span>
+                        </div>
+                        <div class="pcf-sd-mega-card pcf-sd-card-ot12"    @onclick='() => OpenSoloRecordModalTab("Ot12Spot")'>
+                            <i class="ri-focus-3-line"></i><span>OT12 - Spot</span>
+                        </div>
+                    </div>
+                </div>
+            }
+
             @* ── WorkSheets ── *@
             <div class="pcf-section-title pcf-section-ws" @onclick="() => _wsExpanded = !_wsExpanded">
                 <i class="@(_wsExpanded ? "ri-arrow-down-s-line" : "ri-arrow-right-s-line")"></i>
@@ -1689,17 +1716,19 @@
     </div>
 </div>
 
-@* ── Session Data modal (Evil Purposes / Serfacs / PTS Handling) ── *@
+@* ── Session Data / Solo Records modal — same component, mode-switched ── *@
 <SessionDataModal
-    Show="_showSessionDataModal"
+    Show="@(_showSessionDataModal || _showSoloRecordModal)"
     PcId="PcId"
     PcName="@_pcName"
     CurrentSessionId="@(_csSessionId > 0 ? _csSessionId : (int?)null)"
     SessionName="@_csSessionName"
     CurrentUserId="_currentUserId"
     CurrentUserName="@_userName"
-    InitialTab="@_sdInitialTab"
-    OnCloseRequested="CloseSessionDataModal" />
+    SoloMode="@_showSoloRecordModal"
+    CanEdit="@(!_showSoloRecordModal || _isSoloUser || _isUserCS)"
+    InitialTab="@(_showSoloRecordModal ? _srInitialTab : _sdInitialTab)"
+    OnCloseRequested="CloseAnyDataModal" />
 
 @* ── Text annotations history (right-click on a PDF in the tree or in the pane) ── *@
 <TextAnnotationsModal
@@ -2487,6 +2516,27 @@
     .pcf-sd-card-pts i   { background: rgba(245,158,11,.18); color: #fcd34d; }
     .pcf-sd-card-casedata    { border-left-color: #10b981; }
     .pcf-sd-card-casedata i  { background: rgba(16,185,129,.18); color: #6ee7b7; }
+
+    /* Solo Records mega-button — purple/violet accent */
+    .pcf-sd-mega-solo-btn {
+        background: linear-gradient(135deg, #6d28d9 0%, #8b5cf6 50%, #a78bfa 100%) !important;
+        background-size: 220% 220% !important;
+        box-shadow: 0 4px 12px rgba(139,92,246,.4), 0 0 0 1px rgba(255,255,255,.08) inset !important;
+        animation: pcfSdSoloPulse 2.4s ease-in-out infinite, pcfSdShift 6s ease-in-out infinite !important;
+    }
+    .pcf-sd-mega-solo-btn:hover {
+        box-shadow: 0 12px 32px rgba(168,85,247,.6), 0 0 0 1px rgba(255,255,255,.18) inset !important;
+    }
+    @@keyframes pcfSdSoloPulse {
+        0%,100% { box-shadow: 0 6px 20px rgba(139,92,246,.4),  0 0 0 1px rgba(255,255,255,.08) inset; }
+        50%     { box-shadow: 0 6px 32px rgba(168,85,247,.65), 0 0 0 1px rgba(255,255,255,.18) inset; }
+    }
+    .pcf-sd-card-excal    { border-left-color: #a855f7; }
+    .pcf-sd-card-excal i  { background: rgba(168,85,247,.18); color: #d8b4fe; }
+    .pcf-sd-card-phoenix  { border-left-color: #f97316; }
+    .pcf-sd-card-phoenix i{ background: rgba(249,115,22,.18); color: #fdba74; }
+    .pcf-sd-card-ot12     { border-left-color: #14b8a6; }
+    .pcf-sd-card-ot12 i   { background: rgba(20,184,166,.18); color: #5eead4; }
 
     /* Touch / no-hover devices: always show cards so users can read what the button opens */
     @@media (hover: none) {
@@ -4275,10 +4325,17 @@
     bool _isSoloUser;            // true when logged-in user's StaffRole is Solo
     int  _currentUserId;         // core_users.Id for the logged-in user (0 if unknown)
     bool _showSessionDataModal;  // true while SessionDataModal is open
+    bool _showSoloRecordModal;   // true while SoloRecordModal is open
+    string _srInitialTab = "Excal";
     string? _sdInitialTab;       // "Evil" / "Serfac" / "Pts" — set by mega-button card clicks
     void OpenSessionDataModal()                  { _sdInitialTab = "Evil";  _showSessionDataModal = true; }
     void OpenSessionDataModalTab(string tab)     { _sdInitialTab = tab;     _showSessionDataModal = true; }
     void CloseSessionDataModal() => _showSessionDataModal = false;
+
+    void OpenSoloRecordModal()                   { _srInitialTab = "Excal";   _showSoloRecordModal = true; }
+    void OpenSoloRecordModalTab(string tab)      { _srInitialTab = tab;       _showSoloRecordModal = true; }
+    void CloseSoloRecordModal() => _showSoloRecordModal = false;
+    void CloseAnyDataModal() { _showSessionDataModal = false; _showSoloRecordModal = false; }
 
     // ── Text annotation history popup (right-click on a PDF) ──
     bool    _showAnnHistoryModal;
@@ -4797,8 +4854,15 @@
             }
             else if (_folder?.WorkSheets.Count > 0)
             {
-                // Fallback: load latest worksheet + first attachment
-                var latest = _folder.WorkSheets[0];
+                // Fallback: load NEWEST worksheet (by yymmdd date prefix) + first attachment.
+                // Files like "All OT 2 Reads V.pdf" lack a date prefix and would otherwise sort
+                // higher than "260514 ..." because 'A' > '2' in ASCII — sort them to the end.
+                static string DatePrefixKey(string name)
+                    => name.Length >= 6 && name[..6].All(char.IsDigit) ? name[..6] : "";
+                var latest = _folder.WorkSheets
+                    .OrderByDescending(w => DatePrefixKey(w.File.FileName))
+                    .ThenByDescending(w => w.File.FileName, StringComparer.Ordinal)
+                    .First();
                 _panes[0].File     = latest.File.RelativePath;
                 _panes[0].FileName = SessionDisplayName(latest.File.FileName);
                 _panes[0].Section  = "WorkSheet";

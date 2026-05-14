@@ -1,11 +1,12 @@
 @using LPM.Services
 @inject SessionDataService SdSvc
+@inject SoloRecordService SoloRecSvc
 @inject PdfService PdfSvc
 @inject IJSRuntime JS
 
 @if (Show)
 {
-<div class="sdm-overlay" @onclick="OnBackdropClick">
+<div class="sdm-overlay @(SoloMode ? "sdm-solo" : "")" @onclick="OnBackdropClick">
     <div class="sdm-panel" @onclick:stopPropagation="true">
 
         @* ── Header ─────────────────────────────────────────────── *@
@@ -37,33 +38,57 @@
 
         @* ── Tabs ───────────────────────────────────────────────── *@
         <div class="sdm-tabs">
-            <button class="sdm-tab @(_activeTab == Tab.Evil ? "sdm-tab-active" : "")"
-                    @onclick="() => SwitchTab(Tab.Evil)">
-                <i class="ri-alert-line"></i>Evil Purposes
-                <span class="sdm-tab-count">@_evil.Count</span>
-            </button>
-            <button class="sdm-tab @(_activeTab == Tab.Serfac ? "sdm-tab-active" : "")"
-                    @onclick="() => SwitchTab(Tab.Serfac)">
-                <i class="ri-file-copy-line"></i>Service Facsimiles
-                <span class="sdm-tab-count">@_serfac.Count</span>
-            </button>
-            <button class="sdm-tab @(_activeTab == Tab.Pts ? "sdm-tab-active" : "")"
-                    @onclick="() => SwitchTab(Tab.Pts)">
-                <i class="ri-flashlight-line"></i>PTS Handling
-                <span class="sdm-tab-count">@_pts.Count</span>
-            </button>
-            <button class="sdm-tab @(_activeTab == Tab.CaseData ? "sdm-tab-active" : "")"
-                    @onclick="() => SwitchTab(Tab.CaseData)">
-                <i class="ri-calendar-line"></i>Case Data
-                <span class="sdm-tab-count">@_caseData.Count</span>
-            </button>
+            @if (!SoloMode)
+            {
+                <button class="sdm-tab @(_activeTab == Tab.Evil ? "sdm-tab-active" : "")"
+                        @onclick="() => SwitchTab(Tab.Evil)">
+                    <i class="ri-alert-line"></i>Evil Purposes
+                    <span class="sdm-tab-count">@_evil.Count</span>
+                </button>
+                <button class="sdm-tab @(_activeTab == Tab.Serfac ? "sdm-tab-active" : "")"
+                        @onclick="() => SwitchTab(Tab.Serfac)">
+                    <i class="ri-file-copy-line"></i>Service Facsimiles
+                    <span class="sdm-tab-count">@_serfac.Count</span>
+                </button>
+                <button class="sdm-tab @(_activeTab == Tab.Pts ? "sdm-tab-active" : "")"
+                        @onclick="() => SwitchTab(Tab.Pts)">
+                    <i class="ri-flashlight-line"></i>PTS Handling
+                    <span class="sdm-tab-count">@_pts.Count</span>
+                </button>
+                <button class="sdm-tab @(_activeTab == Tab.CaseData ? "sdm-tab-active" : "")"
+                        @onclick="() => SwitchTab(Tab.CaseData)">
+                    <i class="ri-calendar-line"></i>Case Data
+                    <span class="sdm-tab-count">@_caseData.Count</span>
+                </button>
+            }
+            else
+            {
+                <button class="sdm-tab @(_activeTab == Tab.Excal ? "sdm-tab-active" : "")"
+                        @onclick="() => SwitchTab(Tab.Excal)">
+                    <i class="ri-plug-line"></i>Excal
+                    <span class="sdm-tab-count">@_excal.Count</span>
+                </button>
+                <button class="sdm-tab @(_activeTab == Tab.Phoenix ? "sdm-tab-active" : "")"
+                        @onclick="() => SwitchTab(Tab.Phoenix)">
+                    <i class="ri-fire-line"></i>Phoenix
+                    <span class="sdm-tab-count">@_phoenix.Count</span>
+                </button>
+                <button class="sdm-tab @(_activeTab == Tab.Ot12Spot ? "sdm-tab-active" : "")"
+                        @onclick="() => SwitchTab(Tab.Ot12Spot)">
+                    <i class="ri-focus-3-line"></i>OT12 - Spot
+                    <span class="sdm-tab-count">@_ot12.Count</span>
+                </button>
+            }
         </div>
 
         @* ── Toolbar ────────────────────────────────────────────── *@
         <div class="sdm-toolbar">
-            <button class="sdm-btn sdm-btn-add" @onclick="AddRow" disabled="@(_editingId != 0 || _isAdding)">
-                <i class="ri-add-line"></i>Add row
-            </button>
+            @if (CanEdit)
+            {
+                <button class="sdm-btn sdm-btn-add" @onclick="AddRow" disabled="@(_editingId != 0 || _isAdding)">
+                    <i class="ri-add-line"></i>Add row
+                </button>
+            }
             <button class="sdm-btn sdm-btn-download" title="Download the shown table as PDF"
                     @onclick="DownloadCurrentTableAsync" disabled="@_downloading">
                 @if (_downloading)
@@ -89,7 +114,10 @@
             @if (_activeTab == Tab.Evil)         { @RenderEvilTable }
             else if (_activeTab == Tab.Serfac)   { @RenderSerfacTable }
             else if (_activeTab == Tab.Pts)      { @RenderPtsTable }
-            else                                 { @RenderCaseDataTable }
+            else if (_activeTab == Tab.CaseData) { @RenderCaseDataTable }
+            else if (_activeTab == Tab.Excal)    { @RenderExcalTable }
+            else if (_activeTab == Tab.Phoenix)  { @RenderPhoenixTable }
+            else                                 { @RenderOt12Table }
         </div>
 
         @* ── Delete confirmation dialog ─────────────────────────── *@
@@ -330,6 +358,56 @@
         .sdm-tab span.sdm-tab-count { display: none; }
         .sdm-tab { flex: 1; justify-content: center; }
     }
+
+    /* ── Solo Mode palette — teal/emerald accents so users instantly differentiate solo vs non-solo records ── */
+    .sdm-overlay.sdm-solo .sdm-panel {
+        background: linear-gradient(180deg, #f0fdfa 0%, #ecfdf5 100%);
+    }
+    .sdm-overlay.sdm-solo .sdm-header {
+        background: linear-gradient(135deg, #0d9488 0%, #10b981 100%);
+    }
+    .sdm-overlay.sdm-solo .sdm-tabs {
+        background: linear-gradient(180deg, rgba(13,148,136,.10), transparent);
+    }
+    .sdm-overlay.sdm-solo .sdm-tab {
+        background: rgba(13,148,136,.08);
+        color: #0d9488;
+    }
+    .sdm-overlay.sdm-solo .sdm-tab:hover { background: rgba(13,148,136,.18); }
+    .sdm-overlay.sdm-solo .sdm-tab-active {
+        background: linear-gradient(135deg, #0d9488, #10b981); color: #fff;
+        box-shadow: 0 4px 14px rgba(13,148,136,.35);
+    }
+    .sdm-overlay.sdm-solo .sdm-tab:not(.sdm-tab-active) .sdm-tab-count {
+        background: rgba(13,148,136,.18); color: #0d9488;
+    }
+    .sdm-overlay.sdm-solo .sdm-toolbar {
+        border-bottom-color: rgba(13,148,136,.12);
+    }
+    .sdm-overlay.sdm-solo .sdm-btn-save {
+        background: linear-gradient(135deg, #0d9488, #10b981);
+    }
+    .sdm-overlay.sdm-solo .sdm-btn-save:hover { box-shadow: 0 6px 14px rgba(13,148,136,.35); }
+    .sdm-overlay.sdm-solo .sdm-btn-download {
+        background: linear-gradient(135deg, #0891b2, #14b8a6);
+    }
+    .sdm-overlay.sdm-solo .sdm-btn-sort {
+        background: #ccfbf1; color: #0f766e; border-color: rgba(13,148,136,.25);
+    }
+    .sdm-overlay.sdm-solo .sdm-btn-sort:hover { background: #99f6e4; }
+    .sdm-overlay.sdm-solo .sdm-table-wrap { border-color: rgba(13,148,136,.18); }
+    .sdm-overlay.sdm-solo .sdm-table th {
+        background: #ccfbf1; color: #0f766e;
+        border-bottom-color: rgba(13,148,136,.25);
+    }
+    .sdm-overlay.sdm-solo .sdm-table tr:nth-child(even) td { background: #f0fdfa; }
+    .sdm-overlay.sdm-solo .sdm-table tr:hover td { background: #ccfbf1; }
+    .sdm-overlay.sdm-solo .sdm-table tr.sdm-row-new td { background: #d1fae5 !important; }
+    .sdm-overlay.sdm-solo .sdm-input:focus,
+    .sdm-overlay.sdm-solo .sdm-textarea:focus,
+    .sdm-overlay.sdm-solo .sdm-select:focus {
+        border-color: #0d9488; box-shadow: 0 0 0 3px rgba(13,148,136,.18);
+    }
 </style>
 }
 
@@ -343,18 +421,27 @@
     [Parameter] public int CurrentUserId { get; set; }
     [Parameter] public string CurrentUserName { get; set; } = "";
     [Parameter] public EventCallback OnCloseRequested { get; set; }
-    /// <summary>"Evil", "Serfac", or "Pts" — selects which tab is active when the modal opens. Defaults to Evil.</summary>
+    /// <summary>Tab to activate on open. Non-solo: "Evil"/"Serfac"/"Pts"/"CaseData". Solo: "Excal"/"Phoenix"/"Ot12Spot".</summary>
     [Parameter] public string? InitialTab { get; set; }
+    /// <summary>When true, the modal hosts the Solo record tabs (Excal/Phoenix/OT12-Spot) instead of the non-solo Session-Data tabs.</summary>
+    [Parameter] public bool SoloMode { get; set; }
+    /// <summary>When true (solo mode read-only), all add/edit/delete affordances are hidden. Defaults to true (i.e. editable). Non-solo always editable.</summary>
+    [Parameter] public bool CanEdit { get; set; } = true;
 
-    enum Tab { Evil, Serfac, Pts, CaseData }
+    enum Tab { Evil, Serfac, Pts, CaseData, Excal, Phoenix, Ot12Spot }
     Tab _activeTab = Tab.Evil;
     bool _sortDesc = true;
 
-    // Data
+    // Non-solo data
     List<EvilPurposeRow>  _evil      = new();
     List<SerfacRow>       _serfac    = new();
     List<PtsHandlingRow>  _pts       = new();
     List<CaseDataRow>     _caseData = new();
+    // Solo data
+    List<ExcalRow>      _excal   = new();
+    List<PhoenixRow>    _phoenix = new();
+    List<Ot12SpotRow>   _ot12    = new();
+    // Shared lookups
     List<SessionLite>     _sessions  = new();
     List<UserLite>        _users     = new();
 
@@ -365,6 +452,9 @@
     SerfacRow?       _editSerfac;
     PtsHandlingRow?  _editPts;
     CaseDataRow?     _editCaseData;
+    ExcalRow?     _editExcal;
+    PhoenixRow?   _editPhoenix;
+    Ot12SpotRow?  _editOt12;
 
     // Delete state
     sealed record DeleteTarget(Tab Kind, int Id, string Title, string Content);
@@ -387,13 +477,20 @@
         if (Show && !_loaded)
         {
             // Honor InitialTab passed by the opener (e.g. card click in PcFolder mega-button).
-            _activeTab = InitialTab switch
-            {
-                "Serfac"   => Tab.Serfac,
-                "Pts"      => Tab.Pts,
-                "CaseData" => Tab.CaseData,
-                _          => Tab.Evil,
-            };
+            _activeTab = SoloMode
+                ? InitialTab switch
+                {
+                    "Phoenix"  => Tab.Phoenix,
+                    "Ot12Spot" => Tab.Ot12Spot,
+                    _          => Tab.Excal,
+                }
+                : InitialTab switch
+                {
+                    "Serfac"   => Tab.Serfac,
+                    "Pts"      => Tab.Pts,
+                    "CaseData" => Tab.CaseData,
+                    _          => Tab.Evil,
+                };
             await LoadAllAsync();
             _loaded = true;
         }
@@ -407,17 +504,19 @@
 
     void ResetModalState()
     {
-        _activeTab = Tab.Evil;
+        _activeTab = SoloMode ? Tab.Excal : Tab.Evil;
         _sortDesc = true;
         _editingId = 0;
         _isAdding = false;
         _editEvil = null; _editSerfac = null; _editPts = null; _editCaseData = null;
+        _editExcal = null; _editPhoenix = null; _editOt12 = null;
         _deleting = null;
         _deleteInput = "";
         _toast = "";
         _toastCts?.Cancel();
         _toastCts = null;
         _evil.Clear(); _serfac.Clear(); _pts.Clear(); _caseData.Clear();
+        _excal.Clear(); _phoenix.Clear(); _ot12.Clear();
     }
 
     async Task LoadAllAsync()
@@ -426,12 +525,21 @@
         {
             await Task.Run(() =>
             {
-                _evil      = SdSvc.GetEvilPurposes(PcId);
-                _serfac    = SdSvc.GetSerfacs(PcId);
-                _pts       = SdSvc.GetPtsHandling(PcId);
-                _caseData = SdSvc.GetCaseData(PcId);
-                _sessions  = SdSvc.GetSessionsForPc(PcId);
-                _users     = SdSvc.GetActiveUsers();
+                if (SoloMode)
+                {
+                    _excal   = SoloRecSvc.GetExcalForPc(PcId);
+                    _phoenix = SoloRecSvc.GetPhoenixForPc(PcId);
+                    _ot12    = SoloRecSvc.GetOt12SpotForPc(PcId);
+                }
+                else
+                {
+                    _evil     = SdSvc.GetEvilPurposes(PcId);
+                    _serfac   = SdSvc.GetSerfacs(PcId);
+                    _pts      = SdSvc.GetPtsHandling(PcId);
+                    _caseData = SdSvc.GetCaseData(PcId);
+                }
+                _sessions = SdSvc.GetSessionsForPc(PcId);
+                _users    = SdSvc.GetActiveUsers();
             });
         }
         catch (Exception ex)
@@ -460,6 +568,9 @@
     IEnumerable<SerfacRow>       SortedSerfac    => _sortDesc ? _serfac    : _serfac.AsEnumerable().Reverse();
     IEnumerable<PtsHandlingRow>  SortedPts       => _sortDesc ? _pts       : _pts.AsEnumerable().Reverse();
     IEnumerable<CaseDataRow>     SortedCaseData => _sortDesc ? _caseData : _caseData.AsEnumerable().Reverse();
+    IEnumerable<ExcalRow>     SortedExcal    => _sortDesc ? _excal.AsEnumerable().Reverse()   : _excal;
+    IEnumerable<PhoenixRow>   SortedPhoenix  => _sortDesc ? _phoenix.AsEnumerable().Reverse() : _phoenix;
+    IEnumerable<Ot12SpotRow>  SortedOt12     => _sortDesc ? _ot12.AsEnumerable().Reverse()    : _ot12;
 
     // ── Add / Edit / Cancel / Save ──────────────────────────
     void AddRow()
@@ -481,6 +592,15 @@
             case Tab.CaseData:
                 _editCaseData = new CaseDataRow(0, PcId, CurrentSessionId, now, "", CurrentUserId, CurrentUserName);
                 break;
+            case Tab.Excal:
+                _editExcal = new ExcalRow(0, PcId, CurrentSessionId, now, "", null, "", CurrentUserId, CurrentUserName);
+                break;
+            case Tab.Phoenix:
+                _editPhoenix = new PhoenixRow(0, PcId, CurrentSessionId, now, "", "", "", "", "", "", CurrentUserId, CurrentUserName);
+                break;
+            case Tab.Ot12Spot:
+                _editOt12 = new Ot12SpotRow(0, PcId, CurrentSessionId, now, "", "", null, "", CurrentUserId, CurrentUserName);
+                break;
         }
     }
 
@@ -488,12 +608,16 @@
     void StartEditSerfac(SerfacRow r)        { CancelEdit(); _editingId = r.Id; _editSerfac   = r with { }; }
     void StartEditPts(PtsHandlingRow r)      { CancelEdit(); _editingId = r.Id; _editPts      = r with { }; }
     void StartEditCaseData(CaseDataRow r)    { CancelEdit(); _editingId = r.Id; _editCaseData = r with { }; }
+    void StartEditExcal(ExcalRow r)          { CancelEdit(); _editingId = r.Id; _editExcal    = r with { }; }
+    void StartEditPhoenix(PhoenixRow r)      { CancelEdit(); _editingId = r.Id; _editPhoenix  = r with { }; }
+    void StartEditOt12(Ot12SpotRow r)        { CancelEdit(); _editingId = r.Id; _editOt12     = r with { }; }
 
     void CancelEdit()
     {
         _editingId = 0;
         _isAdding = false;
         _editEvil = null; _editSerfac = null; _editPts = null; _editCaseData = null;
+        _editExcal = null; _editPhoenix = null; _editOt12 = null;
     }
 
     async Task SaveEditAsync()
@@ -561,6 +685,59 @@
                         if (idx >= 0) _caseData[idx] = _editCaseData with { CreatedByName = ResolveUserName(_editCaseData.CreatedBy) };
                     }
                     break;
+
+                case Tab.Excal:
+                    if (_editExcal == null) return;
+                    if (_isAdding)
+                    {
+                        var id = SoloRecSvc.InsertExcal(PcId, _editExcal.SessionId, _editExcal.CreatedAt,
+                            _editExcal.Area, _editExcal.NumPlugs, _editExcal.DateEp, _editExcal.CreatedBy);
+                        _excal.Add(_editExcal with { Id = id, CreatedByName = ResolveUserName(_editExcal.CreatedBy) });
+                    }
+                    else
+                    {
+                        SoloRecSvc.UpdateExcal(_editExcal.Id, _editExcal.SessionId, _editExcal.CreatedAt,
+                            _editExcal.Area, _editExcal.NumPlugs, _editExcal.DateEp, _editExcal.CreatedBy);
+                        var idx = _excal.FindIndex(x => x.Id == _editExcal.Id);
+                        if (idx >= 0) _excal[idx] = _editExcal with { CreatedByName = ResolveUserName(_editExcal.CreatedBy) };
+                    }
+                    break;
+
+                case Tab.Phoenix:
+                    if (_editPhoenix == null) return;
+                    if (_isAdding)
+                    {
+                        var id = SoloRecSvc.InsertPhoenix(PcId, _editPhoenix.SessionId, _editPhoenix.CreatedAt,
+                            _editPhoenix.Item, _editPhoenix.TAA, _editPhoenix.Formulating,
+                            _editPhoenix.OT9, _editPhoenix.OT10, _editPhoenix.OT11, _editPhoenix.CreatedBy);
+                        _phoenix.Add(_editPhoenix with { Id = id, CreatedByName = ResolveUserName(_editPhoenix.CreatedBy) });
+                    }
+                    else
+                    {
+                        SoloRecSvc.UpdatePhoenix(_editPhoenix.Id, _editPhoenix.SessionId, _editPhoenix.CreatedAt,
+                            _editPhoenix.Item, _editPhoenix.TAA, _editPhoenix.Formulating,
+                            _editPhoenix.OT9, _editPhoenix.OT10, _editPhoenix.OT11, _editPhoenix.CreatedBy);
+                        var idx = _phoenix.FindIndex(x => x.Id == _editPhoenix.Id);
+                        if (idx >= 0) _phoenix[idx] = _editPhoenix with { CreatedByName = ResolveUserName(_editPhoenix.CreatedBy) };
+                    }
+                    break;
+
+                case Tab.Ot12Spot:
+                    if (_editOt12 == null) return;
+                    if (_isAdding)
+                    {
+                        var id = SoloRecSvc.InsertOt12Spot(PcId, _editOt12.SessionId, _editOt12.CreatedAt,
+                            _editOt12.DateStart, _editOt12.Ability, _editOt12.NumCreations, _editOt12.DateEnd, _editOt12.CreatedBy);
+                        _ot12.Add(_editOt12 with { Id = id, CreatedByName = ResolveUserName(_editOt12.CreatedBy) });
+                    }
+                    else
+                    {
+                        SoloRecSvc.UpdateOt12Spot(_editOt12.Id, _editOt12.SessionId, _editOt12.CreatedAt,
+                            _editOt12.DateStart, _editOt12.Ability, _editOt12.NumCreations, _editOt12.DateEnd, _editOt12.CreatedBy);
+                        var idx = _ot12.FindIndex(x => x.Id == _editOt12.Id);
+                        if (idx >= 0) _ot12[idx] = _editOt12 with { CreatedByName = ResolveUserName(_editOt12.CreatedBy) };
+                    }
+                    break;
             }
             CancelEdit();
             ShowToast("Saved", false);
@@ -603,6 +780,24 @@
         _deleting = new DeleteTarget(Tab.CaseData, r.Id, "Case Data", preview);
         _deleteInput = "";
     }
+    void RequestDeleteExcal(ExcalRow r)
+    {
+        var preview = $"Id: {r.Id}\nCreated: {FmtDate(r.CreatedAt)}\nArea: {Short(r.Area)}\n# Plugs: {r.NumPlugs?.ToString() ?? "(empty)"}\nDate EP: {Short(r.DateEp)}";
+        _deleting = new DeleteTarget(Tab.Excal, r.Id, "Excal", preview);
+        _deleteInput = "";
+    }
+    void RequestDeletePhoenix(PhoenixRow r)
+    {
+        var preview = $"Id: {r.Id}\nCreated: {FmtDate(r.CreatedAt)}\nItem: {Short(r.Item)}\nTAA: {Short(r.TAA)}\nFormulating: {Short(r.Formulating)}\nOT9: {Short(r.OT9)}\nOT10: {Short(r.OT10)}\nOT11: {Short(r.OT11)}";
+        _deleting = new DeleteTarget(Tab.Phoenix, r.Id, "Phoenix", preview);
+        _deleteInput = "";
+    }
+    void RequestDeleteOt12(Ot12SpotRow r)
+    {
+        var preview = $"Id: {r.Id}\nCreated: {FmtDate(r.CreatedAt)}\nDate Start: {Short(r.DateStart)}\nAbility: {Short(r.Ability)}\n# Creations: {r.NumCreations?.ToString() ?? "(empty)"}\nDate End: {Short(r.DateEnd)}";
+        _deleting = new DeleteTarget(Tab.Ot12Spot, r.Id, "OT12 - Spot", preview);
+        _deleteInput = "";
+    }
 
     static string Short(string? s)
     {
@@ -639,6 +834,18 @@
                 case Tab.CaseData:
                     SdSvc.DeleteCaseData(d.Id);
                     _caseData.RemoveAll(x => x.Id == d.Id);
+                    break;
+                case Tab.Excal:
+                    SoloRecSvc.DeleteExcal(d.Id);
+                    _excal.RemoveAll(x => x.Id == d.Id);
+                    break;
+                case Tab.Phoenix:
+                    SoloRecSvc.DeletePhoenix(d.Id);
+                    _phoenix.RemoveAll(x => x.Id == d.Id);
+                    break;
+                case Tab.Ot12Spot:
+                    SoloRecSvc.DeleteOt12Spot(d.Id);
+                    _ot12.RemoveAll(x => x.Id == d.Id);
                     break;
             }
             CancelDelete();
@@ -1138,6 +1345,328 @@
         return s.Length >= 10 ? s.Substring(0, 10) : s;
     }
 
+    // ── Solo table renderers (Excal / Phoenix / OT12-Spot) ────────────────
+    RenderFragment RenderExcalTable => __builder =>
+    {
+        var list = SortedExcal.ToList();
+        if (!_isAdding && list.Count == 0)
+        {
+            <div class="sdm-empty"><i class="ri-inbox-line"></i>No Excal rows yet. @(CanEdit ? "Click Add row to create the first one." : "")</div>
+            return;
+        }
+        <div class="sdm-table-wrap">
+        <table class="sdm-table">
+            <thead><tr>
+                <th>No.</th><th>Session</th><th>Created</th>
+                <th>Area</th><th># Plugs</th><th>Date EP</th>
+                <th>Created By</th>@if (CanEdit) { <th></th> }
+            </tr></thead>
+            <tbody>
+                @if (_isAdding && _editExcal != null)
+                {
+                    <tr class="sdm-row-new">
+                        <td class="sdm-cell-id">new</td>
+                        <td>
+                            <select class="sdm-select" value="@(_editExcal.SessionId?.ToString() ?? string.Empty)"
+                                    @onchange="e => _editExcal = _editExcal with { SessionId = ParseNullableInt(e.Value) }">
+                                <option value="">(no session)</option>
+                                @foreach (var s in SessionOptionsIncluding(_editExcal.SessionId)) { <option value="@s.SessionId">@s.Label</option> }
+                            </select>
+                        </td>
+                        <td><input type="date" class="sdm-input sdm-input-sm" value="@FmtDate(_editExcal.CreatedAt)"
+                                   @oninput="e => _editExcal = _editExcal with { CreatedAt = e.Value?.ToString() ?? string.Empty }" /></td>
+                        <td><input class="sdm-input" value="@_editExcal.Area"
+                                   @oninput="e => _editExcal = _editExcal with { Area = e.Value?.ToString() }" /></td>
+                        <td><input class="sdm-input" type="number" inputmode="numeric" value="@(_editExcal.NumPlugs?.ToString() ?? string.Empty)"
+                                   @oninput="e => _editExcal = _editExcal with { NumPlugs = ParseNullableInt(e.Value) }" /></td>
+                        <td><input class="sdm-input" type="date" value="@_editExcal.DateEp"
+                                   @oninput="e => _editExcal = _editExcal with { DateEp = e.Value?.ToString() }" /></td>
+                        <td>
+                            <select class="sdm-select" value="@_editExcal.CreatedBy"
+                                    @onchange="e => _editExcal = _editExcal with { CreatedBy = ParseIntOr(e.Value, _editExcal.CreatedBy) }">
+                                @foreach (var u in _users) { <option value="@u.Id">@u.DisplayName</option> }
+                            </select>
+                        </td>
+                        <td class="sdm-cell-actions">
+                            <button class="sdm-btn sdm-btn-cancel" @onclick="CancelEdit"><i class="ri-close-line"></i>Cancel</button>
+                            <button class="sdm-btn sdm-btn-save" @onclick="SaveEditAsync"><i class="ri-save-line"></i>Save</button>
+                        </td>
+                    </tr>
+                }
+                @{ int n = 0; }
+                @foreach (var r in list)
+                {
+                    n++;
+                    var no = n;
+                    if (_editingId == r.Id && _editExcal != null)
+                    {
+                        <tr class="sdm-row-editing">
+                            <td class="sdm-cell-id">@no</td>
+                            <td>
+                                <select class="sdm-select" value="@(_editExcal.SessionId?.ToString() ?? string.Empty)"
+                                        @onchange="e => _editExcal = _editExcal with { SessionId = ParseNullableInt(e.Value) }">
+                                    <option value="">(no session)</option>
+                                    @foreach (var s in SessionOptionsIncluding(_editExcal.SessionId)) { <option value="@s.SessionId">@s.Label</option> }
+                                </select>
+                            </td>
+                            <td><input type="date" class="sdm-input sdm-input-sm" value="@FmtDate(_editExcal.CreatedAt)"
+                                   @oninput="e => _editExcal = _editExcal with { CreatedAt = e.Value?.ToString() ?? string.Empty }" /></td>
+                            <td><input class="sdm-input" value="@_editExcal.Area"
+                                       @oninput="e => _editExcal = _editExcal with { Area = e.Value?.ToString() }" /></td>
+                            <td><input class="sdm-input" type="number" inputmode="numeric" value="@(_editExcal.NumPlugs?.ToString() ?? string.Empty)"
+                                       @oninput="e => _editExcal = _editExcal with { NumPlugs = ParseNullableInt(e.Value) }" /></td>
+                            <td><input class="sdm-input" type="date" value="@_editExcal.DateEp"
+                                       @oninput="e => _editExcal = _editExcal with { DateEp = e.Value?.ToString() }" /></td>
+                            <td>
+                                <select class="sdm-select" value="@_editExcal.CreatedBy"
+                                        @onchange="e => _editExcal = _editExcal with { CreatedBy = ParseIntOr(e.Value, _editExcal.CreatedBy) }">
+                                    @foreach (var u in _users) { <option value="@u.Id">@u.DisplayName</option> }
+                                </select>
+                            </td>
+                            <td class="sdm-cell-actions">
+                                <button class="sdm-btn sdm-btn-cancel" @onclick="CancelEdit"><i class="ri-close-line"></i>Cancel</button>
+                                <button class="sdm-btn sdm-btn-save" @onclick="SaveEditAsync"><i class="ri-save-line"></i>Save</button>
+                            </td>
+                        </tr>
+                    }
+                    else
+                    {
+                        <tr>
+                            <td class="sdm-cell-id">@no</td>
+                            <td>@FmtSessionLabel(r.SessionId)</td>
+                            <td class="sdm-cell-ca">@FmtDate(r.CreatedAt)</td>
+                            <td>@r.Area</td>
+                            <td>@r.NumPlugs</td>
+                            <td>@r.DateEp</td>
+                            <td class="sdm-cell-by">@r.CreatedByName</td>
+                            @if (CanEdit)
+                            {
+                                <td class="sdm-cell-actions">
+                                    <button class="sdm-btn-edit" disabled="@(_editingId != 0 || _isAdding)" @onclick="() => StartEditExcal(r)"><i class="ri-edit-line"></i></button>
+                                    <button class="sdm-btn-delete" disabled="@(_editingId != 0 || _isAdding)" @onclick="() => RequestDeleteExcal(r)"><i class="ri-delete-bin-line"></i></button>
+                                </td>
+                            }
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+        </div>
+    };
+
+    RenderFragment RenderPhoenixTable => __builder =>
+    {
+        var list = SortedPhoenix.ToList();
+        if (!_isAdding && list.Count == 0)
+        {
+            <div class="sdm-empty"><i class="ri-inbox-line"></i>No Phoenix rows yet. @(CanEdit ? "Click Add row to create the first one." : "")</div>
+            return;
+        }
+        <div class="sdm-table-wrap">
+        <table class="sdm-table">
+            <thead><tr>
+                <th>Id</th><th>Session</th><th>Created</th>
+                <th>Item</th><th>TAA</th><th>Formulating</th>
+                <th>OT9</th><th>OT10</th><th>OT11</th>
+                <th>Created By</th>@if (CanEdit) { <th></th> }
+            </tr></thead>
+            <tbody>
+                @if (_isAdding && _editPhoenix != null)
+                {
+                    <tr class="sdm-row-new">
+                        <td class="sdm-cell-id">new</td>
+                        <td>
+                            <select class="sdm-select" value="@(_editPhoenix.SessionId?.ToString() ?? string.Empty)"
+                                    @onchange="e => _editPhoenix = _editPhoenix with { SessionId = ParseNullableInt(e.Value) }">
+                                <option value="">(no session)</option>
+                                @foreach (var s in SessionOptionsIncluding(_editPhoenix.SessionId)) { <option value="@s.SessionId">@s.Label</option> }
+                            </select>
+                        </td>
+                        <td><input type="date" class="sdm-input sdm-input-sm" value="@FmtDate(_editPhoenix.CreatedAt)"
+                                   @oninput="e => _editPhoenix = _editPhoenix with { CreatedAt = e.Value?.ToString() ?? string.Empty }" /></td>
+                        <td><input class="sdm-input" value="@_editPhoenix.Item" @oninput="e => _editPhoenix = _editPhoenix with { Item = e.Value?.ToString() }" /></td>
+                        <td><input class="sdm-input" value="@_editPhoenix.TAA"  @oninput="e => _editPhoenix = _editPhoenix with { TAA = e.Value?.ToString() }" /></td>
+                        <td><input class="sdm-input" value="@_editPhoenix.Formulating" @oninput="e => _editPhoenix = _editPhoenix with { Formulating = e.Value?.ToString() }" /></td>
+                        <td><input class="sdm-input" value="@_editPhoenix.OT9"  @oninput="e => _editPhoenix = _editPhoenix with { OT9 = e.Value?.ToString() }" /></td>
+                        <td><input class="sdm-input" value="@_editPhoenix.OT10" @oninput="e => _editPhoenix = _editPhoenix with { OT10 = e.Value?.ToString() }" /></td>
+                        <td><input class="sdm-input" value="@_editPhoenix.OT11" @oninput="e => _editPhoenix = _editPhoenix with { OT11 = e.Value?.ToString() }" /></td>
+                        <td>
+                            <select class="sdm-select" value="@_editPhoenix.CreatedBy"
+                                    @onchange="e => _editPhoenix = _editPhoenix with { CreatedBy = ParseIntOr(e.Value, _editPhoenix.CreatedBy) }">
+                                @foreach (var u in _users) { <option value="@u.Id">@u.DisplayName</option> }
+                            </select>
+                        </td>
+                        <td class="sdm-cell-actions">
+                            <button class="sdm-btn sdm-btn-cancel" @onclick="CancelEdit"><i class="ri-close-line"></i>Cancel</button>
+                            <button class="sdm-btn sdm-btn-save" @onclick="SaveEditAsync"><i class="ri-save-line"></i>Save</button>
+                        </td>
+                    </tr>
+                }
+                @foreach (var r in list)
+                {
+                    if (_editingId == r.Id && _editPhoenix != null)
+                    {
+                        <tr class="sdm-row-editing">
+                            <td class="sdm-cell-id">@r.Id</td>
+                            <td>
+                                <select class="sdm-select" value="@(_editPhoenix.SessionId?.ToString() ?? string.Empty)"
+                                        @onchange="e => _editPhoenix = _editPhoenix with { SessionId = ParseNullableInt(e.Value) }">
+                                    <option value="">(no session)</option>
+                                    @foreach (var s in SessionOptionsIncluding(_editPhoenix.SessionId)) { <option value="@s.SessionId">@s.Label</option> }
+                                </select>
+                            </td>
+                            <td><input type="date" class="sdm-input sdm-input-sm" value="@FmtDate(_editPhoenix.CreatedAt)"
+                                   @oninput="e => _editPhoenix = _editPhoenix with { CreatedAt = e.Value?.ToString() ?? string.Empty }" /></td>
+                            <td><input class="sdm-input" value="@_editPhoenix.Item" @oninput="e => _editPhoenix = _editPhoenix with { Item = e.Value?.ToString() }" /></td>
+                            <td><input class="sdm-input" value="@_editPhoenix.TAA"  @oninput="e => _editPhoenix = _editPhoenix with { TAA = e.Value?.ToString() }" /></td>
+                            <td><input class="sdm-input" value="@_editPhoenix.Formulating" @oninput="e => _editPhoenix = _editPhoenix with { Formulating = e.Value?.ToString() }" /></td>
+                            <td><input class="sdm-input" value="@_editPhoenix.OT9"  @oninput="e => _editPhoenix = _editPhoenix with { OT9 = e.Value?.ToString() }" /></td>
+                            <td><input class="sdm-input" value="@_editPhoenix.OT10" @oninput="e => _editPhoenix = _editPhoenix with { OT10 = e.Value?.ToString() }" /></td>
+                            <td><input class="sdm-input" value="@_editPhoenix.OT11" @oninput="e => _editPhoenix = _editPhoenix with { OT11 = e.Value?.ToString() }" /></td>
+                            <td>
+                                <select class="sdm-select" value="@_editPhoenix.CreatedBy"
+                                        @onchange="e => _editPhoenix = _editPhoenix with { CreatedBy = ParseIntOr(e.Value, _editPhoenix.CreatedBy) }">
+                                    @foreach (var u in _users) { <option value="@u.Id">@u.DisplayName</option> }
+                                </select>
+                            </td>
+                            <td class="sdm-cell-actions">
+                                <button class="sdm-btn sdm-btn-cancel" @onclick="CancelEdit"><i class="ri-close-line"></i>Cancel</button>
+                                <button class="sdm-btn sdm-btn-save" @onclick="SaveEditAsync"><i class="ri-save-line"></i>Save</button>
+                            </td>
+                        </tr>
+                    }
+                    else
+                    {
+                        <tr>
+                            <td class="sdm-cell-id">@r.Id</td>
+                            <td>@FmtSessionLabel(r.SessionId)</td>
+                            <td class="sdm-cell-ca">@FmtDate(r.CreatedAt)</td>
+                            <td>@r.Item</td>
+                            <td>@r.TAA</td>
+                            <td>@r.Formulating</td>
+                            <td>@r.OT9</td>
+                            <td>@r.OT10</td>
+                            <td>@r.OT11</td>
+                            <td class="sdm-cell-by">@r.CreatedByName</td>
+                            @if (CanEdit)
+                            {
+                                <td class="sdm-cell-actions">
+                                    <button class="sdm-btn-edit" disabled="@(_editingId != 0 || _isAdding)" @onclick="() => StartEditPhoenix(r)"><i class="ri-edit-line"></i></button>
+                                    <button class="sdm-btn-delete" disabled="@(_editingId != 0 || _isAdding)" @onclick="() => RequestDeletePhoenix(r)"><i class="ri-delete-bin-line"></i></button>
+                                </td>
+                            }
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+        </div>
+    };
+
+    RenderFragment RenderOt12Table => __builder =>
+    {
+        var list = SortedOt12.ToList();
+        if (!_isAdding && list.Count == 0)
+        {
+            <div class="sdm-empty"><i class="ri-inbox-line"></i>No OT12 - Spot rows yet. @(CanEdit ? "Click Add row to create the first one." : "")</div>
+            return;
+        }
+        <div class="sdm-table-wrap">
+        <table class="sdm-table">
+            <thead><tr>
+                <th>Id</th><th>Session</th><th>Created</th>
+                <th>Date Start</th><th>Ability</th><th># Creations</th><th>Date End</th>
+                <th>Created By</th>@if (CanEdit) { <th></th> }
+            </tr></thead>
+            <tbody>
+                @if (_isAdding && _editOt12 != null)
+                {
+                    <tr class="sdm-row-new">
+                        <td class="sdm-cell-id">new</td>
+                        <td>
+                            <select class="sdm-select" value="@(_editOt12.SessionId?.ToString() ?? string.Empty)"
+                                    @onchange="e => _editOt12 = _editOt12 with { SessionId = ParseNullableInt(e.Value) }">
+                                <option value="">(no session)</option>
+                                @foreach (var s in SessionOptionsIncluding(_editOt12.SessionId)) { <option value="@s.SessionId">@s.Label</option> }
+                            </select>
+                        </td>
+                        <td><input type="date" class="sdm-input sdm-input-sm" value="@FmtDate(_editOt12.CreatedAt)"
+                                   @oninput="e => _editOt12 = _editOt12 with { CreatedAt = e.Value?.ToString() ?? string.Empty }" /></td>
+                        <td><input class="sdm-input" type="date" value="@_editOt12.DateStart" @oninput="e => _editOt12 = _editOt12 with { DateStart = e.Value?.ToString() }" /></td>
+                        <td><input class="sdm-input" value="@_editOt12.Ability" @oninput="e => _editOt12 = _editOt12 with { Ability = e.Value?.ToString() }" /></td>
+                        <td><input class="sdm-input" type="number" inputmode="numeric" value="@(_editOt12.NumCreations?.ToString() ?? string.Empty)"
+                                   @oninput="e => _editOt12 = _editOt12 with { NumCreations = ParseNullableInt(e.Value) }" /></td>
+                        <td><input class="sdm-input" type="date" value="@_editOt12.DateEnd" @oninput="e => _editOt12 = _editOt12 with { DateEnd = e.Value?.ToString() }" /></td>
+                        <td>
+                            <select class="sdm-select" value="@_editOt12.CreatedBy"
+                                    @onchange="e => _editOt12 = _editOt12 with { CreatedBy = ParseIntOr(e.Value, _editOt12.CreatedBy) }">
+                                @foreach (var u in _users) { <option value="@u.Id">@u.DisplayName</option> }
+                            </select>
+                        </td>
+                        <td class="sdm-cell-actions">
+                            <button class="sdm-btn sdm-btn-cancel" @onclick="CancelEdit"><i class="ri-close-line"></i>Cancel</button>
+                            <button class="sdm-btn sdm-btn-save" @onclick="SaveEditAsync"><i class="ri-save-line"></i>Save</button>
+                        </td>
+                    </tr>
+                }
+                @foreach (var r in list)
+                {
+                    if (_editingId == r.Id && _editOt12 != null)
+                    {
+                        <tr class="sdm-row-editing">
+                            <td class="sdm-cell-id">@r.Id</td>
+                            <td>
+                                <select class="sdm-select" value="@(_editOt12.SessionId?.ToString() ?? string.Empty)"
+                                        @onchange="e => _editOt12 = _editOt12 with { SessionId = ParseNullableInt(e.Value) }">
+                                    <option value="">(no session)</option>
+                                    @foreach (var s in SessionOptionsIncluding(_editOt12.SessionId)) { <option value="@s.SessionId">@s.Label</option> }
+                                </select>
+                            </td>
+                            <td><input type="date" class="sdm-input sdm-input-sm" value="@FmtDate(_editOt12.CreatedAt)"
+                                   @oninput="e => _editOt12 = _editOt12 with { CreatedAt = e.Value?.ToString() ?? string.Empty }" /></td>
+                            <td><input class="sdm-input" type="date" value="@_editOt12.DateStart" @oninput="e => _editOt12 = _editOt12 with { DateStart = e.Value?.ToString() }" /></td>
+                            <td><input class="sdm-input" value="@_editOt12.Ability" @oninput="e => _editOt12 = _editOt12 with { Ability = e.Value?.ToString() }" /></td>
+                            <td><input class="sdm-input" type="number" inputmode="numeric" value="@(_editOt12.NumCreations?.ToString() ?? string.Empty)"
+                                       @oninput="e => _editOt12 = _editOt12 with { NumCreations = ParseNullableInt(e.Value) }" /></td>
+                            <td><input class="sdm-input" type="date" value="@_editOt12.DateEnd" @oninput="e => _editOt12 = _editOt12 with { DateEnd = e.Value?.ToString() }" /></td>
+                            <td>
+                                <select class="sdm-select" value="@_editOt12.CreatedBy"
+                                        @onchange="e => _editOt12 = _editOt12 with { CreatedBy = ParseIntOr(e.Value, _editOt12.CreatedBy) }">
+                                    @foreach (var u in _users) { <option value="@u.Id">@u.DisplayName</option> }
+                                </select>
+                            </td>
+                            <td class="sdm-cell-actions">
+                                <button class="sdm-btn sdm-btn-cancel" @onclick="CancelEdit"><i class="ri-close-line"></i>Cancel</button>
+                                <button class="sdm-btn sdm-btn-save" @onclick="SaveEditAsync"><i class="ri-save-line"></i>Save</button>
+                            </td>
+                        </tr>
+                    }
+                    else
+                    {
+                        <tr>
+                            <td class="sdm-cell-id">@r.Id</td>
+                            <td>@FmtSessionLabel(r.SessionId)</td>
+                            <td class="sdm-cell-ca">@FmtDate(r.CreatedAt)</td>
+                            <td>@r.DateStart</td>
+                            <td>@r.Ability</td>
+                            <td>@r.NumCreations</td>
+                            <td>@r.DateEnd</td>
+                            <td class="sdm-cell-by">@r.CreatedByName</td>
+                            @if (CanEdit)
+                            {
+                                <td class="sdm-cell-actions">
+                                    <button class="sdm-btn-edit" disabled="@(_editingId != 0 || _isAdding)" @onclick="() => StartEditOt12(r)"><i class="ri-edit-line"></i></button>
+                                    <button class="sdm-btn-delete" disabled="@(_editingId != 0 || _isAdding)" @onclick="() => RequestDeleteOt12(r)"><i class="ri-delete-bin-line"></i></button>
+                                </td>
+                            }
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+        </div>
+    };
+
     // ── PDF download ───────────────────────────────────────────
     async Task DownloadCurrentTableAsync()
     {
@@ -1209,7 +1738,7 @@
                     }).ToList();
                     break;
 
-                default: // Tab.CaseData
+                case Tab.CaseData:
                     title = "Case Data";
                     fileStem = "CaseData";
                     headers = new[] { "Created By", "Date", "Text" };
@@ -1219,6 +1748,68 @@
                         r.CreatedByName,
                         FmtDate(r.CreatedAt),
                         r.Text ?? ""
+                    }).ToList();
+                    break;
+
+                case Tab.Excal:
+                    title = "Excal";
+                    fileStem = "Excal";
+                    headers = new[] { "No.", "Session", "Created", "Area", "# Plugs", "Date EP", "Created By" };
+                    weights = new float[] { 0.5f, 2.0f, 1.4f, 3.0f, 1.0f, 1.4f, 1.6f };
+                    {
+                        int n = 0;
+                        rows = SortedExcal.Select(r =>
+                        {
+                            n++;
+                            return new[]
+                            {
+                                n.ToString(),
+                                FmtSessionLabel(r.SessionId),
+                                FmtDate(r.CreatedAt),
+                                r.Area ?? "",
+                                r.NumPlugs?.ToString() ?? "",
+                                r.DateEp ?? "",
+                                r.CreatedByName
+                            };
+                        }).ToList();
+                    }
+                    break;
+
+                case Tab.Phoenix:
+                    title = "Phoenix";
+                    fileStem = "Phoenix";
+                    headers = new[] { "Id", "Session", "Created", "Item", "TAA", "Formulating", "OT9", "OT10", "OT11", "Created By" };
+                    weights = new float[] { 0.5f, 1.8f, 1.4f, 1.4f, 1.2f, 1.6f, 0.9f, 0.9f, 0.9f, 1.6f };
+                    rows = SortedPhoenix.Select(r => new[]
+                    {
+                        r.Id.ToString(),
+                        FmtSessionLabel(r.SessionId),
+                        FmtDate(r.CreatedAt),
+                        r.Item ?? "",
+                        r.TAA ?? "",
+                        r.Formulating ?? "",
+                        r.OT9 ?? "",
+                        r.OT10 ?? "",
+                        r.OT11 ?? "",
+                        r.CreatedByName
+                    }).ToList();
+                    break;
+
+                default: // Tab.Ot12Spot
+                    title = "OT12 - Spot";
+                    fileStem = "Ot12Spot";
+                    headers = new[] { "Id", "Session", "Created", "Date Start", "Ability", "# Creations", "Date End", "Created By" };
+                    weights = new float[] { 0.5f, 1.8f, 1.4f, 1.2f, 2.5f, 1.0f, 1.2f, 1.6f };
+                    rows = SortedOt12.Select(r => new[]
+                    {
+                        r.Id.ToString(),
+                        FmtSessionLabel(r.SessionId),
+                        FmtDate(r.CreatedAt),
+                        r.DateStart ?? "",
+                        r.Ability ?? "",
+                        r.NumCreations?.ToString() ?? "",
+                        r.DateEnd ?? "",
+                        r.CreatedByName
                     }).ToList();
                     break;
             }
