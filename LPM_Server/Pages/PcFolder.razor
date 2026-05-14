@@ -4854,15 +4854,10 @@
             }
             else if (_folder?.WorkSheets.Count > 0)
             {
-                // Fallback: load NEWEST worksheet (by yymmdd date prefix) + first attachment.
-                // Files like "All OT 2 Reads V.pdf" lack a date prefix and would otherwise sort
-                // higher than "260514 ..." because 'A' > '2' in ASCII — sort them to the end.
-                static string DatePrefixKey(string name)
-                    => name.Length >= 6 && name[..6].All(char.IsDigit) ? name[..6] : "";
-                var latest = _folder.WorkSheets
-                    .OrderByDescending(w => DatePrefixKey(w.File.FileName))
-                    .ThenByDescending(w => w.File.FileName, StringComparer.Ordinal)
-                    .First();
+                // Fallback: load the first worksheet in the list + first attachment.
+                // _folder.WorkSheets is sorted by yymmdd date prefix desc (see
+                // FolderService.GetWorkSheets), so [0] is the newest session.
+                var latest = _folder.WorkSheets[0];
                 _panes[0].File     = latest.File.RelativePath;
                 _panes[0].FileName = SessionDisplayName(latest.File.FileName);
                 _panes[0].Section  = "WorkSheet";

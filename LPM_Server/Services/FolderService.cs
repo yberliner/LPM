@@ -993,7 +993,30 @@ public class FolderService
             .Select(Path.GetFileName)
             .ToList();
 
-        // Session files = PDFs that don't contain _att_ in their name
+        // Session files = PDFs that don't contain _att_ in their name.
+        // Sort by yymmdd date prefix descending (newest first). Files without a parseable
+        // yymmdd prefix OR with a date more than 5 days in the future (e.g. a typo like
+        // "280326" meaning 2028) sort to the END so they don't shadow legitimately-recent
+        // sessions. The 5-day grace window absorbs timezone skew between client and server.
+        var futureCutoff = DateTime.Today.AddDays(5);
+        static string DatePrefixKey(string name, DateTime futureCutoff)
+        {
+            if (name.Length < 6 || !name[..6].All(char.IsDigit)) return "";
+            var prefix = name[..6];
+            if (!int.TryParse(prefix[..2], out var yy) ||
+                !int.TryParse(prefix[2..4], out var mm) ||
+                !int.TryParse(prefix[4..6], out var dd)) return "";
+            try
+            {
+                var dt = new DateTime(2000 + yy, mm, dd);
+                if (dt > futureCutoff) return "";  // beyond 5-day grace — typo / bad data, demote
+                return prefix;
+            }
+            catch
+            {
+                return "";  // invalid calendar date (e.g. "999999") — demote
+            }
+        }
         var files = allFiles
             .Where(name => name!.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)
                         && !name.Contains("_att_", StringComparison.OrdinalIgnoreCase))
@@ -1002,7 +1025,8 @@ public class FolderService
                 var relativePath = $"WorkSheets/{name}";
                 return new FolderFileItem(name!, "WorkSheets", relativePath, null);
             })
-            .OrderByDescending(f => f.FileName)
+            .OrderByDescending(f => DatePrefixKey(f.FileName, futureCutoff))
+            .ThenByDescending(f => f.FileName, StringComparer.Ordinal)
             .ToList();
 
         var items = new List<WorkSheetItem>();
