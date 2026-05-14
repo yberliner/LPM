@@ -581,7 +581,7 @@
                         else
                         {
                             <option value="0">— choose user —</option>
-                            @foreach (var u in _userList)
+                            @foreach (var u in _userList.OrderBy(u => u.Username, StringComparer.OrdinalIgnoreCase))
                             {
                                 <option value="@u.Id">@u.Id — @u.Username (@u.StaffRole / @u.UserType)</option>
                             }

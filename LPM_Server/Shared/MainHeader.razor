@@ -3071,6 +3071,63 @@
                             <div class="s3-signature">
                                 @_ncAuditorName
                             </div>
+
+                            @* ── Also write to Folder Summary (custom-rendered toggle, mirrors Add-Memo wizard) ── *@
+                            <button type="button"
+                                    class="memo-also-summary-toggle d-flex align-items-center gap-2 mt-3"
+                                    @onclick="ToggleNcAlsoSummary">
+                                <span class="memo-also-summary-box @( _ncAlsoWriteSummary ? "memo-also-summary-box-on" : "")">
+                                    @if (_ncAlsoWriteSummary)
+                                    {
+                                        <i class="ri-check-line"></i>
+                                    }
+                                </span>
+                                <span class="memo-also-summary-text">
+                                    <i class="ri-file-edit-line me-1" style="color:#8b5cf6;"></i>@LS.T("actions.alsoWriteSummary")
+                                </span>
+                            </button>
+                            @if (_ncAlsoWriteSummary)
+                            {
+                                <div class="mb-1 mt-2" id="nc-summary-quill-wrap">
+                                    <label class="form-label" style="font-size:.82rem; color:#94a3b8;">@LS.T("actions.writeToSummary")</label>
+                                    <div id="nc-summary-editor"
+                                         style="background:#fff; color:#000; min-height:160px; border-radius:0 0 4px 4px;">
+                                    </div>
+                                </div>
+                                @if (!string.IsNullOrEmpty(_ncSummaryError))
+                                {
+                                    <div class="alert alert-warning d-flex align-items-center gap-2 mt-2 mb-0 py-2" style="font-size:.82rem;">
+                                        <i class="ri-error-warning-line"></i>@_ncSummaryError
+                                    </div>
+                                }
+                            }
+
+                            @* ── Bill the PC (custom-rendered toggle, mirrors Add-Memo wizard) ── *@
+                            <button type="button"
+                                    class="memo-also-summary-toggle d-flex align-items-center gap-2 mt-3"
+                                    @onclick="ToggleNcBillPc">
+                                <span class="memo-also-summary-box @(_ncBillPc ? "memo-also-summary-box-on" : "")">
+                                    @if (_ncBillPc)
+                                    {
+                                        <i class="ri-check-line"></i>
+                                    }
+                                </span>
+                                <span class="memo-also-summary-text">
+                                    <i class="ri-money-dollar-circle-line me-1" style="color:#10b981;"></i>Bill the PC
+                                </span>
+                            </button>
+                            @if (_ncBillPc)
+                            {
+                                <div class="d-flex align-items-center gap-2 mt-2">
+                                    <AdminTimeInput @bind-Value="_ncBillAdminTime" />
+                                </div>
+                                @if (!string.IsNullOrEmpty(_ncBillError))
+                                {
+                                    <div class="alert alert-warning d-flex align-items-center gap-2 mt-2 mb-0 py-2" style="font-size:.82rem;">
+                                        <i class="ri-error-warning-line"></i>@_ncBillError
+                                    </div>
+                                }
+                            }
                         </div>
                     }
 
@@ -3089,6 +3146,7 @@
                         <button class="btn btn-sm btn-outline-light" @onclick="() => _showNcWizard = false">@LS.T("common.cancel")</button>
                         <button class="btn btn-sm d-flex align-items-center gap-1"
                                 style="background:linear-gradient(135deg,#0d9488,#14b8a6); color:#fff; border:none;"
+                                disabled="@(_ncBillPc && string.IsNullOrWhiteSpace(_ncBillAdminTime))"
                                 @onclick="ExecuteNc">
                             <i class="ri-user-follow-line"></i>Submit
                         </button>
@@ -8407,6 +8465,13 @@
     string _ncLabel = "";
     List<BgStep> _ncSteps = new();
 
+    // "Also write to Folder Summary" + "Bill the PC" toggles (mirror Add-Memo wizard)
+    bool   _ncAlsoWriteSummary;
+    string _ncSummaryError = "";
+    bool   _ncBillPc;
+    string _ncBillAdminTime = "";
+    string _ncBillError = "";
+
     // Auditor Report Form fields (step 2)
     string _arfDate          = "";
     string _arfGrade         = "";
@@ -12860,6 +12925,12 @@ string _actionPcSearch = "";
             if (string.IsNullOrWhiteSpace(_ncAuditorName)) _ncAuditorName = _logUsername;
         }
         _ncDate         = DateOnly.FromDateTime(DateTime.Today);
+        _ncAlsoWriteSummary = false;
+        _ncSummaryError     = "";
+        _ncBillPc           = false;
+        _ncBillAdminTime    = "";
+        _ncBillError        = "";
+        _adminTimeConfirmed = false;        // shared confirm flag — clear stale state from any prior wizard
         _showNcWizard   = true;
 
         if (_isSoloUser) NcNext();
@@ -12950,6 +13021,37 @@ string _actionPcSearch = "";
                         $"var q=window['_quill_nc-bottom-editor']; if(q) q.root.innerHTML={System.Text.Json.JsonSerializer.Serialize(restoreBot)};");
                 }
             }
+
+            // If the "Also write to FS" toggle is on (e.g. user toggled it then went Back → Next),
+            // recreate the summary Quill against the fresh DOM. Content is not restored — same as
+            // Add-Memo wizard behaviour.
+            if (_ncAlsoWriteSummary)
+            {
+                await JSRuntime.InvokeVoidAsync("eval", @"
+                    if (window._ncSummaryQuill) {
+                        try {
+                            window._ncSummaryQuill.container.parentElement.removeChild(window._ncSummaryQuill.container.previousSibling);
+                            window._ncSummaryQuill.container.remove();
+                        } catch(e) {}
+                        window._ncSummaryQuill = null;
+                    }
+                    var el = document.getElementById('nc-summary-editor');
+                    if (el) {
+                        window._ncSummaryQuill = new Quill(el, {
+                            theme: 'snow',
+                            placeholder: 'Write your folder summary here...',
+                            modules: { toolbar: [
+                                ['bold', 'italic', 'underline'],
+                                [{ 'color': [] }],
+                                [{ 'size': ['10px', '14px', '18px', '24px'] }],
+                                [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                                [{ 'direction': 'rtl' }, { 'align': [] }],
+                                ['clean']
+                            ]}
+                        });
+                    }
+                ");
+            }
         });
     }
 
@@ -12970,9 +13072,118 @@ string _actionPcSearch = "";
         _ncBottomHtml = (bot == "<p><br></p>" || string.IsNullOrWhiteSpace(bot)) ? "" : bot;
     }
 
+    async Task ToggleNcAlsoSummary()
+    {
+        _ncAlsoWriteSummary = !_ncAlsoWriteSummary;
+        _ncSummaryError = "";
+        if (!_ncAlsoWriteSummary) return;
+
+        await Task.Delay(100);
+        await JSRuntime.InvokeVoidAsync("eval", @"
+            if (window._ncSummaryQuill) {
+                try {
+                    window._ncSummaryQuill.container.parentElement.removeChild(window._ncSummaryQuill.container.previousSibling);
+                    window._ncSummaryQuill.container.remove();
+                } catch(e) {}
+                window._ncSummaryQuill = null;
+            }
+            var el = document.getElementById('nc-summary-editor');
+            if (el) {
+                window._ncSummaryQuill = new Quill(el, {
+                    theme: 'snow',
+                    placeholder: 'Write your folder summary here...',
+                    modules: { toolbar: [
+                        ['bold', 'italic', 'underline'],
+                        [{ 'color': [] }],
+                        [{ 'size': ['10px', '14px', '18px', '24px'] }],
+                        [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                        [{ 'direction': 'rtl' }, { 'align': [] }],
+                        ['clean']
+                    ]}
+                });
+            }
+        ");
+    }
+
+    void ToggleNcBillPc()
+    {
+        _ncBillPc = !_ncBillPc;
+        _ncBillError = "";
+    }
+
+    /// <summary>
+    /// Validate and consume the "Bill the PC" admin time on the Add-Next-C/S wizard.
+    /// Same loose validation and >20-min confirm-modal routing as the memo wizard's
+    /// TryConsumeMemoBillAdminTime — the continuation resumes ExecuteNc.
+    /// Returns false if validation failed or the confirm modal was raised; caller must abort.
+    /// </summary>
+    bool TryConsumeNcBillAdminTime(Func<Task> onConfirmed, out int adminSec, out string formattedAdminTime)
+    {
+        adminSec = 0;
+        formattedAdminTime = "";
+        _ncBillError = "";
+        if (!_ncBillPc) return true;
+
+        if (string.IsNullOrWhiteSpace(_ncBillAdminTime))
+        {
+            _ncBillError = "Please enter an admin time (h:mm).";
+            return false;
+        }
+
+        var formatted = FormatArfTime(_ncBillAdminTime.Trim());
+        if (string.IsNullOrEmpty(formatted))
+        {
+            _ncBillError = "Please enter a valid admin time (h:mm).";
+            return false;
+        }
+        var mins = ArfTimeToMinutes(formatted);
+        if (mins <= 0)
+        {
+            _ncBillError = "Admin time must be greater than 0:00.";
+            return false;
+        }
+        if (mins > 20 && !_adminTimeConfirmed)
+        {
+            _pendingAdminTime = formatted;
+            _adminTimeConfirmContinuation = onConfirmed;
+            _showAdminTimeConfirm = true;
+            return false;
+        }
+        _adminTimeConfirmed = false;
+        _adminTimeConfirmContinuation = null;
+        formattedAdminTime = formatted;
+        adminSec = mins * 60;
+        return true;
+    }
+
     async Task ExecuteNc()
     {
+        // Validate "Bill the PC" admin time first. If >20 min and not yet confirmed,
+        // the helper raises the modal with ExecuteNc as the continuation.
+        if (!TryConsumeNcBillAdminTime(ExecuteNc, out var capturedBillAdminSec, out var capturedBillAdminTime))
+        {
+            StateHasChanged();
+            return;
+        }
+        var capturedBillPc = _ncBillPc;
+
         await ReadNcHtml();
+
+        // Read folder-summary HTML while the wizard is still open (only if checkbox is on)
+        var alsoSummary = _ncAlsoWriteSummary;
+        var summaryHtml = "";
+        if (alsoSummary)
+        {
+            summaryHtml = await JSRuntime.InvokeAsync<string>("eval",
+                "window._ncSummaryQuill ? window._ncSummaryQuill.root.innerHTML : ''");
+            if (string.IsNullOrWhiteSpace(summaryHtml) || summaryHtml == "<p><br></p>")
+            {
+                _ncSummaryError = "Please write the folder summary or uncheck the box.";
+                StateHasChanged();
+                return;
+            }
+        }
+        _ncSummaryError = "";
 
         var capturedPcId        = _ncPcId;
         var capturedSolo        = _ncSolo || _isSoloUser;
@@ -12985,6 +13196,8 @@ string _actionPcSearch = "";
         var capturedAuditorName = _ncAuditorName;
         var capturedTopHtml     = _ncTopHtml;
         var capturedBottomHtml  = _ncBottomHtml;
+        var capturedAlsoSummary = alsoSummary;
+        var capturedSummaryHtml = summaryHtml;
 
         _showNcWizard = false;
         _ncRunning    = true;
@@ -12997,6 +13210,7 @@ string _actionPcSearch = "";
             new("Saving to WorkSheets"),
             new("Adding session entry"),
         };
+        if (capturedAlsoSummary) _ncSteps.Add(new BgStep("Saving folder summary"));
         StateHasChanged();
 
         _ = Task.Run(async () =>
@@ -13029,7 +13243,11 @@ string _actionPcSearch = "";
                 // Step 3: Add session entry + save Next CS to DB
                 sDb.Status = 1;
                 await InvokeAsync(StateHasChanged);
-                var sessionId = DashSvc.AddMemoSession(capturedAudId, capturedPcId, savedName, capturedDate, capturedSolo, createdByUserId: capturedCoreUserId, source: "NextCs");
+                var sessionId = DashSvc.AddMemoSession(capturedAudId, capturedPcId, savedName, capturedDate, capturedSolo,
+                    createdByUserId: capturedCoreUserId,
+                    adminSeconds: capturedBillAdminSec,
+                    isFreeSession: !capturedBillPc,
+                    source: "NextCs");
                 if (!string.IsNullOrWhiteSpace(capturedBottomHtml))
                     DashSvc.SaveNextCs(sessionId, capturedBottomHtml);
                 DashSvc.NotifyDataChanged();
@@ -13037,6 +13255,21 @@ string _actionPcSearch = "";
                     sessionId, "ActionsNextCs", _logUsername);
                 sDb.Status = 2;
                 await InvokeAsync(StateHasChanged);
+
+                // Step 4 (optional): Save folder summary linked to this session
+                if (capturedAlsoSummary)
+                {
+                    var sSummary = _ncSteps[^1];
+                    sSummary.Status = 1;
+                    await InvokeAsync(StateHasChanged);
+                    string? arfJson = capturedBillPc
+                        ? System.Text.Json.JsonSerializer.Serialize(new PdfService.ArfData { AdminTime = capturedBillAdminTime })
+                        : null;
+                    DashSvc.AddFolderSummary(sessionId, capturedPcId, capturedSolo ? null : capturedAudId, capturedSummaryHtml, arfJson: arfJson);
+                    DashSvc.NotifyDataChanged();
+                    sSummary.Status = 2;
+                    await InvokeAsync(StateHasChanged);
+                }
 
                 await InvokeAsync(() =>
                 {

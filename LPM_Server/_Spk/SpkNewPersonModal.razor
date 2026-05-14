@@ -252,6 +252,8 @@
     [Parameter] public bool RequireAllFields { get; set; }
     [Parameter] public List<CourseItem>? Courses { get; set; }
     [Parameter] public HashSet<string>? ExistingFullNames { get; set; }
+    [Parameter] public bool DuplicateCheckOnEdit { get; set; } = false;
+    [Parameter] public int?  CurrentPcId         { get; set; }
     [Parameter] public EventCallback<(string FirstName, string LastName, string Phone, string Email,
         string DateOfBirth, string Gender, int OrgId, string Source, string Notes, int CourseId, string Nick)> OnSaved { get; set; }
 
@@ -360,13 +362,22 @@
 
         var fullName = $"{_firstName.Trim()} {_lastName.Trim()}";
 
-        // Only check duplicates when adding (not editing)
-        if (_editOriginalFullName == null)
+        // Run duplicate checks when adding, or when editing if the caller opted in.
+        bool runChecks = !isEdit || DuplicateCheckOnEdit;
+        if (runChecks)
         {
-            // Fuzzy similarity check (before exact check)
+            // Fuzzy similarity check (before exact check). In edit mode, exclude self
+            // so renaming to the same name doesn't self-trip.
             if (!_userConfirmedSimilar && ExistingFullNames != null && ExistingFullNames.Count > 0)
             {
-                var matches = FindSimilarNames(_firstName.Trim(), _lastName.Trim(), ExistingFullNames);
+                HashSet<string> effective = ExistingFullNames;
+                if (isEdit && !string.IsNullOrEmpty(_editOriginalFullName))
+                {
+                    effective = ExistingFullNames
+                        .Where(n => !string.Equals(n, _editOriginalFullName, StringComparison.OrdinalIgnoreCase))
+                        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                }
+                var matches = FindSimilarNames(_firstName.Trim(), _lastName.Trim(), effective);
                 if (matches.Count > 0)
                 {
                     _similarMatches = matches;
@@ -375,10 +386,21 @@
                 }
             }
 
-            var dup = PcSvc.CheckDuplicatePc(_firstName, _lastName, _nick);
+            // Exact DB check. In edit mode: exclude self, and do NOT auto-rename an
+            // inactive duplicate — block instead and surface the inactive one.
+            var dup = PcSvc.CheckDuplicatePc(_firstName, _lastName, _nick,
+                excludePcId: isEdit ? CurrentPcId : null,
+                autoFixInactive: !isEdit);
             if (dup == "ACTIVE_DUPLICATE")
             {
-                _error = $"An active PC named \"{fullName}\" already exists. Add a nickname to distinguish them.";
+                _error = isEdit
+                    ? $"An active PC named \"{fullName}\" already exists."
+                    : $"An active PC named \"{fullName}\" already exists. Add a nickname to distinguish them.";
+                return;
+            }
+            if (dup == "INACTIVE_DUPLICATE")
+            {
+                _error = $"An inactive PC named \"{fullName}\" already exists. Consider reactivating that PC instead.";
                 return;
             }
         }

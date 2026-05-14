@@ -3970,6 +3970,15 @@ public class PdfService
         return $"{h}:{m:D2}";
     }
 
+    // Bill/Free are billing flags, not real notes — keep them out of the PDF.
+    private static string BB_DisplayNote(string? n)
+    {
+        var v = (n ?? "").Trim();
+        if (string.Equals(v, "Bill", StringComparison.OrdinalIgnoreCase)) return "";
+        if (string.Equals(v, "Free", StringComparison.OrdinalIgnoreCase)) return "";
+        return v;
+    }
+
     public byte[] GenerateBalanceBreakdownPdf(
         string pcName,
         PcBalanceExplanation explanation,
@@ -4193,11 +4202,12 @@ public class PdfService
                                     {
                                         c.ConstantColumn(40);  // # — wide enough for 5-digit session IDs
                                         c.RelativeColumn(2);   // Date
-                                        c.RelativeColumn(3);   // Auditor
+                                        c.RelativeColumn(2.5f);// Auditor
                                         c.RelativeColumn(2);   // Wallet
                                         c.RelativeColumn(1.3f); // Length
                                         c.RelativeColumn(1.3f); // Admin
                                         c.RelativeColumn(1.5f); // Rate
+                                        c.RelativeColumn(2.2f); // Notes
                                         c.RelativeColumn(2);   // Cost
                                     });
                                     tbl.Header(h =>
@@ -4209,6 +4219,7 @@ public class PdfService
                                         h.Cell().Background("#f1f5f9").Padding(5).AlignCenter().Text("Length").SemiBold().FontSize(8).FontColor("#475569");
                                         h.Cell().Background("#f1f5f9").Padding(5).AlignCenter().Text("Admin").SemiBold().FontSize(8).FontColor("#475569");
                                         h.Cell().Background("#f1f5f9").Padding(5).AlignCenter().Text("Rate /hr").SemiBold().FontSize(8).FontColor("#475569");
+                                        h.Cell().Background("#f1f5f9").Padding(5).Text("Notes").SemiBold().FontSize(8).FontColor("#475569");
                                         h.Cell().Background("#f1f5f9").Padding(5).AlignRight().Text("Cost").SemiBold().FontSize(8).FontColor("#475569");
                                     });
                                     foreach (var s in sessionsForPdf)
@@ -4230,6 +4241,8 @@ public class PdfService
                                             .Text(BB_Hmm(s.AdminSec)).FontSize(8).FontColor(color);
                                         tbl.Cell().BorderBottom(0.5f).BorderColor("#e5e7eb").Padding(3).AlignCenter()
                                             .Text($"{sym}{s.RateCentsUsed / 100}").FontSize(8).FontColor(color);
+                                        tbl.Cell().BorderBottom(0.5f).BorderColor("#e5e7eb").Padding(3)
+                                            .Text(BB_DisplayNote(s.Notes)).FontSize(8).FontColor(faded ? "#94a3b8" : "#64748b");
                                         tbl.Cell().BorderBottom(0.5f).BorderColor("#e5e7eb").Padding(3).AlignRight()
                                             .Text($"{sym}{s.CostNis:N2}").SemiBold().FontSize(8)
                                             .FontColor(faded ? "#94a3b8" : "#dc2626");
@@ -4255,6 +4268,7 @@ public class PdfService
                                         c.RelativeColumn(2);
                                         c.RelativeColumn(1.3f);
                                         c.RelativeColumn(1.5f);
+                                        c.RelativeColumn(2.2f); // Notes
                                         c.RelativeColumn(2);
                                     });
                                     tbl.Header(h =>
@@ -4264,6 +4278,7 @@ public class PdfService
                                         h.Cell().Background("#f1f5f9").Padding(5).Text("Wallet").SemiBold().FontSize(8).FontColor("#475569");
                                         h.Cell().Background("#f1f5f9").Padding(5).AlignCenter().Text("Time").SemiBold().FontSize(8).FontColor("#475569");
                                         h.Cell().Background("#f1f5f9").Padding(5).AlignCenter().Text("Rate /hr").SemiBold().FontSize(8).FontColor("#475569");
+                                        h.Cell().Background("#f1f5f9").Padding(5).Text("Notes").SemiBold().FontSize(8).FontColor("#475569");
                                         h.Cell().Background("#f1f5f9").Padding(5).AlignRight().Text("Cost").SemiBold().FontSize(8).FontColor("#475569");
                                     });
                                     foreach (var sr in soloForPdf)
@@ -4281,6 +4296,8 @@ public class PdfService
                                             .Text(BB_Hmm(sr.ReviewLengthSec)).FontSize(8).FontColor(color);
                                         tbl.Cell().BorderBottom(0.5f).BorderColor("#e5e7eb").Padding(3).AlignCenter()
                                             .Text($"{sym}{sr.RateCents / 100}").FontSize(8).FontColor(color);
+                                        tbl.Cell().BorderBottom(0.5f).BorderColor("#e5e7eb").Padding(3)
+                                            .Text(BB_DisplayNote(sr.Notes)).FontSize(8).FontColor(faded ? "#94a3b8" : "#64748b");
                                         if (sr.IsFree)
                                         {
                                             tbl.Cell().BorderBottom(0.5f).BorderColor("#e5e7eb").Padding(3).AlignRight()

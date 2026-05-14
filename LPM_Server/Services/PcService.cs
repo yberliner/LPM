@@ -60,11 +60,11 @@ public record PcSessionCostRow(
     int SessionId, string Date, string AuditorName,
     int LengthSec, int AdminSec, int RateCentsUsed, string RateSource, decimal CostNis, bool IsImported = false,
     int? WalletId = null, string? WalletName = null, string Currency = "ILS",
-    bool IsBeforeReset = false);
+    bool IsBeforeReset = false, string Notes = "");
 
 public record SoloCsReviewCostRow(int SessionId, string Date, int ReviewLengthSec, int RateCents, decimal CostNis, bool IsFree = false, bool IsImported = false,
     int? WalletId = null, string? WalletName = null, string Currency = "ILS",
-    bool IsBeforeReset = false);
+    bool IsBeforeReset = false, string Notes = "");
 
 public record PcBalanceExplanation(
     List<PcPurchaseRow> Purchases, double TotalPurchasedNis,
@@ -131,7 +131,8 @@ public List<PcListItem> GetAllPcs()
     /// Returns null if no conflict, or a message string if blocked.
     /// If the duplicate is inactive, auto-renames its nick and allows adding.
     /// </summary>
-    public string? CheckDuplicatePc(string firstName, string lastName, string nick)
+    public string? CheckDuplicatePc(string firstName, string lastName, string nick,
+        int? excludePcId = null, bool autoFixInactive = true)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
@@ -141,45 +142,45 @@ public List<PcListItem> GetAllPcs()
         var normLn = ImportJobService.NormalizeToAscii(lastName).ToLower().Trim();
         var normNick = ImportJobService.NormalizeToAscii(nick ?? "").ToLower().Trim();
 
-        // Scan all PCs and compare normalized names in C# (SQLite LOWER doesn't strip diacritics)
+        // Scan all PCs and compare normalized names in C# (SQLite LOWER doesn't strip diacritics).
+        // Collect all matches first so we can prefer ACTIVE over INACTIVE.
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             SELECT p.PersonId, COALESCE(p.IsActive, 1), p.FirstName, COALESCE(p.LastName,''), COALESCE(p.Nick,'')
             FROM core_persons p
             JOIN core_pcs pc ON pc.PcId = p.PersonId";
-        int existingId = 0;
-        bool isActive = true;
-        using var r = cmd.ExecuteReader();
-        bool found = false;
-        while (r.Read())
+        int activeId = 0, inactiveId = 0;
+        bool hasActive = false, hasInactive = false;
+        using (var r = cmd.ExecuteReader())
         {
-            var dbFn = ImportJobService.NormalizeToAscii(r.GetString(2)).ToLower().Trim();
-            var dbLn = ImportJobService.NormalizeToAscii(r.GetString(3)).ToLower().Trim();
-            var dbNick = ImportJobService.NormalizeToAscii(r.GetString(4)).ToLower().Trim();
-            if (dbFn == normFn && dbLn == normLn && dbNick == normNick)
+            while (r.Read())
             {
-                existingId = r.GetInt32(0);
-                isActive = r.GetInt32(1) == 1;
-                found = true;
-                break;
+                int rowId = r.GetInt32(0);
+                if (excludePcId.HasValue && rowId == excludePcId.Value) continue;
+                var dbFn = ImportJobService.NormalizeToAscii(r.GetString(2)).ToLower().Trim();
+                var dbLn = ImportJobService.NormalizeToAscii(r.GetString(3)).ToLower().Trim();
+                var dbNick = ImportJobService.NormalizeToAscii(r.GetString(4)).ToLower().Trim();
+                if (dbFn != normFn || dbLn != normLn || dbNick != normNick) continue;
+                if (r.GetInt32(1) == 1) { hasActive = true; activeId = rowId; }
+                else                    { hasInactive = true; inactiveId = rowId; }
             }
         }
-        r.Close();
-        if (!found) return null; // no conflict
 
-        if (!isActive)
+        if (hasActive) return "ACTIVE_DUPLICATE";
+        if (!hasInactive) return null;
+
+        if (autoFixInactive)
         {
-            // Auto-rename the inactive one's nick
-            r.Close();
+            // Auto-rename the inactive one's nick so the new PC can keep the name
             using var upd = conn.CreateCommand();
             upd.CommandText = "UPDATE core_persons SET Nick = @newNick WHERE PersonId = @id";
-            upd.Parameters.AddWithValue("@newNick", $"_{existingId}");
-            upd.Parameters.AddWithValue("@id", existingId);
+            upd.Parameters.AddWithValue("@newNick", $"_{inactiveId}");
+            upd.Parameters.AddWithValue("@id", inactiveId);
             upd.ExecuteNonQuery();
             return null; // conflict resolved
         }
 
-        return "ACTIVE_DUPLICATE";
+        return "INACTIVE_DUPLICATE";
     }
 
     /// <summary>Find an existing PC by name or create a new one. Returns (PcId, wasCreated).</summary>
@@ -2383,7 +2384,8 @@ public List<PcListItem> GetAllPcs()
                        COALESCE(TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')), '?'),
                        s.LengthSeconds, s.AdminSeconds, s.ChargedRateCentsPerHour,
                        COALESCE(s.IsImported, 0),
-                       s.WalletId, w.Name, COALESCE(w.Currency, 'ILS')
+                       s.WalletId, w.Name, COALESCE(w.Currency, 'ILS'),
+                       COALESCE(s.ApprovedNotes, '')
                 FROM sess_sessions s
                 LEFT JOIN core_persons p ON p.PersonId = s.AuditorId
                 LEFT JOIN fin_wallets w ON w.WalletId = s.WalletId
@@ -2407,9 +2409,10 @@ public List<PcListItem> GetAllPcs()
                 string currency = r.IsDBNull(9) ? "ILS" : r.GetString(9);
                 string sessDate = r.GetString(1);
                 bool beforeReset = resetDate != null && string.CompareOrdinal(sessDate, resetDate) < 0;
+                string notes = r.IsDBNull(10) ? "" : r.GetString(10);
                 result.Add(new(sessionId, sessDate, r.GetString(2),
                     r.GetInt32(3), r.GetInt32(4), rateUsed, src, cost, imported,
-                    walletId, walletName, currency, beforeReset));
+                    walletId, walletName, currency, beforeReset, notes));
             }
         }
         return result;
@@ -2460,7 +2463,7 @@ public List<PcListItem> GetAllPcs()
             string sessDate = r.GetString(1);
             bool beforeReset = resetDate != null && string.CompareOrdinal(sessDate, resetDate) < 0;
             result.Add(new(r.GetInt32(0), sessDate, lengthSec, rateCents, cost, isFree, imported,
-                walletId, walletName, currency, beforeReset));
+                walletId, walletName, currency, beforeReset, notes));
         }
         return result;
     }

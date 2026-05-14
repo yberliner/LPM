@@ -4,6 +4,7 @@
 @using LPM.Auth
 @using Microsoft.AspNetCore.Authorization
 @inject PcService PcSvc
+@inject CourseService CourseSvc
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 
@@ -55,6 +56,55 @@
                 <i class="ri-refresh-line @(_loading ? "py-spin" : "")"></i> @LS.T("common.refresh")
             </button>
         </div>
+    </div>
+
+    @* ── Financial Settings ── *@
+    <div class="card shadow-sm mb-3" style="border-radius:12px;border:none;">
+        <div class="card-header py-2 px-3 d-flex align-items-center justify-content-between"
+             style="background:#fff8e1;color:#212529;border-radius:12px 12px 0 0;border-bottom:1px solid #ffe082;cursor:pointer;"
+             @onclick="() => _showFinSettings = !_showFinSettings">
+            <span class="fw-semibold small" style="color:#f57f17;">
+                <i class="ri-settings-3-line me-1"></i>@LS.T("courses.financialConfig")
+            </span>
+            <i class="ri-arrow-down-s-line" style="transition:transform .2s;@(_showFinSettings ? "" : "transform:rotate(-90deg);")"></i>
+        </div>
+        @if (_showFinSettings)
+        {
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="ps-3 small" style="width:50%;">Setting</th>
+                                <th class="small">Value</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td class="ps-3 align-middle">@LS.T("courses.ccCommissionPct")</td>
+                                <td><input type="number" step="0.1" class="form-control form-control-sm"
+                                           style="max-width:120px;" @bind="_cfgCcCommissionPct" /></td>
+                            </tr>
+                        </tbody>
+                        <tfoot>
+                            <tr style="background:#fffde7;">
+                                <td class="ps-3 py-2">
+                                    @if (!string.IsNullOrEmpty(_cfgMsg))
+                                    {
+                                        <span class="small @(_cfgIsError ? "text-danger" : "text-success")">@_cfgMsg</span>
+                                    }
+                                </td>
+                                <td class="py-2">
+                                    <button class="btn btn-sm btn-warning" @onclick="SaveFinancialConfig">
+                                        <i class="ri-save-line me-1"></i>@LS.T("common.save")
+                                    </button>
+                                </td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        }
     </div>
 
     @if (_loading)
@@ -123,7 +173,44 @@
                                     }
                                     <i class="@ico me-1"></i>@lbl
                                 </td>
-                                <td class="py-2 small text-end fw-semibold">@(up.Amount > 0 ? $"{CurrSym(up.Currency)}{up.Amount}" : "\u2014")</td>
+                                <td class="py-2 small text-end fw-semibold">
+                                    @if (up.Amount <= 0)
+                                    {
+                                        <text>&mdash;</text>
+                                    }
+                                    else if (up.MethodType == "CreditCard")
+                                    {
+                                        var sym  = CurrSym(up.Currency);
+                                        var pct  = _cfgCcCommissionPct;
+                                        var commission = up.Amount * pct / 100.0;
+                                        var net  = (int)Math.Round(up.Amount - commission);
+                                        <span class="py-amt-cc">
+                                            @sym@up.Amount<span class="py-amt-net">(@sym@net)</span>
+                                            <div class="py-cc-tip">
+                                                <div class="py-cc-tip-title">
+                                                    <i class="ri-bank-card-line"></i>Credit-card commission
+                                                </div>
+                                                <div class="py-cc-tip-row">
+                                                    <span class="lbl">Amount</span>
+                                                    <span class="val-pos">@sym@up.Amount</span>
+                                                </div>
+                                                <div class="py-cc-tip-row">
+                                                    <span class="lbl">Commission (@pct.ToString("0.##")%)</span>
+                                                    <span class="val-neg">&minus;@sym@commission.ToString("0.##")</span>
+                                                </div>
+                                                <div class="py-cc-tip-divider"></div>
+                                                <div class="py-cc-tip-row">
+                                                    <span class="lbl">Net</span>
+                                                    <span class="val-net">@sym@net</span>
+                                                </div>
+                                            </div>
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        @($"{CurrSym(up.Currency)}{up.Amount}")
+                                    }
+                                </td>
                                 <td class="text-center py-2">
                                     @if (up.MethodType == "ToBePaid")
                                     {
@@ -133,9 +220,18 @@
                                     }
                                     else if (up.MethodType == "Credit")
                                     {
-                                        <span class="badge rounded-pill" style="background:#dcfce7;color:#166534;font-size:.68rem;">
-                                            <i class="ri-wallet-3-line me-1"></i>@LS.T("purchases.credit")
-                                        </span>
+                                        @if (up.IsMoneyInBank)
+                                        {
+                                            <span class="py-badge-deposited">
+                                                <i class="ri-checkbox-circle-fill me-1"></i>@LS.T("payments.deposited")
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge rounded-pill" style="background:#dcfce7;color:#166534;font-size:.68rem;">
+                                                <i class="ri-wallet-3-line me-1"></i>@LS.T("purchases.credit")
+                                            </span>
+                                        }
                                     }
                                     else if (up.IsMoneyInBank)
                                     {
@@ -189,7 +285,20 @@
                                     }
                                     else if (up.MethodType == "Credit")
                                     {
-                                        <span style="color:#16a34a;font-size:.75rem;" title="@LS.T("purchases.credit")"><i class="ri-wallet-3-line"></i></span>
+                                        @if (up.IsMoneyInBank)
+                                        {
+                                            <span class="py-action-done" title="@LS.T("payments.alreadyDeposited")">
+                                                <i class="ri-check-double-line"></i>
+                                            </span>
+                                        }
+                                        else
+                                        {
+                                            <span class="py-chip-confirm" role="button"
+                                                  @onclick="() => ToggleBank(up.PaymentMethodId, true)"
+                                                  title="@LS.T("payments.markDeposited")">
+                                                <i class="ri-check-line"></i> @LS.T("payments.confirm")
+                                            </span>
+                                        }
                                     }
                                     else if (up.IsMoneyInBank)
                                     {
@@ -449,6 +558,49 @@
         background: #dcfce7; color: #15803d; font-size: 0.9rem;
     }
 
+    /* ── CC commission amount cell + animated hover tooltip ── */
+    .py-amt-cc {
+        position: relative; cursor: help;
+        display: inline-flex; align-items: baseline; gap: 4px;
+    }
+    .py-amt-net { color: #16a34a; font-weight: 600; font-size: 0.82em; }
+    .py-cc-tip {
+        position: absolute; top: calc(100% + 8px); right: 0;
+        min-width: 240px; padding: 12px 14px;
+        background: linear-gradient(135deg, #0f172a, #1e293b);
+        color: #e2e8f0; border-radius: 10px;
+        box-shadow: 0 18px 40px rgba(0,0,0,.35), 0 0 0 1px rgba(148,163,184,.15);
+        opacity: 0; pointer-events: none;
+        transform: translateY(-6px) scale(.88) rotateX(-12deg);
+        transform-origin: top right;
+        transition: opacity .22s cubic-bezier(.34,1.56,.64,1),
+                    transform .28s cubic-bezier(.34,1.56,.64,1);
+        z-index: 100;
+        font-size: 0.78rem; text-align: left;
+        white-space: nowrap;
+    }
+    .py-amt-cc:hover .py-cc-tip {
+        opacity: 1; pointer-events: auto;
+        transform: translateY(0) scale(1) rotateX(0);
+    }
+    .py-cc-tip-title {
+        display: flex; align-items: center; gap: 6px;
+        font-weight: 700; color: #fff;
+        margin-bottom: 6px; padding-bottom: 6px;
+        border-bottom: 1px solid rgba(148,163,184,.2);
+    }
+    .py-cc-tip-title i { color: #fbbf24; font-size: 1rem; }
+    .py-cc-tip-row { display: flex; justify-content: space-between; gap: 14px; padding: 3px 0; }
+    .py-cc-tip-row .lbl { color: #94a3b8; }
+    .py-cc-tip-row .val-pos { color: #4ade80; font-weight: 600; }
+    .py-cc-tip-row .val-neg { color: #f87171; font-weight: 600; }
+    .py-cc-tip-row .val-net { color: #22c55e; font-weight: 700; font-size: 0.85rem; }
+    .py-cc-tip-divider {
+        height: 1px;
+        background: linear-gradient(90deg, transparent, #475569, transparent);
+        margin: 6px 0;
+    }
+
     .py-thead-action { font-size: 0.69rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #6c757d; padding-top: 7px; padding-bottom: 7px; border-bottom: 1px solid #dce3f0; border-top: none; }
 
     .py-spin { display: inline-block; animation: py-spin-anim 1s linear infinite; }
@@ -488,6 +640,12 @@
     private string _sortCol = "date";
     private bool   _sortAsc = true;
     private bool   _showBankCol = false;
+
+    // ── Financial Settings ──
+    private bool   _showFinSettings = false;
+    private double _cfgCcCommissionPct;
+    private string _cfgMsg = "";
+    private bool   _cfgIsError;
 
     private int _overdueCount => _rows.Count(r =>
         r.PaymentDateParsed.HasValue && r.PaymentDateParsed.Value <= DateOnly.FromDateTime(DateTime.Today) && !r.IsMoneyInBank);
@@ -541,7 +699,31 @@
             return;
         }
         _username = authState.User.Identity?.Name ?? "";
+        LoadFinancialConfig();
         await LoadData();
+    }
+
+    void LoadFinancialConfig()
+    {
+        _cfgCcCommissionPct = CourseSvc.GetIncomingCcCommissionPct();
+        _cfgMsg = "";
+        _cfgIsError = false;
+    }
+
+    void SaveFinancialConfig()
+    {
+        try
+        {
+            CourseSvc.UpdateIncomingCcCommissionPct(_cfgCcCommissionPct);
+            _cfgMsg = LS.T("courses.configSaved");
+            _cfgIsError = false;
+            Console.WriteLine($"[Payments] CC commission (incoming) updated to {_cfgCcCommissionPct}% by '{_username}'");
+        }
+        catch (Exception ex)
+        {
+            _cfgMsg = ex.Message;
+            _cfgIsError = true;
+        }
     }
 
     // Organization filter — 0=All, 1=Haifa, 2=Riga (mirrors Statistics tab)

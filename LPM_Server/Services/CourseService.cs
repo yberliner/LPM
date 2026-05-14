@@ -555,6 +555,27 @@ public class CourseService
         cmd.ExecuteNonQuery();
     }
 
+    // ── Incoming-payments CC commission (separate from Salary's CcCommissionPct) ──
+    public double GetIncomingCcCommissionPct()
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT CcCommissionPctIncoming FROM sys_financial_config WHERE Id = 1";
+        var v = cmd.ExecuteScalar();
+        return v == null || v == DBNull.Value ? 2.5 : Convert.ToDouble(v);
+    }
+
+    public void UpdateIncomingCcCommissionPct(double pct)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE sys_financial_config SET CcCommissionPctIncoming = @p WHERE Id = 1";
+        cmd.Parameters.AddWithValue("@p", pct);
+        cmd.ExecuteNonQuery();
+    }
+
     public List<(int Id, string FullName)> GetCoreUsers()
     {
         using var conn = new SqliteConnection(_connectionString);
