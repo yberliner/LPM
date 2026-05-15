@@ -939,9 +939,9 @@
   "guide.sessionManager.solo3text": "לאחר שינוי סימון Free/Bill, מופיע כפתור שמירה ירוק ליד הרשימה הנפתחת. לחצו עליו לשמירה מיידית בלי לפתוח את עורך הפרטים המלא. לחצו על השורה לפתיחת התצוגה המלאה לעריכה מעמיקה.",
   "guide.sessionManager.addHeading": "הוספת סשן",
   "guide.sessionManager.add1title": "יצירת סשן ידנית",
-  "guide.sessionManager.add1text": "לחצו על כפתור הוספה הירוק (זמין בתצוגות PC וסולו). מלאו PC, אודיטור (בחרו Solo ללא אודיטור), CS (בחרו None לדלג), תאריך, משך הסשן בדקות, זמן אדמין והערות אופציונליות.",
+  "guide.sessionManager.add1text": "לחצו על כפתור הוספה הירוק (זמין בתצוגות PC וסולו). בחרו תחילה סוג סשן (Private session, Coaching, Conversation, CSing, Program, או Other — עבור Other הקלידו תווית מותאמת). לאחר מכן מלאו PC, אודיטור (בחרו Solo ללא אודיטור), CS (בחרו None לדלג), תאריך, משך הסשן בדקות, זמן אדמין והערות אופציונליות.",
   "guide.sessionManager.add2title": "יצירת קובץ אוטומטית",
-  "guide.sessionManager.add2text": "בעת השמירה, המערכת מייצרת שם סשן ייחודי (למשל 260413 Added manual session 1), יוצרת PDF זמני עם הטקסט \"Dummy session\", ושומרת אותו בתיקיית WorkSheets של ה-PC. נוצרת גם שורת סקירת CS אוטומטית.",
+  "guide.sessionManager.add2text": "בעת השמירה, המערכת מייצרת שם סשן לפי סוג הסשן שנבחר (למשל 260413 manual - Coaching 1), יוצרת PDF זמני עם הטקסט \"Dummy session\", ושומרת אותו בתיקיית WorkSheets של ה-PC. נוצרת גם שורת סקירת CS אוטומטית.",
   "guide.sessionManager.tip": "טיפ: תצוגת סולו שימושית במיוחד למנהלים כדי למצוא ולתקן במהירות סשנים שה-CS שכח ללחוץ עליהם חינם או חיוב.",
 
   "guide.dashboard.step9title": "סקירת CS צוותית (Senior CS)",
@@ -1518,7 +1518,7 @@
   "guide.tips.sidebarResizeTitle": "מצב דו-עמודי מתכוונן אוטומטית",
   "guide.tips.sidebarResizeText": "בתצוגה דו-עמודית של תיקיית ה-PC, פתיחה או סגירה של הסרגל השמאלי מתאמת את גודל הדפים אוטומטית. אותו דבר קורה בעת שינוי גודל חלון או שינוי פריסת הפאנלים.",
   "guide.tips.manualSessionIndexTitle": "שמות בטוחים לסשנים ידניים",
-  "guide.tips.manualSessionIndexText": "בניהול פגישות, הוספת סשן ידנית בוחרת אוטומטית את האינדקס הפנוי הראשון (\"YYMMDD Added manual session 1\", 2, 3 …) ורושמת שורה במסד הנתונים רק אם ה-PDF נשמר בפועל. אין יותר סשנים יתומים בעקבות כשלי שמירה שקטים.",
+  "guide.tips.manualSessionIndexText": "בניהול פגישות, הוספת סשן ידנית מייצרת את שם הקובץ לפי סוג הסשן שנבחר, ובוחרת אוטומטית את האינדקס הפנוי הראשון (\"YYMMDD manual - Coaching 1\", 2, 3 …). שורת מסד הנתונים נרשמת רק אם ה-PDF נשמר בפועל. אין יותר סשנים יתומים בעקבות כשלי שמירה שקטים.",
 
   "guide.tips.cinematicReadingTitle": "Cinematic Reading",
   "guide.tips.cinematicReadingText": "בתיקיית ה-PC, הרחבה ראשונה של סשן למצב דו-עמודי + מסך מלא מפעילה אנימציה קצרה של \"Cinematic Reading\" — אות חזותי לכך שנכנסתם למצב קריאה סוחף. מצב התצוגה עצמו זהה למצב דו-עמודי רגיל.",

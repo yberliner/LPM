@@ -719,9 +719,9 @@
   "guide.sessionManager.solo3text": "After changing a Free/Bill flag, a green save button appears next to the dropdown. Click it to save immediately without opening the full detail editor. Click a row to open the full detail view for deeper editing.",
   "guide.sessionManager.addHeading": "Add Session",
   "guide.sessionManager.add1title": "Create a session manually",
-  "guide.sessionManager.add1text": "Click the green Add button (available in both PC and Solo views). Fill in the PC, Auditor (choose Solo for no auditor), CS (choose None to skip), date, session length in minutes, admin time, and optional notes.",
+  "guide.sessionManager.add1text": "Click the green Add button (available in both PC and Solo views). Pick a Session Type first (Private session, Coaching, Conversation, CSing, Program, or Other — for Other, you type a custom label). Then fill in the PC, Auditor (choose Solo for no auditor), CS (choose None to skip), date, session length in minutes, admin time, and optional notes.",
   "guide.sessionManager.add2title": "Automatic file generation",
-  "guide.sessionManager.add2text": "When you save, the system generates a unique session name (e.g. 260413 Added manual session 1), creates a placeholder PDF with 'Dummy session' text, and saves it to the PC's WorkSheets folder. A CS review row is also created automatically.",
+  "guide.sessionManager.add2text": "When you save, the system generates a session name based on the chosen Type (e.g. 260413 manual - Coaching 1), creates a placeholder PDF with 'Dummy session' text, and saves it to the PC's WorkSheets folder. A CS review row is also created automatically.",
   "guide.sessionManager.tip": "Tip: The Solo view is especially useful for administrators to quickly find and fix sessions where the CS forgot to click Free or Bill.",
 
   "guide.dashboard.step9title": "Team CS Review (Senior CS)",
@@ -1537,7 +1537,7 @@
   "guide.tips.sidebarResizeTitle": "Dual-page auto-rescales",
   "guide.tips.sidebarResizeText": "In PC Folder side-by-side view, opening or closing the file-tree sidebar now rescales the pages automatically. Also triggers on window resize and pane layout changes.",
   "guide.tips.manualSessionIndexTitle": "Safe manual session naming",
-  "guide.tips.manualSessionIndexText": "In Session Manager, adding a manual session auto-picks the first free index (\"YYMMDD Added manual session 1\", 2, 3 …) and only writes the DB row if the PDF file was actually saved. No more orphaned sessions on silent save failures.",
+  "guide.tips.manualSessionIndexText": "In Session Manager, adding a manual session names the file from the chosen Session Type and auto-picks the first free index (\"YYMMDD manual - Coaching 1\", 2, 3 …). The DB row is only written if the PDF file was actually saved. No more orphaned sessions on silent save failures.",
 
   "guide.tips.cinematicReadingTitle": "Cinematic Reading",
   "guide.tips.cinematicReadingText": "In PC Folder, the first-time expand of a session to dual-page + maximize plays a short \"Cinematic Reading\" animation — a visual cue that you've entered immersive reading mode. The mode itself is otherwise identical to regular dual-page.",

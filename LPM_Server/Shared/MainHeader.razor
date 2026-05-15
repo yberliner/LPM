@@ -4037,6 +4037,30 @@
                 }
 
                 <div class="sm-card">
+                    @* Session Type drives the generated file name. Kept first so the user
+                       picks it before anything else and there's no doubt about what the
+                       saved session will be called. *@
+                    <div class="sm-field">
+                        <label>Session Type <span style="color:#dc2626;">*</span></label>
+                        <select class="form-select form-select-sm" @bind="_smAddType">
+                            <option value="">— Select Type —</option>
+                            <option value="Private session">Private session</option>
+                            <option value="Coaching">Coaching</option>
+                            <option value="Conversation">Conversation</option>
+                            <option value="CSing">CSing</option>
+                            <option value="Program">Program</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    @if (_smAddType == "Other")
+                    {
+                        <div class="sm-field">
+                            <label>Specify Type <span style="color:#dc2626;">*</span></label>
+                            <input class="form-control form-control-sm"
+                                   placeholder="Type a short name…"
+                                   @bind="_smAddOtherText" @bind:event="oninput" />
+                        </div>
+                    }
                     <div class="sm-field">
                         <label>PC</label>
                         <select class="form-select form-select-sm" value="@_smAddPcId"
@@ -4100,7 +4124,11 @@
                 <div class="d-flex gap-2 mt-3 justify-content-end">
                     <button class="btn btn-sm btn-outline-secondary" @onclick="SmCancelAdd">Cancel</button>
                     <button class="btn btn-sm btn-primary d-flex align-items-center gap-1"
-                            disabled="@(_smAddSaving || string.IsNullOrWhiteSpace(_smAddNotes))" @onclick="SmSaveAdd">
+                            disabled="@(_smAddSaving
+                                       || string.IsNullOrWhiteSpace(_smAddNotes)
+                                       || string.IsNullOrWhiteSpace(_smAddType)
+                                       || (_smAddType == "Other" && string.IsNullOrWhiteSpace(_smAddOtherText)))"
+                            @onclick="SmSaveAdd">
                         @if (_smAddSaving) { <span class="spinner-border spinner-border-sm me-1"></span> }
                         <i class="ri-save-line"></i> Create Session
                     </button>
@@ -8248,6 +8276,8 @@
     int _smAddAdminMin;
     bool _smAddIsFree;
     string _smAddNotes = "";
+    string _smAddType = "";       // mandatory; drives the saved file name
+    string _smAddOtherText = "";  // only used when _smAddType == "Other"
     string _smAddError = "";
     bool _smAddSaving;
     List<(int PersonId, string FullName)> _smAddAuditorList = [];
@@ -11281,6 +11311,8 @@ string _actionPcSearch = "";
         _smAddAdminMin = 0;
         _smAddIsFree = false;
         _smAddNotes = "";
+        _smAddType = "";
+        _smAddOtherText = "";
         _smAddError = "";
         _smAddSaving = false;
         _smSuccess = "";
@@ -11312,10 +11344,27 @@ string _actionPcSearch = "";
         _smAddMode = false;
     }
 
+    /// <summary>Strip path-invalid chars from a free-text "Other" session-type label so it
+    /// can safely become part of a filename. Collapses runs of whitespace to a single space.</summary>
+    static string SanitizeForFileName(string s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return "";
+        var invalid = System.IO.Path.GetInvalidFileNameChars();
+        var sb = new System.Text.StringBuilder(s.Length);
+        foreach (var c in s)
+            sb.Append(Array.IndexOf(invalid, c) >= 0 ? '_' : c);
+        return System.Text.RegularExpressions.Regex.Replace(sb.ToString(), @"\s+", " ").Trim();
+    }
+
     async Task SmSaveAdd()
     {
         _smAddError = "";
         _smAddNotes = (_smAddNotes ?? "").Trim();
+        _smAddType = (_smAddType ?? "").Trim();
+        _smAddOtherText = (_smAddOtherText ?? "").Trim();
+        if (string.IsNullOrEmpty(_smAddType)) { _smAddError = "Please select a Session Type."; return; }
+        if (_smAddType == "Other" && string.IsNullOrEmpty(_smAddOtherText))
+        { _smAddError = "Please specify the session type."; return; }
         if (_smAddPcId <= 0) { _smAddError = "Please select a PC."; return; }
         if (_smAddLenMin <= 0) { _smAddError = "Session length must be greater than 0."; return; }
         if (string.IsNullOrEmpty(_smAddNotes)) { _smAddError = "Notes are required."; return; }
@@ -11380,10 +11429,17 @@ string _actionPcSearch = "";
                 // The save is attempted with overwrite=false — if it fails (file appeared between
                 // the check and the save, or couldn't be written), we advance to the next index.
                 var datePrefix = DateTime.Now.ToString("yyMMdd");
+                // Derive a meaningful filename label from the chosen Session Type.
+                // "Other" routes through SanitizeForFileName so invalid path chars in
+                // user input can't break the save.
+                var typeLabel = _smAddType == "Other"
+                    ? SanitizeForFileName(_smAddOtherText)
+                    : _smAddType;
+                if (string.IsNullOrWhiteSpace(typeLabel)) typeLabel = "Session";
                 string sessionName = "";
                 for (int i = 1; i <= 100; i++)
                 {
-                    var candidate = $"{datePrefix} Added manual session {i}";
+                    var candidate = $"{datePrefix} manual - {typeLabel} {i}";
                     if (FolderSvc.SectionFileExistsAtPath(_smAddPcId, "WorkSheets", $"{candidate}.pdf", solo: isSolo))
                         continue;
 
