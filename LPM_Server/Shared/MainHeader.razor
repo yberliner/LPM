@@ -5690,6 +5690,19 @@
     .hdr-ab-indigo:hover { box-shadow: 0 4px 18px rgba(99,102,241,.5); }
     .hdr-ab-blue:hover   { box-shadow: 0 4px 18px rgba(59,130,246,.5); }
 
+    /* On laptop / desktop (≥1200px) the screen has room — show the label permanently
+       so users don't have to hover to see what each pill does. Tablets and phones keep
+       the icon-only-with-hover behaviour so the header doesn't crowd narrow viewports.
+       The hover-only rules above still fire on wide screens, but with the same target
+       values they're a visual no-op (only the lift / glow / icon-scale remain). */
+    @@media (min-width: 1200px) {
+        .hdr-ab-label {
+            max-width: 120px;
+            opacity: 1;
+            padding-right: 12px;
+        }
+    }
+
     /* ── PC dropdown button — gentle always-on breathing halo ── */
     .pc-btn-wrap { position: relative; }
     .pc-btn-magic {
