@@ -159,11 +159,14 @@
                             </td>
                             <td class="small"></td>
                             <td class="small text-center">
-                                <button class="btn btn-sm btn-link p-0" title="Add wallet"
-                                        @onclick="() => OpenAddWallet(pc.PcId, pc.FullName)"
-                                        @onclick:stopPropagation="true">
-                                    <i class="ri-add-circle-line" style="color:#0891b2;font-size:1.15rem;"></i>
-                                </button>
+                                @if (_isAdmin)
+                                {
+                                    <button class="btn btn-sm btn-link p-0" title="Add wallet"
+                                            @onclick="() => OpenAddWallet(pc.PcId, pc.FullName)"
+                                            @onclick:stopPropagation="true">
+                                        <i class="ri-add-circle-line" style="color:#0891b2;font-size:1.15rem;"></i>
+                                    </button>
+                                }
                             </td>
                         </tr>
                         continue;
@@ -412,26 +415,32 @@
                             @* Actions *@
                             <td class="small text-center" style="@(isFirst ? "" : "border-top:none;") padding:0;">
                                 <div class="d-inline-flex align-items-center gap-1">
-                                    <button class="btn btn-link btn-sm p-0"
-                                            title="Edit wallet"
-                                            @onclick="() => OpenEditWallet(pc.PcId, pc.FullName, w.WalletId)"
-                                            @onclick:stopPropagation="true">
-                                        <i class="ri-edit-line" style="font-size:.95rem;color:#64748b;"></i>
-                                    </button>
-                                    <button class="btn btn-link btn-sm p-0"
-                                            title="Transfer balance"
-                                            @onclick="() => OpenTransferWallet(w.WalletId)"
-                                            @onclick:stopPropagation="true">
-                                        <i class="ri-exchange-funds-line" style="font-size:.95rem;color:#7c3aed;"></i>
-                                    </button>
-                                    @if (isFirst)
+                                    @if (_isAdmin)
                                     {
                                         <button class="btn btn-link btn-sm p-0"
-                                                title="Add wallet"
-                                                @onclick="() => OpenAddWallet(pc.PcId, pc.FullName)"
+                                                title="Edit wallet"
+                                                @onclick="() => OpenEditWallet(pc.PcId, pc.FullName, w.WalletId)"
                                                 @onclick:stopPropagation="true">
-                                            <i class="ri-add-circle-line" style="font-size:1rem;color:#0891b2;"></i>
+                                            <i class="ri-edit-line" style="font-size:.95rem;color:#64748b;"></i>
                                         </button>
+                                        <button class="btn btn-link btn-sm p-0"
+                                                title="Transfer balance"
+                                                @onclick="() => OpenTransferWallet(w.WalletId)"
+                                                @onclick:stopPropagation="true">
+                                            <i class="ri-exchange-funds-line" style="font-size:.95rem;color:#7c3aed;"></i>
+                                        </button>
+                                    }
+                                    @if (isFirst)
+                                    {
+                                        @if (_isAdmin)
+                                        {
+                                            <button class="btn btn-link btn-sm p-0"
+                                                    title="Add wallet"
+                                                    @onclick="() => OpenAddWallet(pc.PcId, pc.FullName)"
+                                                    @onclick:stopPropagation="true">
+                                                <i class="ri-add-circle-line" style="font-size:1rem;color:#0891b2;"></i>
+                                            </button>
+                                        }
                                         <button class="btn btn-link btn-sm p-0 bal-detail-btn"
                                                 title="@LS.T("pcs.balanceDetails")"
                                                 @onclick="() => OpenBalanceModal(pc.PcId, pc.FullName)"
