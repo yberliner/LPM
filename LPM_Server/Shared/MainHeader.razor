@@ -8889,7 +8889,7 @@
         if (pushToEditor)
         {
             _ = JSRuntime.InvokeVoidAsync("eval",
-                $"if(window._arfQuill) window._arfQuill.root.innerHTML={System.Text.Json.JsonSerializer.Serialize(_arfSummary)};");
+                $"if(window._arfQuill){{ window._arfQuill.setContents([], 'silent'); window._arfQuill.clipboard.dangerouslyPasteHTML(0, {System.Text.Json.JsonSerializer.Serialize(_arfSummary)}, 'silent'); }}");
         }
     }
 
@@ -9331,7 +9331,7 @@
         {
             await Task.Delay(100); // wait for DOM
             await JSRuntime.InvokeVoidAsync("eval", @"
-                if (window._arfQuill) { try { window._arfQuill.container.parentElement.removeChild(window._arfQuill.container.previousSibling); window._arfQuill.container.remove(); } catch(e){} }
+                if (window._arfQuill) { try { if (window._arfQuill.scroll && window._arfQuill.scroll.observer) window._arfQuill.scroll.observer.disconnect(); } catch(e){} try { window._arfQuill.container.parentElement.removeChild(window._arfQuill.container.previousSibling); window._arfQuill.container.remove(); } catch(e){} }
                 var el = document.getElementById('arf-summary-editor');
                 if (el) {
                     window._arfQuill = new Quill(el, {
@@ -11757,7 +11757,7 @@ string _actionPcSearch = "";
         {
             await Task.Delay(100);
             await JSRuntime.InvokeVoidAsync("eval", @"
-                if (window._actSumQuill) { try { window._actSumQuill.container.parentElement.removeChild(window._actSumQuill.container.previousSibling); window._actSumQuill.container.remove(); } catch(e){} }
+                if (window._actSumQuill) { try { if (window._actSumQuill.scroll && window._actSumQuill.scroll.observer) window._actSumQuill.scroll.observer.disconnect(); } catch(e){} try { window._actSumQuill.container.parentElement.removeChild(window._actSumQuill.container.previousSibling); window._actSumQuill.container.remove(); } catch(e){} }
                 var el = document.getElementById('act-summary-editor');
                 if (el) {
                     window._actSumQuill = new Quill(el, {
@@ -12511,6 +12511,7 @@ string _actionPcSearch = "";
             await Task.Delay(100);
             await JSRuntime.InvokeVoidAsync("eval", @"
                 if (window._memoQuill) {
+                    try { if (window._memoQuill.scroll && window._memoQuill.scroll.observer) window._memoQuill.scroll.observer.disconnect(); } catch(e) {}
                     try {
                         window._memoQuill.container.parentElement.removeChild(window._memoQuill.container.previousSibling);
                         window._memoQuill.container.remove();
@@ -12597,6 +12598,7 @@ string _actionPcSearch = "";
         await Task.Delay(100);
         await JSRuntime.InvokeVoidAsync("eval", @"
             if (window._memoSummaryQuill) {
+                try { if (window._memoSummaryQuill.scroll && window._memoSummaryQuill.scroll.observer) window._memoSummaryQuill.scroll.observer.disconnect(); } catch(e) {}
                 try {
                     window._memoSummaryQuill.container.parentElement.removeChild(window._memoSummaryQuill.container.previousSibling);
                     window._memoSummaryQuill.container.remove();
@@ -13250,6 +13252,7 @@ string _actionPcSearch = "";
             {
                 await JSRuntime.InvokeVoidAsync("eval", @"
                     if (window._ncSummaryQuill) {
+                        try { if (window._ncSummaryQuill.scroll && window._ncSummaryQuill.scroll.observer) window._ncSummaryQuill.scroll.observer.disconnect(); } catch(e) {}
                         try {
                             window._ncSummaryQuill.container.parentElement.removeChild(window._ncSummaryQuill.container.previousSibling);
                             window._ncSummaryQuill.container.remove();
@@ -13302,6 +13305,7 @@ string _actionPcSearch = "";
         await Task.Delay(100);
         await JSRuntime.InvokeVoidAsync("eval", @"
             if (window._ncSummaryQuill) {
+                try { if (window._ncSummaryQuill.scroll && window._ncSummaryQuill.scroll.observer) window._ncSummaryQuill.scroll.observer.disconnect(); } catch(e) {}
                 try {
                     window._ncSummaryQuill.container.parentElement.removeChild(window._ncSummaryQuill.container.previousSibling);
                     window._ncSummaryQuill.container.remove();

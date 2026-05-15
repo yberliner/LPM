@@ -54,7 +54,12 @@ window.quillInterop = (function () {
         });
 
         if (initialHtml && initialHtml.trim()) {
-            quill.root.innerHTML = initialHtml;
+            // Use Quill's parser so the internal Delta stays in sync with the DOM.
+            // Direct quill.root.innerHTML = html leaves the Delta out of sync, which is
+            // what made Enter insert at index 0 and threw the 'composing' MutationObserver
+            // error on Ctrl+A → Delete → type.
+            quill.setContents([], 'silent');
+            quill.clipboard.dangerouslyPasteHTML(0, initialHtml, 'silent');
         }
 
         quill.on('text-change', function () {
@@ -95,6 +100,16 @@ window.quillInterop = (function () {
     }
 
     function destroy(editorEl) {
+        const quill = instances.get(editorEl);
+        if (quill) {
+            // Disconnect the MutationObserver first so it can't fire on subsequent DOM
+            // mutations (which would throw "Cannot read properties of undefined (reading
+            // 'composing')" and — worse — make a ghost Quill process keys against a stale
+            // delta in any new Quill instance that gets created on the same element).
+            try { if (quill.scroll && quill.scroll.observer) quill.scroll.observer.disconnect(); } catch(e) {}
+            try { quill.container.previousSibling.remove(); } catch(e) {}
+            try { quill.container.remove(); } catch(e) {}
+        }
         instances.delete(editorEl);
     }
 
