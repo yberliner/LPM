@@ -3,6 +3,8 @@
 @using LPM.Services
 @using Microsoft.AspNetCore.Authorization
 @inject FolderService FolderSvc
+@inject BackupHistoryService BackupHistorySvc
+@inject ClientContextService ClientCtx
 @inject AuthenticationStateProvider AuthStateProvider
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
@@ -846,6 +848,39 @@
     bool _authBusy;
     string _username = "";
 
+    // ── sys_backup_runs persistence ──
+    // _runId / _runFinalized mirror ClientCtx state so we can guard tight loops without
+    // touching the scoped service every call. Both are restored on circuit-reconnect.
+    int  _runId;
+    bool _runFinalized;
+    DateTime _lastHeartbeatUtc;     // throttle: only heartbeat once per minute
+
+    void TryHeartbeatThrottled(string? phase, int done, int total, int skipped, int errors, string? currentFile)
+    {
+        if (_runId <= 0 || _runFinalized) return;
+        var nowUtc = DateTime.UtcNow;
+        // First heartbeat fires immediately; subsequent ones every ~1 minute.
+        if (_lastHeartbeatUtc != default && (nowUtc - _lastHeartbeatUtc).TotalSeconds < 55) return;
+        _lastHeartbeatUtc = nowUtc;
+        try { BackupHistorySvc.Heartbeat(_runId, phase, done, total, skipped, errors, currentFile); }
+        catch (Exception ex) { Console.WriteLine($"[Backup] Heartbeat error: {ex.Message}"); }
+    }
+
+    void FinalizeRun(string status, string? errorMessage)
+    {
+        if (_runId <= 0 || _runFinalized) return;
+        _runFinalized = true;
+        ClientCtx.BackupRunFinalized = true;
+        try
+        {
+            // Final flush of progress numbers before terminal status — so the table shows the
+            // final counts (e.g. files done at cancel time) even if the last heartbeat is stale.
+            BackupHistorySvc.Heartbeat(_runId, _fbfPhase, _fbfCurrent, _fbfTotal, _fbfSkipped, _fbfErrors, _fbfCurrentFile);
+            BackupHistorySvc.Finish(_runId, status, errorMessage);
+        }
+        catch (Exception ex) { Console.WriteLine($"[Backup] FinalizeRun error: {ex.Message}"); }
+    }
+
     protected override async Task OnInitializedAsync()
     {
         if (await PermissionsLevels.RedirectIfRestricted(AuthStateProvider, Navigation)) return;
@@ -855,6 +890,17 @@
         {
             Navigation.NavigateTo("/Home", forceLoad: false);
             return;
+        }
+
+        // (Client IP / UA come from ClientCtx — populated by LpmCircuitHandler at circuit
+        // construction time, when IHttpContextAccessor.HttpContext is still alive.)
+
+        // Restore _runId if a backup is already in progress for this circuit (in-app
+        // navigation away and back). Status flags follow suit.
+        if (ClientCtx.ActiveBackupRunId.HasValue && !ClientCtx.BackupRunFinalized)
+        {
+            _runId = ClientCtx.ActiveBackupRunId.Value;
+            _runFinalized = false;
         }
 
         // Check if another user's backup is already running (legacy guard — file-by-file
@@ -1003,7 +1049,43 @@
         _error = "";
         StateHasChanged();
 
-        Console.WriteLine($"[Backup] File-by-file backup started by '{_username}'");
+        // Open a row in sys_backup_runs FIRST (synchronously, no await). If we awaited
+        // reverse-DNS before insert, the user could click Cancel during the DNS window
+        // and the row would still get created right after — stuck forever in "running".
+        // Reverse-DNS becomes a fire-and-forget that backfills ClientHost later.
+        _runId = 0;
+        _runFinalized = false;
+        _lastHeartbeatUtc = default;
+        ClientCtx.ActiveBackupRunId  = null;
+        ClientCtx.BackupRunFinalized = false;
+        try
+        {
+            _runId = BackupHistorySvc.StartRun(_username, ClientCtx.ClientIp, clientHost: null, ClientCtx.UserAgent);
+            if (_runId > 0)
+            {
+                ClientCtx.ActiveBackupRunId = _runId;
+                // Backfill the hostname asynchronously. We capture _runId in the local var
+                // so this lambda doesn't observe a later StartFolderBackupWithToken's _runId.
+                int capturedRunId = _runId;
+                string? capturedIp = ClientCtx.ClientIp;
+                var svc = BackupHistorySvc;
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var host = await BackupHistoryService.TryReverseDnsAsync(capturedIp);
+                        if (!string.IsNullOrWhiteSpace(host)) svc.UpdateClientHost(capturedRunId, host);
+                    }
+                    catch (Exception ex) { Console.WriteLine($"[Backup] Reverse-DNS backfill failed: {ex.Message}"); }
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Backup] StartRun (history) failed: {ex.Message}");
+        }
+
+        Console.WriteLine($"[Backup] File-by-file backup started by '{_username}' (runId={_runId})");
 
         try
         {
@@ -1030,10 +1112,12 @@
         {
             _done = true;
             Console.WriteLine($"[Backup] File-by-file COMPLETE by '{_username}' — User: {userTotal} files ({userSkipped} skipped, {userErrors} errors), Server: {serverTotal} files ({serverSkipped} skipped, {serverErrors} errors)");
+            FinalizeRun(BackupHistoryService.StatusCompleted, null);
         }
         else
         {
             _error = error ?? "Backup failed";
+            FinalizeRun(BackupHistoryService.StatusFailed, _error);
         }
         InvokeAsync(StateHasChanged);
     }
@@ -1104,6 +1188,7 @@
     void CancelFolderBackup()
     {
         Console.WriteLine($"[Backup] File-by-file cancel requested by '{_username}'");
+        FinalizeRun(BackupHistoryService.StatusCancelledByUser, null);
         JS.InvokeVoidAsync("lpmFileBackup.cancel");
     }
 
@@ -1115,6 +1200,7 @@
         _fbfCurrentFile = path;
         _fbfSkipped = skipped;
         _fbfErrors = errors;
+        TryHeartbeatThrottled(_fbfPhase, current, total, skipped, errors, path);
         InvokeAsync(StateHasChanged);
     }
 
@@ -1127,6 +1213,10 @@
         _fbfSkipped = 0;
         _fbfErrors = 0;
         _fbfCurrentFile = "";
+        // Phase changes are rare and meaningful — force-flush a heartbeat so the table
+        // updates even if we're inside the 1-minute throttle window.
+        _lastHeartbeatUtc = default;
+        TryHeartbeatThrottled(phase, 0, 0, 0, 0, null);
         InvokeAsync(StateHasChanged);
     }
 
@@ -1268,6 +1358,14 @@
 
     public void Dispose()
     {
+        // NOTE: We deliberately do NOT finalize the run here. Dispose runs both on true
+        // circuit close (browser closed, retention expired) AND on simple in-app
+        // navigation — and in the latter case the JS-side backup is still running, so
+        // marking the row interrupted_disconnect now would be a false signal.
+        //
+        // True circuit close is handled by LpmCircuitHandler.OnCircuitClosedAsync, which
+        // reads ClientCtx.ActiveBackupRunId and finalizes there. ClientCtx.ActiveBackupRunId
+        // is the persistent handoff that survives component teardown across navigation.
         _fbfDotNetRef?.Dispose();
     }
 

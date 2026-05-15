@@ -159,6 +159,7 @@ builder.Services.AddSingleton<LPM.Services.CsNotificationService>();
 builder.Services.AddSingleton<LPM.Services.ShortcutService>();
 builder.Services.AddSingleton<LPM.Services.UserActivityService>();
 builder.Services.AddSingleton<LPM.Services.CircuitTrackingService>();
+builder.Services.AddScoped<LPM.Services.ClientContextService>();
 builder.Services.AddScoped<LPM.Services.LpmCircuitHandler>();
 builder.Services.AddScoped<Microsoft.AspNetCore.Components.Server.Circuits.CircuitHandler, LPM.Services.LpmCircuitHandler>();
 builder.Services.AddHttpClient("sms");
@@ -181,6 +182,7 @@ builder.Services.AddSingleton<LPM.Services.WalletService>();
 builder.Services.AddScoped<LPM.Services.SessionManagerLauncher>();
 builder.Services.AddSingleton<LPM.Services.MemoryReportService>();
 builder.Services.AddSingleton<LPM.Services.DiagnosisCacheService>();
+builder.Services.AddSingleton<LPM.Services.BackupHistoryService>();
 builder.Services.AddHostedService<LPM.Services.MaintenanceService>();
 
 // Add session services
@@ -282,6 +284,20 @@ PdfSharpCore.Fonts.GlobalFontSettings.FontResolver = LPM.Services.EmbeddedFontRe
     using var _sv = _sc.CreateCommand();
     _sv.CommandText = "SELECT sqlite_version()";
     Console.WriteLine($"[Startup] SQLite bundled version = {_sv.ExecuteScalar()}");
+}
+
+// Backup-history zombie sweep: any sys_backup_runs row left in "running" state from a
+// prior process is by definition orphaned (no live process can still own it), so mark
+// it interrupted_server_stop now. Also re-run on graceful shutdown for the in-flight case.
+{
+    var backupHistory = app.Services.GetRequiredService<LPM.Services.BackupHistoryService>();
+    backupHistory.MarkZombiesAsInterrupted();
+    var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
+    lifetime.ApplicationStopping.Register(() =>
+    {
+        try { backupHistory.MarkZombiesAsInterrupted(); }
+        catch (Exception ex) { Console.WriteLine($"[BackupHistory] Shutdown sweep failed: {ex.Message}"); }
+    });
 }
 
 // Configure forwarded headers middleware early in the pipeline

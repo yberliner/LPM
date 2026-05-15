@@ -15,6 +15,7 @@
 @inject LPM.Services.PcService PcSvc
 @inject LPM.Services.SmsService SmsSvc
 @inject LPM.Services.SessionManagerLauncher SmLauncher
+@inject LPM.Services.BackupHistoryService BackupHistorySvc
 @inject IJSRuntime JS
 
 <PageTitle>Diagnosis — LPM</PageTitle>
@@ -146,6 +147,15 @@
         <li class="nav-item">
             <a class="nav-link @(_diagTab == "deletedSessions" ? "active" : "")" @onclick="SwitchToDeletedSessionsTab" href="javascript:void(0)">
                 <i class="ri-delete-bin-line me-1"></i>Deleted Sessions
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link @(_diagTab == "backupHistory" ? "active" : "")" @onclick="SwitchToBackupHistoryTab" href="javascript:void(0)">
+                <i class="ri-archive-line me-1"></i>Backup
+                @if (_backupRuns.Any(r => r.Status == LPM.Services.BackupHistoryService.StatusRunning))
+                {
+                    <span class="diag-bk-running-dot" title="Backup in progress">●</span>
+                }
             </a>
         </li>
     </ul>
@@ -2495,6 +2505,233 @@
     }
 }
 
+@if (_diagTab == "backupHistory")
+{
+    <div class="diag-editor-card mb-4">
+        <div class="diag-editor-header">
+            <i class="ri-archive-line me-2"></i>Backup History
+            <span class="diag-editor-sub">All system backup operations — sortable. The newest run is at the top by default.</span>
+        </div>
+        <div class="diag-editor-body">
+            <div class="d-flex align-items-center gap-2 flex-wrap mb-3">
+                <span class="diag-bk-stat">
+                    <i class="ri-history-line me-1"></i>Total runs: <strong>@_backupRuns.Count</strong>
+                </span>
+                @{
+                    var bkRunning   = _backupRuns.Count(r => r.Status == LPM.Services.BackupHistoryService.StatusRunning);
+                    var bkCompleted = _backupRuns.Count(r => r.Status == LPM.Services.BackupHistoryService.StatusCompleted);
+                    var bkFailed    = _backupRuns.Count(r => r.Status == LPM.Services.BackupHistoryService.StatusFailed
+                                                          || r.Status == LPM.Services.BackupHistoryService.StatusInterruptedDisconnect
+                                                          || r.Status == LPM.Services.BackupHistoryService.StatusInterruptedServerStop
+                                                          || r.Status == LPM.Services.BackupHistoryService.StatusCancelledByUser);
+                }
+                @if (bkRunning > 0)
+                {
+                    <span class="diag-bk-stat diag-bk-stat-running">
+                        <i class="ri-loader-4-line me-1"></i>Running: <strong>@bkRunning</strong>
+                    </span>
+                }
+                <span class="diag-bk-stat diag-bk-stat-completed">
+                    <i class="ri-checkbox-circle-line me-1"></i>Completed: <strong>@bkCompleted</strong>
+                </span>
+                <span class="diag-bk-stat diag-bk-stat-failed">
+                    <i class="ri-error-warning-line me-1"></i>Interrupted/Failed: <strong>@bkFailed</strong>
+                </span>
+                <button class="btn btn-sm btn-outline-secondary ms-auto" @onclick="LoadBackupHistory" title="Refresh">
+                    <i class="ri-refresh-line"></i>
+                </button>
+            </div>
+
+            <div class="diag-bk-scroll">
+                <table class="diag-bk-table">
+                    <thead>
+                        <tr>
+                            <th class="diag-bk-sort" @onclick='() => ToggleBkSort("started")'>Started @BkSortArrow("started")</th>
+                            <th class="diag-bk-sort" @onclick='() => ToggleBkSort("ended")'>Ended @BkSortArrow("ended")</th>
+                            <th class="diag-bk-sort" @onclick='() => ToggleBkSort("duration")'>Duration @BkSortArrow("duration")</th>
+                            <th class="diag-bk-sort" @onclick='() => ToggleBkSort("user")'>User @BkSortArrow("user")</th>
+                            <th class="diag-bk-sort" @onclick='() => ToggleBkSort("computer")'>Computer @BkSortArrow("computer")</th>
+                            <th class="diag-bk-sort" @onclick='() => ToggleBkSort("files")'>Files @BkSortArrow("files")</th>
+                            <th class="diag-bk-sort" @onclick='() => ToggleBkSort("skipped")'>Skipped @BkSortArrow("skipped")</th>
+                            <th class="diag-bk-sort" @onclick='() => ToggleBkSort("errors")'>Errors @BkSortArrow("errors")</th>
+                            <th class="diag-bk-sort" @onclick='() => ToggleBkSort("status")'>Status @BkSortArrow("status")</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (SortedBackupRuns().Any())
+                        {
+                            foreach (var run in SortedBackupRuns())
+                            {
+                                var isRunning = run.Status == LPM.Services.BackupHistoryService.StatusRunning;
+                                var pct = run.FilesTotal > 0 ? (run.FilesDone * 100 / run.FilesTotal) : 0;
+                                <tr class="@(isRunning ? "diag-bk-row-running" : "")">
+                                    <td class="diag-bk-time">@run.StartedAtUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</td>
+                                    <td class="diag-bk-time">
+                                        @if (run.EndedAtUtc.HasValue)
+                                        { @run.EndedAtUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss") }
+                                        else if (isRunning)
+                                        { <span class="diag-bk-pulse">in progress…</span> }
+                                        else
+                                        { <span style="color:#94a3b8;">—</span> }
+                                    </td>
+                                    <td>@BkDurationLabel(run)</td>
+                                    <td>@run.Username</td>
+                                    <td title="@(run.UserAgent ?? "")">@BkComputerLabel(run)</td>
+                                    <td>
+                                        <strong>@run.FilesDone</strong>
+                                        @if (run.FilesTotal > 0)
+                                        { <span style="color:#94a3b8;"> / @run.FilesTotal</span> }
+                                    </td>
+                                    <td>@run.FilesSkipped</td>
+                                    <td>@run.FilesErrors</td>
+                                    <td>
+                                        <span class="diag-bk-pill @BkStatusPillClass(run.Status)">@BkStatusLabel(run.Status)</span>
+                                    </td>
+                                </tr>
+                                @if (isRunning)
+                                {
+                                    <tr class="diag-bk-row-running-sub">
+                                        <td colspan="9">
+                                            <div class="diag-bk-prog-wrap">
+                                                <div class="diag-bk-prog-line">
+                                                    <span class="diag-bk-prog-k">Phase:</span>
+                                                    <span class="diag-bk-prog-v">@(string.IsNullOrEmpty(run.Phase) ? "—" : (run.Phase == "user" ? "User Backup" : run.Phase == "server" ? "Server Backup" : run.Phase))</span>
+                                                    <span class="diag-bk-prog-k ms-3">Done:</span>
+                                                    <span class="diag-bk-prog-v">@run.FilesDone / @run.FilesTotal (@pct%)</span>
+                                                    <span class="diag-bk-prog-k ms-3">Remaining:</span>
+                                                    <span class="diag-bk-prog-v">@(Math.Max(0, run.FilesTotal - run.FilesDone))</span>
+                                                    <span class="diag-bk-prog-k ms-3">Skipped:</span>
+                                                    <span class="diag-bk-prog-v">@run.FilesSkipped</span>
+                                                    <span class="diag-bk-prog-k ms-3">Errors:</span>
+                                                    <span class="diag-bk-prog-v" style="color:@(run.FilesErrors > 0 ? "#f87171" : "inherit");">@run.FilesErrors</span>
+                                                </div>
+                                                <div class="progress mt-2" style="height:6px;background:#0f172a;">
+                                                    <div class="progress-bar" style="width:@pct%;background:#3b82f6;transition:width .3s ease;"></div>
+                                                </div>
+                                                @if (!string.IsNullOrEmpty(run.CurrentFile))
+                                                {
+                                                    <div class="diag-bk-current" title="@run.CurrentFile">
+                                                        <i class="ri-file-3-line"></i> @run.CurrentFile
+                                                    </div>
+                                                }
+                                                <div class="diag-bk-heartbeat">
+                                                    Last update @BkHeartbeatAgo(run.LastHeartbeatUtc)
+                                                </div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                                @if (!string.IsNullOrEmpty(run.ErrorMessage))
+                                {
+                                    <tr class="diag-bk-row-errmsg">
+                                        <td colspan="9">
+                                            <i class="ri-error-warning-line me-1" style="color:#ef4444;"></i>
+                                            <span style="font-family:Consolas,monospace;font-size:.78rem;color:#fca5a5;">@run.ErrorMessage</span>
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                        }
+                        else
+                        {
+                            <tr><td colspan="9" style="text-align:center;padding:32px;color:#64748b;font-style:italic;">No backup runs recorded yet.</td></tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        .diag-bk-stat {
+            display: inline-flex; align-items: center;
+            padding: 5px 12px; border-radius: 999px;
+            background: rgba(99,102,241,.10); color: #3730a3;
+            border: 1px solid rgba(99,102,241,.22);
+            font-size: .82rem; font-weight: 600;
+        }
+        .diag-bk-stat-running   { background: rgba(59,130,246,.18); color: #1d4ed8; border-color: rgba(59,130,246,.35); }
+        .diag-bk-stat-completed { background: rgba(34,197,94,.14);  color: #15803d; border-color: rgba(34,197,94,.30); }
+        .diag-bk-stat-failed    { background: rgba(239,68,68,.14);  color: #b91c1c; border-color: rgba(239,68,68,.30); }
+
+        .diag-bk-scroll { overflow-x: auto; border-radius: 8px; }
+        .diag-bk-table {
+            width: 100%; border-collapse: collapse; font-size: .82rem;
+            background: #fff; border: 1px solid #e5e7eb; border-radius: 8px;
+        }
+        .diag-bk-table thead th {
+            background: #f3f4f6; color: #374151; font-weight: 700;
+            padding: 9px 10px; text-align: left;
+            border-bottom: 2px solid #e5e7eb; font-size: .76rem;
+            text-transform: uppercase; letter-spacing: .03em;
+            white-space: nowrap;
+        }
+        .diag-bk-sort { cursor: pointer; user-select: none; }
+        .diag-bk-sort:hover { background: #e5e7eb; }
+        .diag-bk-table tbody td {
+            padding: 8px 10px; vertical-align: middle;
+            border-bottom: 1px solid #f1f5f9; color: #1f2937;
+        }
+        .diag-bk-table tbody tr:hover { background: #f8fafc; }
+        .diag-bk-time { font-family: Consolas, monospace; font-size: .76rem; color: #475569; white-space: nowrap; }
+        .diag-bk-pill {
+            display: inline-block; padding: 3px 10px; border-radius: 12px;
+            font-size: .72rem; font-weight: 700; letter-spacing: .02em;
+            white-space: nowrap;
+        }
+        .diag-bk-pill-running    { background: #dbeafe; color: #1e40af; }
+        .diag-bk-pill-completed  { background: #dcfce7; color: #166534; }
+        .diag-bk-pill-cancelled  { background: #fef3c7; color: #92400e; }
+        .diag-bk-pill-failed     { background: #fee2e2; color: #991b1b; }
+        .diag-bk-pill-disconnect { background: #ffedd5; color: #9a3412; }
+        .diag-bk-pill-serverstop { background: #f3e8ff; color: #6b21a8; }
+
+        /* Glowing running row — pulsing left border + soft background animation */
+        .diag-bk-row-running td {
+            background: linear-gradient(90deg, rgba(59,130,246,.10), rgba(59,130,246,0) 70%);
+            border-left: 3px solid #3b82f6;
+            animation: bkRunningGlow 1.6s ease-in-out infinite;
+        }
+        @@keyframes bkRunningGlow {
+            0%, 100% { box-shadow: inset 4px 0 0 #3b82f6, 0 0 0 rgba(59,130,246,0); }
+            50%       { box-shadow: inset 4px 0 0 #60a5fa, 0 0 12px rgba(59,130,246,.35); }
+        }
+        .diag-bk-row-running-sub td {
+            background: #eff6ff;
+            border-bottom: 1px solid #dbeafe;
+            padding: 10px 14px;
+        }
+        .diag-bk-row-errmsg td {
+            background: #fef2f2; padding: 8px 14px;
+            border-bottom: 1px solid #fecaca;
+        }
+        .diag-bk-prog-wrap { color: #1e3a8a; }
+        .diag-bk-prog-line { font-size: .78rem; display: flex; flex-wrap: wrap; align-items: center; gap: 2px; }
+        .diag-bk-prog-k { color: #64748b; font-weight: 600; margin-right: 4px; }
+        .diag-bk-prog-v { color: #1e293b; font-weight: 700; font-variant-numeric: tabular-nums; }
+        .diag-bk-current {
+            margin-top: 6px; font-family: Consolas, monospace; font-size: .72rem; color: #475569;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .diag-bk-heartbeat { margin-top: 4px; font-size: .68rem; color: #64748b; }
+        .diag-bk-pulse {
+            color: #1d4ed8; font-weight: 700; animation: bkPulseText 1.2s ease-in-out infinite;
+        }
+        @@keyframes bkPulseText { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+
+        .diag-bk-running-dot {
+            display: inline-block; margin-left: 6px; color: #3b82f6; font-size: .9rem;
+            animation: bkPulseText 1s ease-in-out infinite;
+        }
+
+        @@media (max-width: 768px) {
+            .diag-bk-table { font-size: .72rem; }
+            .diag-bk-table thead th, .diag-bk-table tbody td { padding: 6px 6px; }
+            .diag-bk-scroll { max-height: 540px; overflow-y: auto; }
+        }
+    </style>
+}
+
 <style>
     .merge-danger-banner {
         background: linear-gradient(135deg, #7f1d1d, #dc2626, #7f1d1d);
@@ -3488,12 +3725,123 @@
         _auditLoading = false;
     }
 
+    // ── Backup History tab ─────────────────────────────────────────────────
+    List<LPM.Services.BackupRun> _backupRuns = new();
+    string _bkSortCol = "started";   // started | ended | duration | user | computer | files | skipped | errors | status
+    bool   _bkSortDesc = true;       // newest-first by default
+    int    _bkRefreshCountdown;      // 0 == time to refresh (every 3 ticks when tab active)
+    const int BkRefreshSec = 3;
+
+    void SwitchToBackupHistoryTab()
+    {
+        _diagTab = "backupHistory";
+        LoadBackupHistory();
+        _bkRefreshCountdown = BkRefreshSec;
+    }
+
+    void LoadBackupHistory()
+    {
+        try { _backupRuns = BackupHistorySvc.GetAll(limit: 500); }
+        catch (Exception ex) { Console.WriteLine($"[Diagnosis] LoadBackupHistory failed: {ex.Message}"); }
+    }
+
+    void ToggleBkSort(string col)
+    {
+        if (_bkSortCol == col) _bkSortDesc = !_bkSortDesc;
+        else
+        {
+            _bkSortCol = col;
+            // Sensible defaults: time-like / numeric columns default desc, text asc
+            _bkSortDesc = col is "started" or "ended" or "duration" or "files" or "skipped" or "errors";
+        }
+    }
+
+    string BkSortArrow(string col) =>
+        _bkSortCol == col ? (_bkSortDesc ? " ▼" : " ▲") : "";
+
+    IEnumerable<LPM.Services.BackupRun> SortedBackupRuns()
+    {
+        if (_backupRuns.Count == 0) return Enumerable.Empty<LPM.Services.BackupRun>();
+        IEnumerable<LPM.Services.BackupRun> q = _bkSortCol switch
+        {
+            "ended"    => _backupRuns.OrderBy(r => r.EndedAtUtc ?? DateTime.MinValue),
+            "duration" => _backupRuns.OrderBy(r => BkDurationSeconds(r)),
+            "user"     => _backupRuns.OrderBy(r => r.Username ?? "", StringComparer.OrdinalIgnoreCase),
+            "computer" => _backupRuns.OrderBy(r => BkComputerLabel(r), StringComparer.OrdinalIgnoreCase),
+            "files"    => _backupRuns.OrderBy(r => r.FilesDone),
+            "skipped"  => _backupRuns.OrderBy(r => r.FilesSkipped),
+            "errors"   => _backupRuns.OrderBy(r => r.FilesErrors),
+            "status"   => _backupRuns.OrderBy(r => r.Status ?? "", StringComparer.OrdinalIgnoreCase),
+            _          => _backupRuns.OrderBy(r => r.StartedAtUtc),
+        };
+        return _bkSortDesc ? q.Reverse() : q;
+    }
+
+    static double BkDurationSeconds(LPM.Services.BackupRun r)
+    {
+        var end = r.EndedAtUtc ?? DateTime.UtcNow;
+        return Math.Max(0, (end - r.StartedAtUtc).TotalSeconds);
+    }
+
+    static string BkDurationLabel(LPM.Services.BackupRun r)
+    {
+        var secs = BkDurationSeconds(r);
+        var live = !r.EndedAtUtc.HasValue && r.Status == LPM.Services.BackupHistoryService.StatusRunning;
+        var label = secs < 1     ? "0s"
+                  : secs < 60    ? $"{(int)secs}s"
+                  : secs < 3600  ? $"{(int)(secs/60)}m {(int)(secs%60)}s"
+                  :                $"{(int)(secs/3600)}h {(int)((secs%3600)/60)}m";
+        return live ? label + " (running)" : label;
+    }
+
+    static string BkComputerLabel(LPM.Services.BackupRun r)
+    {
+        if (!string.IsNullOrWhiteSpace(r.ClientHost)) return r.ClientHost!;
+        if (!string.IsNullOrWhiteSpace(r.ClientIp))   return r.ClientIp!;
+        return "—";
+    }
+
+    static string BkStatusLabel(string status) => status switch
+    {
+        LPM.Services.BackupHistoryService.StatusRunning              => "Running",
+        LPM.Services.BackupHistoryService.StatusCompleted            => "Completed",
+        LPM.Services.BackupHistoryService.StatusCancelledByUser      => "Cancelled (user)",
+        LPM.Services.BackupHistoryService.StatusFailed               => "Failed",
+        LPM.Services.BackupHistoryService.StatusInterruptedDisconnect => "Interrupted (disconnect)",
+        LPM.Services.BackupHistoryService.StatusInterruptedServerStop => "Interrupted (server stop)",
+        _ => status ?? "?"
+    };
+
+    static string BkHeartbeatAgo(DateTime utc)
+    {
+        var span = DateTime.UtcNow - utc;
+        if (span.TotalSeconds < 5)   return "just now";
+        if (span.TotalSeconds < 60)  return $"{(int)span.TotalSeconds}s ago";
+        if (span.TotalMinutes < 60)  return $"{(int)span.TotalMinutes}m ago";
+        if (span.TotalHours   < 24)  return $"{(int)span.TotalHours}h ago";
+        return utc.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+    }
+
+    static string BkStatusPillClass(string status) => status switch
+    {
+        LPM.Services.BackupHistoryService.StatusRunning              => "diag-bk-pill-running",
+        LPM.Services.BackupHistoryService.StatusCompleted            => "diag-bk-pill-completed",
+        LPM.Services.BackupHistoryService.StatusCancelledByUser      => "diag-bk-pill-cancelled",
+        LPM.Services.BackupHistoryService.StatusFailed               => "diag-bk-pill-failed",
+        LPM.Services.BackupHistoryService.StatusInterruptedDisconnect => "diag-bk-pill-disconnect",
+        LPM.Services.BackupHistoryService.StatusInterruptedServerStop => "diag-bk-pill-serverstop",
+        _ => "diag-bk-pill-failed"
+    };
+
     // ── Init ───────────────────────────────────────────────────────────────
     protected override Task OnInitializedAsync()
     {
         // Always-on: cheap in-memory user-activity polling drives the User Activity tab
         // (the new default tab). Heavy DB reads moved to SwitchToDbTab so the page opens fast.
         _activityUsers = ActivitySvc.GetSummary();
+        // First load is cheap (a few hundred rows max) and gives the tab badge a count
+        // to read without waiting for the user to switch tabs.
+        LoadBackupHistory();
         var ct = _cts.Token;
 
         // Eager: tiny core_users read — feeds the always-visible Impersonate dropdown at the
@@ -3512,6 +3860,19 @@
                 {
                     _activityUsers = ActivitySvc.GetSummary();
                     _activityCountdown = ActivityRefreshSec;
+                }
+                // Backup-history refresh: poll DB every BkRefreshSec seconds while the
+                // tab is open OR while any backup is running (so the "live" tab badge
+                // stays in sync even when the user is looking at a different tab).
+                if (_diagTab == "backupHistory"
+                    || _backupRuns.Any(r => r.Status == LPM.Services.BackupHistoryService.StatusRunning))
+                {
+                    _bkRefreshCountdown--;
+                    if (_bkRefreshCountdown <= 0)
+                    {
+                        LoadBackupHistory();
+                        _bkRefreshCountdown = BkRefreshSec;
+                    }
                 }
                 await InvokeAsync(StateHasChanged);
             }
