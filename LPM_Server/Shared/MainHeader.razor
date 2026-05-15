@@ -9386,7 +9386,14 @@
                     if (!el) return;
                     var key = '_quill_' + id;
                     if (window[key]) {
+                        // CRITICAL: disconnect the old Quill MutationObserver before tearing
+                        // down its DOM. Without it, the orphaned observer keeps firing on
+                        // mutations in the new Quill instance — the 'composing' undefined
+                        // error AND, far worse, the ghost Quill processes keys against a
+                        // stale delta, which is why Enter was inserting at index 0.
+                        try { if (window[key].scroll && window[key].scroll.observer) window[key].scroll.observer.disconnect(); } catch(e) {}
                         try { window[key].container.parentElement.removeChild(window[key].container.previousSibling); window[key].container.remove(); } catch(e) {}
+                        try { delete window[key]; } catch(e) { window[key] = null; }
                     }
                     var q = new Quill(el, {
                         theme: 'snow',
@@ -9409,19 +9416,19 @@
                     var defColor = _defaultColors[id];
                     if (defColor) {
                         q.format('color', defColor);
-                        // Keep default color — re-apply when format is lost
-                        q.on('selection-change', function(range) {
-                            if (range && range.length === 0) {
-                                var fmt = q.getFormat(range.index);
-                                if (!fmt.color) q.format('color', defColor, 'silent');
-                            }
-                        });
+                        // Only re-apply default color when the editor goes empty (Ctrl+A → Delete).
+                        // During normal typing, color is inherited from the preceding character —
+                        // no enforcement needed. Calling q.format() on every keystroke disturbs
+                        // Quill's selection state, which made Enter insert the newline at index 0
+                        // instead of at the cursor, and made Backspace / Delete no-op.
                         q.on('text-change', function() {
-                            var sel = q.getSelection();
-                            if (sel) {
-                                var fmt = q.getFormat(sel.index);
-                                if (!fmt.color) q.format('color', defColor, 'silent');
-                            }
+                            if (q.getLength() > 1) return;  // still has content; cursor inherits color
+                            setTimeout(function() {
+                                try {
+                                    if (q.getLength() > 1) return;  // re-check: content may have arrived
+                                    q.format('color', defColor, 'silent');
+                                } catch(e) { /* editor torn down between event and defer */ }
+                            }, 0);
                         });
                     }
                 });
@@ -9431,22 +9438,27 @@
                 // First visit: inject previous session's NextCS into bottom editor
                 if (!string.IsNullOrWhiteSpace(prevNextCs))
                 {
+                    // Use Quill's clipboard.dangerouslyPasteHTML — sets content through
+                    // Quill's parser so the internal Delta stays in sync with the DOM.
+                    // Direct q.root.innerHTML = ... leaves Quill's delta out of sync, which
+                    // is what made Enter insert at index 0 after Ctrl+A → Delete → type, and
+                    // caused the 'composing' MutationObserver error.
                     await JSRuntime.InvokeVoidAsync("eval",
-                        $"var q=window['_quill_step3-bottom-editor']; if(q){{ q.root.innerHTML={System.Text.Json.JsonSerializer.Serialize(prevNextCs)}; setTimeout(function(){{ q.formatText(0, q.getLength(), 'color', '#2563eb'); q.setSelection(q.getLength(),0); }}, 50); }}");
+                        $"var q=window['_quill_step3-bottom-editor']; if(q){{ q.setContents([]); q.clipboard.dangerouslyPasteHTML(0, {System.Text.Json.JsonSerializer.Serialize(prevNextCs)}, 'silent'); q.formatText(0, q.getLength(), 'color', '#2563eb', 'silent'); q.setSelection(q.getLength(), 0, 'silent'); }}");
                 }
             }
             else
             {
-                // Returning visit: restore user's previous edits
+                // Returning visit: restore user's previous edits (same Quill-safe HTML setter)
                 if (!string.IsNullOrEmpty(restoreTop))
                 {
                     await JSRuntime.InvokeVoidAsync("eval",
-                        $"var q=window['_quill_step3-top-editor']; if(q) q.root.innerHTML={System.Text.Json.JsonSerializer.Serialize(restoreTop)};");
+                        $"var q=window['_quill_step3-top-editor']; if(q){{ q.setContents([]); q.clipboard.dangerouslyPasteHTML(0, {System.Text.Json.JsonSerializer.Serialize(restoreTop)}, 'silent'); }}");
                 }
                 if (!string.IsNullOrEmpty(restoreBot))
                 {
                     await JSRuntime.InvokeVoidAsync("eval",
-                        $"var q=window['_quill_step3-bottom-editor']; if(q) q.root.innerHTML={System.Text.Json.JsonSerializer.Serialize(restoreBot)};");
+                        $"var q=window['_quill_step3-bottom-editor']; if(q){{ q.setContents([]); q.clipboard.dangerouslyPasteHTML(0, {System.Text.Json.JsonSerializer.Serialize(restoreBot)}, 'silent'); }}");
                 }
             }
             await JSRuntime.InvokeVoidAsync("step3Quill.attachListeners", dotNetRef);
@@ -13154,7 +13166,14 @@ string _actionPcSearch = "";
                     if (!el) return;
                     var key = '_quill_' + id;
                     if (window[key]) {
+                        // CRITICAL: disconnect the old Quill MutationObserver before tearing
+                        // down its DOM. Without it, the orphaned observer keeps firing on
+                        // mutations in the new Quill instance — the 'composing' undefined
+                        // error AND, far worse, the ghost Quill processes keys against a
+                        // stale delta, which is why Enter was inserting at index 0.
+                        try { if (window[key].scroll && window[key].scroll.observer) window[key].scroll.observer.disconnect(); } catch(e) {}
                         try { window[key].container.parentElement.removeChild(window[key].container.previousSibling); window[key].container.remove(); } catch(e) {}
+                        try { delete window[key]; } catch(e) { window[key] = null; }
                     }
                     var q = new Quill(el, {
                         theme: 'snow',
@@ -13177,18 +13196,17 @@ string _actionPcSearch = "";
                     var defColor = _defaultColors[id];
                     if (defColor) {
                         q.format('color', defColor);
-                        q.on('selection-change', function(range) {
-                            if (range && range.length === 0) {
-                                var fmt = q.getFormat(range.index);
-                                if (!fmt.color) q.format('color', defColor, 'silent');
-                            }
-                        });
+                        // Only re-apply default color when the editor goes empty (Ctrl+A → Delete).
+                        // During normal typing, color is inherited from the preceding character —
+                        // no enforcement needed. See twin block above for full reasoning.
                         q.on('text-change', function() {
-                            var sel = q.getSelection();
-                            if (sel) {
-                                var fmt = q.getFormat(sel.index);
-                                if (!fmt.color) q.format('color', defColor, 'silent');
-                            }
+                            if (q.getLength() > 1) return;
+                            setTimeout(function() {
+                                try {
+                                    if (q.getLength() > 1) return;
+                                    q.format('color', defColor, 'silent');
+                                } catch(e) { /* editor torn down between event and defer */ }
+                            }, 0);
                         });
                     }
                 });
@@ -13197,8 +13215,9 @@ string _actionPcSearch = "";
             {
                 if (!string.IsNullOrWhiteSpace(prevNextCs))
                 {
+                    // Quill-safe HTML setter (see twin block above for full reasoning).
                     await JSRuntime.InvokeVoidAsync("eval",
-                        $"var q=window['_quill_nc-bottom-editor']; if(q){{ q.root.innerHTML={System.Text.Json.JsonSerializer.Serialize(prevNextCs)}; setTimeout(function(){{ q.formatText(0, q.getLength(), 'color', '#2563eb'); q.setSelection(q.getLength(),0); }}, 50); }}");
+                        $"var q=window['_quill_nc-bottom-editor']; if(q){{ q.setContents([]); q.clipboard.dangerouslyPasteHTML(0, {System.Text.Json.JsonSerializer.Serialize(prevNextCs)}, 'silent'); q.formatText(0, q.getLength(), 'color', '#2563eb', 'silent'); q.setSelection(q.getLength(), 0, 'silent'); }}");
                 }
             }
             else
@@ -13206,12 +13225,12 @@ string _actionPcSearch = "";
                 if (!string.IsNullOrEmpty(restoreTop))
                 {
                     await JSRuntime.InvokeVoidAsync("eval",
-                        $"var q=window['_quill_nc-top-editor']; if(q) q.root.innerHTML={System.Text.Json.JsonSerializer.Serialize(restoreTop)};");
+                        $"var q=window['_quill_nc-top-editor']; if(q){{ q.setContents([]); q.clipboard.dangerouslyPasteHTML(0, {System.Text.Json.JsonSerializer.Serialize(restoreTop)}, 'silent'); }}");
                 }
                 if (!string.IsNullOrEmpty(restoreBot))
                 {
                     await JSRuntime.InvokeVoidAsync("eval",
-                        $"var q=window['_quill_nc-bottom-editor']; if(q) q.root.innerHTML={System.Text.Json.JsonSerializer.Serialize(restoreBot)};");
+                        $"var q=window['_quill_nc-bottom-editor']; if(q){{ q.setContents([]); q.clipboard.dangerouslyPasteHTML(0, {System.Text.Json.JsonSerializer.Serialize(restoreBot)}, 'silent'); }}");
                 }
             }
 
