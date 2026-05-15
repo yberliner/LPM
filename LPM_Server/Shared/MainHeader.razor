@@ -9426,6 +9426,13 @@
                             setTimeout(function() {
                                 try {
                                     if (q.getLength() > 1) return;  // re-check: content may have arrived
+                                    // Full reset: a clean Delta wipes any inherited block format
+                                    // (align / direction / list) that survived Ctrl+A → Delete.
+                                    // Without this, the previously-loaded RTL or right-aligned
+                                    // line carries over and the next typed character lands in
+                                    // that block — visible in the generated next-CS PDF as a
+                                    // right-aligned first line.
+                                    q.setContents([{ insert: '\n' }], 'silent');
                                     q.format('color', defColor, 'silent');
                                 } catch(e) { /* editor torn down between event and defer */ }
                             }, 0);
@@ -13204,6 +13211,8 @@ string _actionPcSearch = "";
                             setTimeout(function() {
                                 try {
                                     if (q.getLength() > 1) return;
+                                    // Full reset (see twin block above for reasoning)
+                                    q.setContents([{ insert: '\n' }], 'silent');
                                     q.format('color', defColor, 'silent');
                                 } catch(e) { /* editor torn down between event and defer */ }
                             }, 0);

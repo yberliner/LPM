@@ -3122,12 +3122,17 @@ public class PdfService
         {
             if (string.IsNullOrWhiteSpace(block)) continue;
 
-            // Detect RTL: explicit Quill class/attribute, or auto-detect Hebrew/Arabic characters
+            // Detect RTL: explicit Quill class/attribute, or auto-detect Hebrew/Arabic characters.
+            // Strip zero-width / BOM / bidi-control chars (U+200B-U+200F, U+FEFF, U+202A-U+202E)
+            // before the auto-detect \u2014 they're invisible artifacts (left over from previously
+            // loaded Hebrew content) that previously tripped the RTL range U+FE70-U+FEFF and
+            // right-aligned an otherwise pure-English block in the generated PDF.
             var blockText = Regex.Replace(block, "<[^>]+>", "");
             blockText = System.Net.WebUtility.HtmlDecode(blockText);
+            blockText = Regex.Replace(blockText, @"[\u200B-\u200F\u202A-\u202E\uFEFF]", "");
             bool isRtl = block.Contains("ql-direction-rtl", StringComparison.OrdinalIgnoreCase)
                       || Regex.IsMatch(block, @"dir\s*=\s*[""']rtl[""']", RegexOptions.IgnoreCase)
-                      || Regex.IsMatch(blockText, @"[\u0590-\u05FF\u0600-\u06FF\uFB50-\uFDFF\uFE70-\uFEFF]");
+                      || Regex.IsMatch(blockText, @"[\u0590-\u05FF\u0600-\u06FF\uFB50-\uFDFF\uFE70-\uFEFC]");
 
             // Check for empty paragraph (<p><br></p>)
             var innerHtml = Regex.Replace(block, @"^<[^>]+>|</[^>]+>$", "");
