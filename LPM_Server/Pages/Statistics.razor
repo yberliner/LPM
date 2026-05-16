@@ -340,6 +340,13 @@
     .stat-card-gradient-purple { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
 
     .stat-card-gradient-dark   { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); }
+
+    /* Override global styles.css rule (.apexcharts-legend-text { color: var(--default-text-color) !important })
+       which forces near-black text in light theme — invisible against the dark gradient chart background. */
+    .stat-dark-chart .apexcharts-legend-text { color: #94a3b8 !important; }
+    /* Same story for grid lines: global rule sets stroke to var(--default-border) which is rgba(255,255,255,0.1)
+       in dark theme — too faint to read against the dark gradient. Force a readable hairline. */
+    .stat-dark-chart .apexcharts-gridline { stroke: rgba(255, 255, 255, 0.15) !important; }
     .stat-metric-box {
         border-radius: 12px; padding: 12px 8px; text-align: center;
         transition: transform 0.15s; position: relative; color: #212529;
@@ -1035,7 +1042,7 @@
         </div>
         @if (_weekHistoryExpanded)
         {
-        <div class="card-body py-2 px-2" style="background:linear-gradient(180deg,#16213e 0%,#0f1729 100%);">
+        <div class="card-body py-2 px-2 stat-dark-chart" style="background:linear-gradient(180deg,#16213e 0%,#0f1729 100%);">
             <ApexChart TItem="WeekStatSummary"
                        Options="@_chartOptions"
                        Height="300"
@@ -1093,7 +1100,7 @@
         </div>
         @if (_monthHistoryExpanded)
         {
-        <div class="card-body py-2 px-2" style="background:linear-gradient(180deg,#1e1b4b 0%,#0f172a 100%);">
+        <div class="card-body py-2 px-2 stat-dark-chart" style="background:linear-gradient(180deg,#1e1b4b 0%,#0f172a 100%);">
             <ApexChart TItem="MonthStatSummary"
                        Options="@_monthChartOptions"
                        Height="300"
