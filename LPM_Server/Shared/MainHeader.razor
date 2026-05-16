@@ -8931,8 +8931,13 @@
         _arfSummary = string.Join("", lines.Select(l => $"<p style=\"margin:0;line-height:1.35;\">{l}</p>"));
         if (pushToEditor)
         {
+            // Use clipboard.convert + setContents (NOT dangerouslyPasteHTML). In Quill
+            // 1.3.7, dangerouslyPasteHTML always ends with setSelection() which steals
+            // focus — fatal here because RebuildArfSummary runs on every keystroke in
+            // the ARF table cells. setContents keeps the Delta in sync without touching
+            // selection, so focus stays in the cell the user is typing in.
             _ = JSRuntime.InvokeVoidAsync("eval",
-                $"if(window._arfQuill){{ window._arfQuill.setContents([], 'silent'); window._arfQuill.clipboard.dangerouslyPasteHTML(0, {System.Text.Json.JsonSerializer.Serialize(_arfSummary)}, 'silent'); }}");
+                $"if(window._arfQuill){{ var _d=window._arfQuill.clipboard.convert({System.Text.Json.JsonSerializer.Serialize(_arfSummary)}); window._arfQuill.setContents(_d, 'silent'); }}");
         }
     }
 
