@@ -2752,56 +2752,45 @@ public class PdfService
         return h + 8; // padding
     }
 
-    private const float PageUsableHeight = 900f; // empirical: EstimateEntryHeight over-estimates by ~25%, so we compensate
+    // Per-column estimated cap. The physical content area on A4 is ≈ 700pt after
+    // margins and header; setting the cap at 580 leaves ~17% headroom for the
+    // Hebrew / multi-paragraph cases where EstimateEntryHeight under-counts wrap.
+    private const float PageUsableHeight = 580f;
 
-    // Balanced packing: take up to (2 × PageUsableHeight) of entries per page, then split
-    // them between left and right columns aiming for equal column heights. This prevents
-    // the "everything fits in left → right empty → QuestPDF overflows into a phantom
-    // physical page" pathology that occurs when EstimateEntryHeight under-counts (e.g.,
-    // Hebrew/multi-paragraph summaries wrap more than chars/40 predicts).
+    // Greedy left-first bipartite packing: drop each entry into LEFT while it
+    // still fits the per-column cap, then into RIGHT once left is full, then
+    // start a new page once both columns are full. Priority is to keep the
+    // left column as full as possible — partial space ends up on the right.
     private static List<(List<DashboardService.SessionSummaryInfo> left, List<DashboardService.SessionSummaryInfo> right)>
         PackPagesEven(List<DashboardService.SessionSummaryInfo> summaries)
     {
         if (summaries.Count == 0) return [([], [])];
         var oldestFirst = summaries.AsEnumerable().Reverse().ToList();
         var pages = new List<(List<DashboardService.SessionSummaryInfo>, List<DashboardService.SessionSummaryInfo>)>();
-        const float pageCap = PageUsableHeight * 2f;
         int i = 0;
 
         while (i < oldestFirst.Count)
         {
-            // 1) Pull as many entries as fit one page (both columns combined).
-            //    The Count==0 guard ensures we always take at least one entry,
-            //    so an oversized entry (h > pageCap) can't infinite-loop.
-            var pageItems = new List<DashboardService.SessionSummaryInfo>();
-            float pageH = 0f;
+            var left  = new List<DashboardService.SessionSummaryInfo>();
+            var right = new List<DashboardService.SessionSummaryInfo>();
+            float leftH = 0f, rightH = 0f;
+
             while (i < oldestFirst.Count)
             {
                 float h = EstimateEntryHeight(oldestFirst[i]);
-                if (pageItems.Count == 0 || pageH + h <= pageCap)
+                // Always accept the first entry on a page, even if oversized — this
+                // prevents an infinite loop on an entry larger than PageUsableHeight.
+                if (left.Count == 0 || leftH + h <= PageUsableHeight)
                 {
-                    pageH += h;
-                    pageItems.Add(oldestFirst[i++]);
-                }
-                else break;
-            }
-
-            // 2) Split between left and right, aiming for equal column heights.
-            //    Once we move to right, we don't switch back — preserves chronological
-            //    top-to-bottom flow within each column.
-            var left  = new List<DashboardService.SessionSummaryInfo>();
-            var right = new List<DashboardService.SessionSummaryInfo>();
-            float target = pageH / 2f;
-            float leftH = 0f;
-            foreach (var entry in pageItems)
-            {
-                float h = EstimateEntryHeight(entry);
-                if (right.Count == 0 && (left.Count == 0 || leftH + h <= target))
-                {
-                    left.Add(entry);
+                    left.Add(oldestFirst[i++]);
                     leftH += h;
                 }
-                else right.Add(entry);
+                else if (rightH + h <= PageUsableHeight)
+                {
+                    right.Add(oldestFirst[i++]);
+                    rightH += h;
+                }
+                else break; // both columns full → next page
             }
 
             pages.Add((left, right));
@@ -2866,85 +2855,58 @@ public class PdfService
                         });
                     });
 
-                    page.Content().Border(1).BorderColor("#000").Column(tableCol =>
+                    // Render one half-row cell (Date & Time + What & Results) with a
+                    // per-side BorderBottom. Used for both left and right halves so the
+                    // horizontal divider only spans the side that has content — it never
+                    // crosses the centre divider into the other half.
+                    void RenderHalfEntry(QuestPDF.Infrastructure.IContainer container, DashboardService.SessionSummaryInfo entry)
                     {
-                        for (int i = 0; i < maxRows; i++)
+                        container.BorderBottom(1).BorderColor("#000").Row(entryRow =>
                         {
-                            var rowIdx = i;
-                            tableCol.Item().BorderBottom(1).BorderColor("#000").MinHeight(30).Row(row =>
+                            entryRow.ConstantItem(65).Padding(4).Column(dtCol =>
                             {
-                                // Left: Date & Time
-                                if (rowIdx < left.Count)
-                                {
-                                    var entry = left[rowIdx];
-                                    row.ConstantItem(65).Padding(4).Column(dtCol =>
-                                    {
-                                        dtCol.Item().Text(FormatDateDDMMYY(entry.SessionDate)).FontSize(11).Bold();
-                                        if (entry.LengthSeconds > 0)
-                                            dtCol.Item().Text($"S: {SecsToHMM(entry.LengthSeconds)}").FontSize(11).FontColor("#333");
-                                        if (entry.AdminSeconds > 0)
-                                            dtCol.Item().Text($"A: {SecsToHMM(entry.AdminSeconds)}").FontSize(11).FontColor("#333");
-                                    });
-
-                                    // Left: What & Results
-                                    row.RelativeItem(4).BorderLeft(1).BorderColor("#000")
-                                        .Padding(4).Column(sumCol =>
-                                    {
-                                        if (!string.IsNullOrWhiteSpace(entry.SummaryHtml))
-                                            RenderHtmlBlock(sumCol, entry.SummaryHtml!);
-                                    });
-                                }
-                                else
-                                {
-                                    row.ConstantItem(65);
-                                    row.RelativeItem(4).BorderLeft(1).BorderColor("#000");
-                                }
-
-                                // Center divider
-                                row.ConstantItem(3).Background("#000");
-
-                                // Right: Date & Time
-                                if (rowIdx < right.Count)
-                                {
-                                    var entry = right[rowIdx];
-                                    row.ConstantItem(65).Padding(4).Column(dtCol =>
-                                    {
-                                        dtCol.Item().Text(FormatDateDDMMYY(entry.SessionDate)).FontSize(11).Bold();
-                                        if (entry.LengthSeconds > 0)
-                                            dtCol.Item().Text($"S: {SecsToHMM(entry.LengthSeconds)}").FontSize(11).FontColor("#333");
-                                        if (entry.AdminSeconds > 0)
-                                            dtCol.Item().Text($"A: {SecsToHMM(entry.AdminSeconds)}").FontSize(11).FontColor("#333");
-                                    });
-
-                                    // Right: What & Results
-                                    row.RelativeItem(4).BorderLeft(1).BorderColor("#000")
-                                        .Padding(4).Column(sumCol =>
-                                    {
-                                        if (!string.IsNullOrWhiteSpace(entry.SummaryHtml))
-                                            RenderHtmlBlock(sumCol, entry.SummaryHtml!);
-                                    });
-                                }
-                                else
-                                {
-                                    row.ConstantItem(65);
-                                    row.RelativeItem(4).BorderLeft(1).BorderColor("#000");
-                                }
+                                dtCol.Item().Text(FormatDateDDMMYY(entry.SessionDate)).FontSize(11).Bold();
+                                if (entry.LengthSeconds > 0)
+                                    dtCol.Item().Text($"S: {SecsToHMM(entry.LengthSeconds)}").FontSize(11).FontColor("#333");
+                                if (entry.AdminSeconds > 0)
+                                    dtCol.Item().Text($"A: {SecsToHMM(entry.AdminSeconds)}").FontSize(11).FontColor("#333");
                             });
-                        }
-                        // Fill all remaining vertical space with vertical column lines only.
-                        // Previously we computed an empty-row count from EstimateEntryHeight, but
-                        // that estimate under-counts Hebrew/multi-paragraph rows and produced too
-                        // many 30pt rows, spilling onto a phantom second page. Extend() takes
-                        // whatever space is left, so it can never overflow.
-                        tableCol.Item().Extend().Row(row =>
-                        {
-                            row.ConstantItem(65);
-                            row.RelativeItem(4).BorderLeft(1).BorderColor("#000");
-                            row.ConstantItem(3).Background("#000");
-                            row.ConstantItem(65);
-                            row.RelativeItem(4).BorderLeft(1).BorderColor("#000");
+                            entryRow.RelativeItem().BorderLeft(1).BorderColor("#000").Padding(4).Column(sumCol =>
+                            {
+                                if (!string.IsNullOrWhiteSpace(entry.SummaryHtml))
+                                    RenderHtmlBlock(sumCol, entry.SummaryHtml!);
+                            });
                         });
-                    }); // end tableCol / page.Content
+                    }
+
+                    // Left and right halves are now INDEPENDENT vertical Columns inside
+                    // a single outer Row. Each side's per-entry BorderBottom is anchored
+                    // to that side's own flow, so horizontal divider lines on the left
+                    // do NOT line up with horizontal lines on the right — they truly span
+                    // only one half each. The centre 3pt black bar is a single full-height
+                    // ConstantItem (no row-by-row accumulation), so it can never be aligned
+                    // with the bottom edge of a left-side row.
+                    page.Content().Border(1).BorderColor("#000").Row(outer =>
+                    {
+                        outer.RelativeItem(4).Column(leftCol =>
+                        {
+                            foreach (var entry in left)
+                                RenderHalfEntry(leftCol.Item(), entry);
+                            // Fill remaining vertical space with blank — no border, no
+                            // internal date/summary divider extending below the last entry.
+                            leftCol.Item().Extend().Text("");
+                        });
+
+                        // Centre vertical divider — single full-height bar, drawn once.
+                        outer.ConstantItem(3).Background("#000");
+
+                        outer.RelativeItem(4).Column(rightCol =>
+                        {
+                            foreach (var entry in right)
+                                RenderHalfEntry(rightCol.Item(), entry);
+                            rightCol.Item().Extend().Text("");
+                        });
+                    }); // end page.Content
                 }); // end container.Page
             } // end pages loop
         });
