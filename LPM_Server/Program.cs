@@ -1373,6 +1373,7 @@ app.MapGet("/api/pc-file-annotations", (int pcId, string path,
     // can read currentUserId/Name even when the file has no annotations yet.
     System.Text.Json.Nodes.JsonNode? annotationsNode = null;
     double? scale = null;
+    int? version = null;
     var raw = folderSvc.ReadAnnotationSidecar(pcId, path, solo);
     if (!string.IsNullOrWhiteSpace(raw))
     {
@@ -1384,6 +1385,9 @@ app.MapGet("/api/pc-file-annotations", (int pcId, string path,
                 if (obj.TryGetPropertyValue("scale", out var scNode)
                     && scNode is System.Text.Json.Nodes.JsonValue scV
                     && scV.TryGetValue<double>(out var sc)) scale = sc;
+                if (obj.TryGetPropertyValue("version", out var vNode)
+                    && vNode is System.Text.Json.Nodes.JsonValue vV
+                    && vV.TryGetValue<int>(out var v)) version = v;
                 obj.TryGetPropertyValue("annotations", out annotationsNode);
             }
             else if (root is System.Text.Json.Nodes.JsonArray)
@@ -1428,6 +1432,7 @@ app.MapGet("/api/pc-file-annotations", (int pcId, string path,
         ["currentUserId"]   = currentUserId,
         ["currentUserName"] = currentUserName,
         ["scale"]           = scale,
+        ["version"]         = version,
         ["annotations"]     = outAnns
     };
     return Results.Content(envelope.ToJsonString(), "application/json");
@@ -1473,6 +1478,9 @@ app.MapPost("/api/pc-file-save-annotations", async (HttpContext ctx,
     var existingRaw = folderSvc.ReadAnnotationSidecar(pcId, path, solo);
     var existingByGuid = new Dictionary<string, System.Text.Json.Nodes.JsonNode>(StringComparer.Ordinal);
     double? existingScale = null;
+    // Format version of the on-disk sidecar: 2 = PDF-point space (no scale field),
+    // 1 = legacy canvas-pixel space (scale field). null = no existing file.
+    int? existingVersion = null;
     if (!string.IsNullOrWhiteSpace(existingRaw))
     {
         try
@@ -1484,6 +1492,9 @@ app.MapPost("/api/pc-file-save-annotations", async (HttpContext ctx,
                 if (eo.TryGetPropertyValue("scale", out var scN)
                     && scN is System.Text.Json.Nodes.JsonValue scV
                     && scV.TryGetValue<double>(out var sc)) existingScale = sc;
+                if (eo.TryGetPropertyValue("version", out var vN)
+                    && vN is System.Text.Json.Nodes.JsonValue vV
+                    && vV.TryGetValue<int>(out var v)) existingVersion = v;
                 if (eo.TryGetPropertyValue("annotations", out var an) && an is System.Text.Json.Nodes.JsonArray a) earr = a;
             }
             else if (er is System.Text.Json.Nodes.JsonArray ea) earr = ea;
@@ -1531,16 +1542,66 @@ app.MapPost("/api/pc-file-save-annotations", async (HttpContext ctx,
             var inRoot = System.Text.Json.Nodes.JsonNode.Parse(rawIncoming);
             System.Text.Json.Nodes.JsonArray? inArr = null;
             double? inScale = null;
+            int? inVersion = null;
             if (inRoot is System.Text.Json.Nodes.JsonObject io)
             {
                 if (io.TryGetPropertyValue("scale", out var scN)
                     && scN is System.Text.Json.Nodes.JsonValue scV
                     && scV.TryGetValue<double>(out var sc)) inScale = sc;
+                if (io.TryGetPropertyValue("version", out var vN)
+                    && vN is System.Text.Json.Nodes.JsonValue vV
+                    && vV.TryGetValue<int>(out var v)) inVersion = v;
                 if (io.TryGetPropertyValue("annotations", out var an) && an is System.Text.Json.Nodes.JsonArray ia) inArr = ia;
             }
             else if (inRoot is System.Text.Json.Nodes.JsonArray bare) inArr = bare;
 
             if (inScale.HasValue) existingScale = inScale.Value;
+            // Only adopt the incoming version when the file is brand new (no existing sidecar on disk).
+            // For an existing legacy v1 file (no version field but existingRaw is non-empty), this
+            // intentionally keeps existingVersion=null so the output remains v1 — never silently
+            // upgrade an existing v1 file to v2.
+            if (string.IsNullOrWhiteSpace(existingRaw) && inVersion.HasValue) existingVersion = inVersion.Value;
+
+            // Defense against a client-side race: if the client posts v2 (PDF-point values) but the
+            // on-disk file is v1 (canvas-pixel + scale envelope), convert incoming numeric fields
+            // back into v1's canvas-pixel space using existing's scale. Without this, the merged
+            // file would mix PDF-pt and canvas-pt values under a v1 envelope → silent corruption.
+            // Realistic trigger: a save fires before the client's sidecar GET resolved and the
+            // client defaulted to v2 not knowing the file was actually v1.
+            if (inArr != null && inVersion == 2 && existingVersion != 2 && !string.IsNullOrWhiteSpace(existingRaw))
+            {
+                double convScale = existingScale ?? 1.0;
+                Console.WriteLine($"[AnnSidecar-POST] format-mismatch defense: scaling incoming v2 → v1 canvas-pt using scale={convScale:F4} pcId={pcId} path='{path}'");
+                static void ScaleField(System.Text.Json.Nodes.JsonObject obj, string key, double mult)
+                {
+                    if (obj.TryGetPropertyValue(key, out var n) && n is System.Text.Json.Nodes.JsonValue v
+                        && v.TryGetValue<double>(out var d))
+                    {
+                        obj[key] = d * mult;
+                    }
+                }
+                foreach (var n in inArr)
+                {
+                    if (n is not System.Text.Json.Nodes.JsonObject ao) continue;
+                    ScaleField(ao, "x",        convScale);
+                    ScaleField(ao, "y",        convScale);
+                    ScaleField(ao, "fontSize", convScale);
+                    ScaleField(ao, "maxWidth", convScale);
+                    if (ao.TryGetPropertyValue("stroke", out var sn) && sn is System.Text.Json.Nodes.JsonObject so)
+                    {
+                        ScaleField(so, "width", convScale);
+                        if (so.TryGetPropertyValue("points", out var pn) && pn is System.Text.Json.Nodes.JsonArray pa)
+                        {
+                            foreach (var p in pa)
+                            {
+                                if (p is not System.Text.Json.Nodes.JsonObject po) continue;
+                                ScaleField(po, "x", convScale);
+                                ScaleField(po, "y", convScale);
+                            }
+                        }
+                    }
+                }
+            }
 
             if (inArr != null)
             {
@@ -1602,19 +1663,32 @@ app.MapPost("/api/pc-file-save-annotations", async (HttpContext ctx,
     }
 
     // After merge: if NOTHING survived, delete the sidecar (matches old behavior). Otherwise write
-    // the merged envelope back. We always emit the {scale, annotations} shape — never the legacy
-    // bare-array form — so the GET path stays uniform.
+    // the merged envelope back. Format is preserved per file: existing v1 files stay v1
+    // ({scale, annotations}); v2 files (and brand-new files where the client posted version:2)
+    // emit {version: 2, annotations}. Legacy bare-array form is never re-emitted.
     if (merged.Count == 0)
     {
         folderSvc.DeleteAnnotationSidecar(pcId, path, solo);
     }
     else
     {
-        var outObj = new System.Text.Json.Nodes.JsonObject
+        System.Text.Json.Nodes.JsonObject outObj;
+        if (existingVersion == 2)
         {
-            ["scale"]       = existingScale,
-            ["annotations"] = merged
-        };
+            outObj = new System.Text.Json.Nodes.JsonObject
+            {
+                ["version"]     = 2,
+                ["annotations"] = merged
+            };
+        }
+        else
+        {
+            outObj = new System.Text.Json.Nodes.JsonObject
+            {
+                ["scale"]       = existingScale,
+                ["annotations"] = merged
+            };
+        }
         folderSvc.WriteAnnotationSidecar(pcId, path, solo, outObj.ToJsonString());
     }
     return Results.Ok();

@@ -39,6 +39,7 @@ window.pcfViewer = {
                 dualMode: false,
                 dualPage: 0,
                 dualScale: 1,
+                sidecarVersion: null,
                 _loadingTask: null
             };
         }
@@ -390,6 +391,9 @@ window.pcfViewer = {
         // will pick them up via the per-page redraw at the bottom of the render loop.
         let sidecarLoaded = false;
         if (!isSameFile && newFilePath && !pane.readOnly && this._pcId) {
+            // Reset format marker — will be set to 1 or 2 once the sidecar GET resolves.
+            // If no sidecar exists yet, stays null so the first save uses v2 (PDF-point format).
+            pane.sidecarVersion = null;
             fetch(`/api/pc-file-annotations?pcId=${this._pcId}&path=${encodeURIComponent(newFilePath)}${pane.solo ? '&solo=true' : ''}`,
                   { credentials: 'include' })
                 .then(r => r && r.status === 200 ? r.json() : null)
@@ -400,10 +404,27 @@ window.pcfViewer = {
                     // and to render hover tooltips ("you" vs other names).
                     if (typeof sidecar.currentUserId === 'number') this._currentUserId = sidecar.currentUserId;
                     if (typeof sidecar.currentUserName === 'string') this._currentUserName = sidecar.currentUserName;
-                    if (!sidecar.annotations?.length) return;
-                    const sidecarScale = sidecar.scale || 1;
-                    const ratio = Math.abs(pane.baseScale - sidecarScale) > 0.001
-                        ? pane.baseScale / sidecarScale : 1;
+                    // Detect format:
+                    //   v2 sidecars carry version:2 and store PDF-point values (no scale field).
+                    //   v1 (legacy) sidecars carry a scale field and canvas-pixel values at that scale.
+                    //   No existing file → the GET envelope still returns 200 with empty annotations and
+                    //                       null scale/version → leave sidecarVersion=null so the first
+                    //                       save creates a v2 file.
+                    const isV2 = sidecar.version === 2;
+                    const hasAnns = (sidecar.annotations?.length || 0) > 0;
+                    if (isV2)         pane.sidecarVersion = 2;
+                    else if (hasAnns) pane.sidecarVersion = 1;
+                    else              pane.sidecarVersion = null;
+                    if (!hasAnns) return;
+                    // v2 → multiply by baseScale to lift PDF points into the current canvas-pixel space.
+                    // v1 → ratio = baseScale / sidecarScale (existing behavior).
+                    const ratio = isV2
+                        ? pane.baseScale
+                        : (() => {
+                            const sidecarScale = sidecar.scale || 1;
+                            return Math.abs(pane.baseScale - sidecarScale) > 0.001
+                                ? pane.baseScale / sidecarScale : 1;
+                          })();
                     const affectedOverlayPages = new Set();
                     const bgPages = []; // [{pageIdx, color}]
                     // CRITICAL: compare against the actual PDF page count (pdfDoc.numPages),
@@ -1508,7 +1529,14 @@ window.pcfViewer = {
 
         const isEditing = existingAnn != null;
         const color = this.drawColor;
-        const fontSize = isEditing ? (existingAnn.fontSize || 14) : this.fontSize;
+        // Toolbar fontSize is interpreted as PDF points. For the live input we need canvas-pixel size,
+        // which is toolbar value × pane.baseScale. Editing an EXISTING annotation reuses its in-memory
+        // canvas-pixel fontSize directly. A restored new-text input passes a dummy existingAnn
+        // (carries maxWidth only) with existingIdx=-1 — for that case we use the toolbar font, not the
+        // dummy's missing fontSize, so the restored input visually matches what the user was typing.
+        const _paneBase = (this.panes[paneId]?.baseScale || 1);
+        const isEditingExistingAnn = isEditing && typeof existingIdx === 'number' && existingIdx >= 0;
+        const fontSize = isEditingExistingAnn ? (existingAnn.fontSize || 14) : (this.fontSize * _paneBase);
 
         // Use wrapper-relative coords for positioning when provided (correct when
         // CSS zoom / max-width constraint is active); fall back to canvas coords.
@@ -1822,7 +1850,8 @@ window.pcfViewer = {
                         cur.text = text;
                         cur.lines = lines;
                         cur.color = self.drawColor;
-                        cur.fontSize = self.fontSize;
+                        // Toolbar fontSize is PDF points; in-memory storage is canvas pixels at current baseScale.
+                        cur.fontSize = self.fontSize * (self.panes[paneId]?.baseScale || 1);
                         cur.maxWidth = input.offsetWidth;
                         cur.x = x;
                         cur.y = y;
@@ -2656,6 +2685,44 @@ window.pcfViewer = {
         return out;
     },
 
+    // Convert one annotation from in-memory canvas-pixel space into PDF-point space (for v2 sidecar).
+    // Divides all positional/size fields by baseScale. Returns a new object — does NOT mutate input.
+    // bg-change has no scale-dependent fields, so it round-trips unchanged.
+    _annToPdfPts(a, baseScale) {
+        if (!(baseScale > 0)) baseScale = 1;
+        const inv = 1 / baseScale;
+        if (a.type === 'text') {
+            const out = { ...a };
+            if (typeof a.x === 'number')        out.x        = a.x * inv;
+            if (typeof a.y === 'number')        out.y        = a.y * inv;
+            if (typeof a.fontSize === 'number') out.fontSize = a.fontSize * inv;
+            if (typeof a.maxWidth === 'number') out.maxWidth = a.maxWidth * inv;
+            return out;
+        }
+        if (a.type === 'draw' && a.stroke) {
+            const out = { ...a };
+            out.stroke = {
+                ...a.stroke,
+                points: (a.stroke.points || []).map(p => ({ x: (p.x || 0) * inv, y: (p.y || 0) * inv })),
+                width:  (a.stroke.width || 1) * inv,
+            };
+            return out;
+        }
+        return a;
+    },
+
+    // Build the JSON body for sidecar POST, choosing v1 vs v2 envelope based on pane.sidecarVersion.
+    //   pane.sidecarVersion === 1 → preserve legacy { scale: baseScale, annotations: [<canvas-pixels>] }
+    //   else (2 or null)          → write v2: { version: 2, annotations: [<pdf-points>] }, no scale field
+    _buildSidecarBody(pane, sidecarAnns) {
+        if (!sidecarAnns || sidecarAnns.length === 0) return null;
+        if (pane.sidecarVersion === 1) {
+            return JSON.stringify({ scale: pane.baseScale, annotations: sidecarAnns });
+        }
+        const converted = sidecarAnns.map(a => this._annToPdfPts(a, pane.baseScale));
+        return JSON.stringify({ version: 2, annotations: converted });
+    },
+
     // Save sidecar (async). bakedPagesSet (optional) is a Set<number> of page indices that
     // were just baked into the PDF in the same save flow, so their draws/bg are omitted.
     async _saveSidecar(paneId, bakedPagesSet) {
@@ -2668,9 +2735,7 @@ window.pcfViewer = {
         const sidecarAnns = this._buildSidecarPayload(pane, bakedPagesSet);
         const soloParam = pane.solo ? '&solo=true' : '';
         const url = `/api/pc-file-save-annotations?pcId=${this._pcId}&path=${encodeURIComponent(pane.filePath)}${soloParam}`;
-        const body = sidecarAnns.length > 0
-            ? JSON.stringify({ scale: pane.baseScale, annotations: sidecarAnns })
-            : null;
+        const body = this._buildSidecarBody(pane, sidecarAnns);
         try {
             await fetch(url, { method: 'POST', credentials: 'include', body, headers: { 'Content-Type': 'application/json' } });
         } catch(e) { /* best-effort */ }
@@ -2689,9 +2754,7 @@ window.pcfViewer = {
         const sidecarAnns = this._buildSidecarPayload(pane, null);
         const soloParam = pane.solo ? '&solo=true' : '';
         const url = `/api/pc-file-save-annotations?pcId=${this._pcId}&path=${encodeURIComponent(pane.filePath)}${soloParam}`;
-        const body = sidecarAnns.length > 0
-            ? JSON.stringify({ scale: pane.baseScale, annotations: sidecarAnns })
-            : null;
+        const body = this._buildSidecarBody(pane, sidecarAnns);
         try { navigator.sendBeacon(url, body ? new Blob([body], { type: 'application/json' }) : new Blob()); } catch(e) { /* best-effort */ }
     },
 
