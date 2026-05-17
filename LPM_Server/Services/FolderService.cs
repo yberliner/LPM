@@ -1138,7 +1138,16 @@ public class FolderService
     public void WriteAnnotationSidecar(int pcId, string relativePath, bool solo, string json)
     {
         var path = GetAnnotationSidecarPath(pcId, relativePath, solo);
-        if (path != null) File.WriteAllText(path, json);
+        if (path == null) return;
+        var toWrite = json;
+        try
+        {
+            var node = System.Text.Json.Nodes.JsonNode.Parse(json);
+            if (node != null)
+                toWrite = node.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        }
+        catch { /* fall back to raw json if it isn't parseable */ }
+        File.WriteAllText(path, toWrite);
     }
 
     public void DeleteAnnotationSidecar(int pcId, string relativePath, bool solo)

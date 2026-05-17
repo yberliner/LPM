@@ -2754,33 +2754,54 @@ public class PdfService
 
     private const float PageUsableHeight = 900f; // empirical: EstimateEntryHeight over-estimates by ~25%, so we compensate
 
-    // Greedy left-first packing: fill left column completely, then right column.
-    // Identical logic to FsPackPages in PcFolder.razor — must stay in sync.
+    // Balanced packing: take up to (2 × PageUsableHeight) of entries per page, then split
+    // them between left and right columns aiming for equal column heights. This prevents
+    // the "everything fits in left → right empty → QuestPDF overflows into a phantom
+    // physical page" pathology that occurs when EstimateEntryHeight under-counts (e.g.,
+    // Hebrew/multi-paragraph summaries wrap more than chars/40 predicts).
     private static List<(List<DashboardService.SessionSummaryInfo> left, List<DashboardService.SessionSummaryInfo> right)>
         PackPagesEven(List<DashboardService.SessionSummaryInfo> summaries)
     {
         if (summaries.Count == 0) return [([], [])];
         var oldestFirst = summaries.AsEnumerable().Reverse().ToList();
         var pages = new List<(List<DashboardService.SessionSummaryInfo>, List<DashboardService.SessionSummaryInfo>)>();
+        const float pageCap = PageUsableHeight * 2f;
         int i = 0;
 
         while (i < oldestFirst.Count)
         {
-            var left  = new List<DashboardService.SessionSummaryInfo>();
-            var right = new List<DashboardService.SessionSummaryInfo>();
-            float leftH = 0, rightH = 0;
-
+            // 1) Pull as many entries as fit one page (both columns combined).
+            //    The Count==0 guard ensures we always take at least one entry,
+            //    so an oversized entry (h > pageCap) can't infinite-loop.
+            var pageItems = new List<DashboardService.SessionSummaryInfo>();
+            float pageH = 0f;
             while (i < oldestFirst.Count)
             {
                 float h = EstimateEntryHeight(oldestFirst[i]);
-                if (leftH + h <= PageUsableHeight) { leftH += h; left.Add(oldestFirst[i++]); }
+                if (pageItems.Count == 0 || pageH + h <= pageCap)
+                {
+                    pageH += h;
+                    pageItems.Add(oldestFirst[i++]);
+                }
                 else break;
             }
-            while (i < oldestFirst.Count)
+
+            // 2) Split between left and right, aiming for equal column heights.
+            //    Once we move to right, we don't switch back — preserves chronological
+            //    top-to-bottom flow within each column.
+            var left  = new List<DashboardService.SessionSummaryInfo>();
+            var right = new List<DashboardService.SessionSummaryInfo>();
+            float target = pageH / 2f;
+            float leftH = 0f;
+            foreach (var entry in pageItems)
             {
-                float h = EstimateEntryHeight(oldestFirst[i]);
-                if (rightH + h <= PageUsableHeight) { rightH += h; right.Add(oldestFirst[i++]); }
-                else break;
+                float h = EstimateEntryHeight(entry);
+                if (right.Count == 0 && (left.Count == 0 || leftH + h <= target))
+                {
+                    left.Add(entry);
+                    leftH += h;
+                }
+                else right.Add(entry);
             }
 
             pages.Add((left, right));
@@ -2910,28 +2931,11 @@ public class PdfService
                                 }
                             });
                         }
-                        // Dynamically add empty rows to fill remaining page space
-                        float pageContentH = 0f;
-                        for (int ri = 0; ri < maxRows; ri++)
-                        {
-                            float lh = ri < left.Count  ? EstimateEntryHeight(left[ri])  : 0f;
-                            float rh = ri < right.Count ? EstimateEntryHeight(right[ri]) : 0f;
-                            pageContentH += Math.Max(Math.Max(lh, rh), 30f);
-                        }
-                        // 680pt ≈ content area height; multiply by 0.75 to correct for over-estimation
-                        int emptyRowCount = Math.Max(0, (int)Math.Floor((680f - pageContentH * 0.75f) / 30f));
-                        for (int r = 0; r < emptyRowCount; r++)
-                        {
-                            tableCol.Item().BorderBottom(1).BorderColor("#000").Height(30).Row(row =>
-                            {
-                                row.ConstantItem(65);
-                                row.RelativeItem(4).BorderLeft(1).BorderColor("#000");
-                                row.ConstantItem(3).Background("#000");
-                                row.ConstantItem(65);
-                                row.RelativeItem(4).BorderLeft(1).BorderColor("#000");
-                            });
-                        }
-                        // Fill any residual fraction with vertical lines only
+                        // Fill all remaining vertical space with vertical column lines only.
+                        // Previously we computed an empty-row count from EstimateEntryHeight, but
+                        // that estimate under-counts Hebrew/multi-paragraph rows and produced too
+                        // many 30pt rows, spilling onto a phantom second page. Extend() takes
+                        // whatever space is left, so it can never overflow.
                         tableCol.Item().Extend().Row(row =>
                         {
                             row.ConstantItem(65);
