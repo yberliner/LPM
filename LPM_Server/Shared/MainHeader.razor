@@ -11433,15 +11433,19 @@ string _actionPcSearch = "";
                     Directory.CreateDirectory(Path.Combine(soloDir, "Front_Cover"));
                     Directory.CreateDirectory(Path.Combine(soloDir, "Back_Cover"));
                     Directory.CreateDirectory(Path.Combine(soloDir, "WorkSheets"));
+
+                    DashSvc.AddSessionFromManager(_smAddPcId, auditorId, _smAddCsId, dateStr,
+                        lengthSec, adminSec, _smAddIsFree,
+                        string.IsNullOrWhiteSpace(_smAddNotes) ? null : _smAddNotes,
+                        _currentCoreUserId, name: null);
+                    return;
                 }
-                else
-                {
-                    // Brand-new PC may not yet have a folder on disk. Without this, the loop
-                    // below would fail every iteration (FindPcFolder returns null → save returns
-                    // false → 100 attempts later, "Could not save session PDF" is thrown).
-                    var pcDir = FolderSvc.GetOrCreatePcFolderPath(_smAddPcId);
-                    Directory.CreateDirectory(Path.Combine(pcDir, "WorkSheets"));
-                }
+
+                // Brand-new PC may not yet have a folder on disk. Without this, the loop
+                // below would fail every iteration (FindPcFolder returns null → save returns
+                // false → 100 attempts later, "Could not save session PDF" is thrown).
+                var pcDir = FolderSvc.GetOrCreatePcFolderPath(_smAddPcId);
+                Directory.CreateDirectory(Path.Combine(pcDir, "WorkSheets"));
 
                 // Pick the first index whose file doesn't yet exist AND can actually be saved.
                 // The save is attempted with overwrite=false — if it fails (file appeared between
@@ -11458,7 +11462,7 @@ string _actionPcSearch = "";
                 for (int i = 1; i <= 100; i++)
                 {
                     var candidate = $"{datePrefix} manual - {typeLabel} {i}";
-                    if (FolderSvc.SectionFileExistsAtPath(_smAddPcId, "WorkSheets", $"{candidate}.pdf", solo: isSolo))
+                    if (FolderSvc.SectionFileExistsAtPath(_smAddPcId, "WorkSheets", $"{candidate}.pdf", solo: false))
                         continue;
 
                     var pdfBytes = FolderSvc.CreateDummySessionPdf(new FolderService.SessionPdfInfo(
@@ -11473,7 +11477,7 @@ string _actionPcSearch = "";
                         Notes:          notes,
                         FileName:       candidate));
 
-                    if (FolderSvc.SaveSectionFileToPath(_smAddPcId, "WorkSheets", $"{candidate}.pdf", pdfBytes, solo: isSolo))
+                    if (FolderSvc.SaveSectionFileToPath(_smAddPcId, "WorkSheets", $"{candidate}.pdf", pdfBytes, solo: false))
                     {
                         sessionName = candidate;
                         break;
