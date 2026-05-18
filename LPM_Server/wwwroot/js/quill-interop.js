@@ -65,12 +65,21 @@ window.quillInterop = (function () {
             // with content below the fold. We snapshot scrollX/Y around the paste, blur
             // the editor to drop the selection, then restore the page position both
             // synchronously and on the next animation frame to defeat any queued scroll.
+            // Bootstrap's reboot sets `:root { scroll-behavior: smooth }` so we
+            // temporarily override to 'auto' — otherwise the restore animates and the
+            // user sees a visible bounce.
             const savedX = window.scrollX, savedY = window.scrollY;
+            const docEl = document.documentElement;
+            const prevScrollBehavior = docEl.style.scrollBehavior;
+            docEl.style.scrollBehavior = 'auto';
             quill.setContents([], 'silent');
             quill.clipboard.dangerouslyPasteHTML(0, initialHtml, 'silent');
             quill.blur();
             window.scrollTo(savedX, savedY);
-            requestAnimationFrame(function () { window.scrollTo(savedX, savedY); });
+            requestAnimationFrame(function () {
+                window.scrollTo(savedX, savedY);
+                docEl.style.scrollBehavior = prevScrollBehavior;
+            });
         }
 
         quill.on('text-change', function () {
