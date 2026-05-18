@@ -757,11 +757,15 @@ public class DashboardService
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
-        // Find Admin-type users and resolve their PersonId
+        // Find Admin-type users and resolve their PersonId.
+        // Exclude Solo auditors: even if a Solo user has UserType='Admin' (legacy /
+        // manual override), automated messages must never reach them.
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             SELECT PersonId FROM core_users
-            WHERE UserType = 'Admin' AND IsActive = 1";
+            WHERE UserType = 'Admin'
+              AND IsActive = 1
+              AND COALESCE(StaffRole, '') != 'Solo'";
         var adminPersonIds = new List<int>();
         using var r = cmd.ExecuteReader();
         while (r.Read()) adminPersonIds.Add(r.GetInt32(0));
