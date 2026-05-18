@@ -8,9 +8,9 @@ public static class Program
     public static int Main(string[] args)
     {
         const string dbPath  = @"C:\tmp\lifepower.db";
-        const int    pcId    = 96;
-        const string pcName  = "Semay Tarkin";
-        const string outPath = @"C:\tmp\Semay_Tarkin_FS_FIXED.pdf";
+        const int    pcId    = 156;
+        const string pcName  = "Neta Elharar";
+        const string outPath = @"C:\tmp\Neta_Elharar_FS_FIXED.pdf";
 
         if (!File.Exists(dbPath))
         {

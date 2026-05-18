@@ -2753,7 +2753,13 @@
                 <span class="diag-mp-stat">
                     <i class="ri-list-check-2 me-1"></i>PCs found: <strong>@_multiProgRows.Count</strong>
                 </span>
-                <button class="btn btn-sm btn-outline-secondary ms-auto" @onclick="LoadMultiProgAsync"
+                <button class="btn btn-sm btn-outline-danger ms-auto"
+                        @onclick="DownloadMultiProgReportPdf"
+                        disabled="@(_multiProgLoading || _multiProgRows.Count == 0)"
+                        title="Download the entire table as a PDF report">
+                    <i class="ri-file-pdf-2-line me-1"></i>Download table (PDF)
+                </button>
+                <button class="btn btn-sm btn-outline-secondary" @onclick="LoadMultiProgAsync"
                         disabled="@_multiProgLoading" title="Re-scan PC folders">
                     @if (_multiProgLoading)
                     {
@@ -3675,6 +3681,14 @@
                 Console.WriteLine($"[Diagnosis] lpmRenderPdfInContainer FAILED: {ex.GetType().Name}: {ex.Message}");
             }
         }
+    }
+
+    async Task DownloadMultiProgReportPdf()
+    {
+        var url = $"/api/admin/multi-program-pcs-report?_t={DateTime.UtcNow.Ticks}";
+        var fileName = $"Multiple_Program_PCs_{DateTime.Now:yyyyMMdd_HHmm}.pdf";
+        Console.WriteLine($"[Diagnosis] Multi-Program report PDF download: '{fileName}'");
+        await JS.InvokeVoidAsync("lpmTriggerDownload", url, fileName);
     }
 
     async Task DownloadMultiProgZip(int pcId, bool solo, string pcName)

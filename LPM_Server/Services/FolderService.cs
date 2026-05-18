@@ -2,6 +2,9 @@ using System.Diagnostics;
 using System.Security.Cryptography;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Caching.Memory;
+using QuestPDF.Fluent;
+using QuestPDF.Helpers;
+using QuestPDF.Infrastructure;
 
 namespace LPM.Services;
 
@@ -922,9 +925,12 @@ public class FolderService
             var programDir = Path.Combine(dir, "Front_Cover", "Program");
             if (!Directory.Exists(programDir)) continue;
 
+            // Count only .pdf files — sidecar .ann.json files don't count
+            // (a 'Programs All.pdf' + 'Programs All.pdf.ann.json' is one logical file).
             var files = Directory.GetFiles(programDir)
                 .Select(Path.GetFileName)
                 .Where(n => !string.IsNullOrEmpty(n) &&
+                            n!.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) &&
                             !string.Equals(n, ProgramBridgeFileName, StringComparison.OrdinalIgnoreCase))
                 .Select(n => n!)
                 .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
@@ -969,6 +975,98 @@ public class FolderService
     }
 
     /// <summary>
+    /// Build a PDF report listing all 'Multiple Program PCs' rows: PC Name, Is Solo,
+    /// number of program files, and the file names. Solo PCs are highlighted in orange.
+    /// Used by the Diagnosis page 'Download table as PDF' button.
+    /// </summary>
+    public byte[] BuildMultiProgramPcsReportPdf(List<MultiProgramPcRow> rows)
+    {
+        QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
+        var sorted = rows.OrderBy(r => r.PcName, StringComparer.OrdinalIgnoreCase).ToList();
+        int totalPcs   = sorted.Count;
+        int totalFiles = sorted.Sum(r => r.Files.Count);
+        int soloPcs    = sorted.Count(r => r.Solo);
+
+        return QuestPDF.Fluent.Document.Create(doc =>
+        {
+            doc.Page(p =>
+            {
+                p.Size(QuestPDF.Helpers.PageSizes.A4);
+                p.Margin(24);
+                p.PageColor(QuestPDF.Helpers.Colors.White);
+                p.DefaultTextStyle(t => t.FontSize(9).FontFamily("Arial"));
+
+                p.Header().Column(h =>
+                {
+                    h.Item().Text("Multiple Program PCs")
+                        .FontSize(18).Bold().FontColor(QuestPDF.Helpers.Colors.Indigo.Darken3);
+                    h.Item().Text("PCs whose Front_Cover/Program folder contains more than one PDF (excluding 'Program Bridge.pdf').")
+                        .FontSize(9).FontColor(QuestPDF.Helpers.Colors.Grey.Darken1);
+                    h.Item().PaddingTop(2).Text(
+                        $"Generated {DateTime.Now:yyyy-MM-dd HH:mm}    •    PCs: {totalPcs}    •    Solo: {soloPcs}    •    Total files: {totalFiles}")
+                        .FontSize(8).Italic().FontColor(QuestPDF.Helpers.Colors.Grey.Medium);
+                    h.Item().PaddingBottom(8);
+                });
+
+                p.Content().Table(t =>
+                {
+                    t.ColumnsDefinition(c =>
+                    {
+                        c.RelativeColumn(3);   // PC Name
+                        c.ConstantColumn(50);  // Is Solo
+                        c.ConstantColumn(45);  // # Files
+                        c.RelativeColumn(5);   // Files
+                    });
+
+                    t.Header(h =>
+                    {
+                        void Hd(string label) => h.Cell()
+                            .Background(QuestPDF.Helpers.Colors.Indigo.Darken2).Padding(5)
+                            .Text(label).FontColor(QuestPDF.Helpers.Colors.White).Bold().FontSize(9);
+                        Hd("PC Name");
+                        Hd("Is Solo");
+                        Hd("# Files");
+                        Hd("Files");
+                    });
+
+                    int idx = 0;
+                    foreach (var r in sorted)
+                    {
+                        var bg = (idx++ % 2 == 0)
+                            ? QuestPDF.Helpers.Colors.Grey.Lighten4
+                            : QuestPDF.Helpers.Colors.White;
+                        var nameColor = r.Solo
+                            ? QuestPDF.Helpers.Colors.Orange.Darken2
+                            : QuestPDF.Helpers.Colors.Black;
+
+                        t.Cell().Background(bg).Padding(5)
+                            .Text(r.PcName + (r.Solo ? "  [Solo]" : ""))
+                            .FontSize(9).Bold().FontColor(nameColor);
+
+                        t.Cell().Background(bg).Padding(5).AlignCenter()
+                            .Text(r.Solo ? "Yes" : "No")
+                            .FontSize(9).FontColor(r.Solo ? QuestPDF.Helpers.Colors.Orange.Darken2 : QuestPDF.Helpers.Colors.Grey.Darken1)
+                            .Bold();
+
+                        t.Cell().Background(bg).Padding(5).AlignCenter()
+                            .Text(r.Files.Count.ToString()).FontSize(9).Bold();
+
+                        t.Cell().Background(bg).Padding(5)
+                            .Text(string.Join("\n", r.Files)).FontSize(8.5f)
+                            .FontColor(QuestPDF.Helpers.Colors.Grey.Darken3);
+                    }
+                });
+
+                p.Footer().AlignCenter().Text(t =>
+                {
+                    t.Span("Page "); t.CurrentPageNumber();
+                    t.Span(" / ");   t.TotalPages();
+                });
+            });
+        }).GeneratePdf();
+    }
+
+    /// <summary>
     /// Build an in-memory ZIP containing every program file in this PC's
     /// Front_Cover/Program/ folder, except the default 'Program Bridge.pdf'.
     /// Files on disk are AES-encrypted; they are decrypted before being added to the zip.
@@ -981,8 +1079,11 @@ public class FolderService
         var programDir = Path.Combine(pcFolder, "Front_Cover", "Program");
         if (!Directory.Exists(programDir)) return null;
 
+        // Only include .pdf files in the zip — .ann.json sidecars are baked into the
+        // PDF bytes by ReadAndBake and should not appear as separate entries.
         var files = Directory.GetFiles(programDir)
-            .Where(f => !string.Equals(Path.GetFileName(f), ProgramBridgeFileName, StringComparison.OrdinalIgnoreCase))
+            .Where(f => f.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) &&
+                        !string.Equals(Path.GetFileName(f), ProgramBridgeFileName, StringComparison.OrdinalIgnoreCase))
             .ToList();
         if (files.Count == 0) return null;
 

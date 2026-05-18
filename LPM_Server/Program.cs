@@ -1305,6 +1305,15 @@ app.MapGet("/api/admin/multi-program-pcs-zip", (int pcId, bool solo,
     return Results.File(bytes, "application/zip", $"{safe}_Program_Files.zip");
 }).RequireAuthorization("DiagnosisAccess");
 
+// Diagnosis → Multiple Program PCs tab: PDF report of the entire table.
+app.MapGet("/api/admin/multi-program-pcs-report", (LPM.Services.FolderService folderSvc) =>
+{
+    var rows = folderSvc.GetMultiProgramPcs();
+    var bytes = folderSvc.BuildMultiProgramPcsReportPdf(rows);
+    var fileName = $"Multiple_Program_PCs_{DateTime.Now:yyyyMMdd_HHmm}.pdf";
+    return Results.File(bytes, "application/pdf", fileName);
+}).RequireAuthorization("DiagnosisAccess");
+
 // Diagnosis → Multiple Program PCs tab: preview a single program PDF inside an iframe.
 // The global security-headers middleware (see top of pipeline) recognises this exact
 // path and emits 'frame-ancestors self' / no X-Frame-Options so the iframe can render.

@@ -58,8 +58,19 @@ window.quillInterop = (function () {
             // Direct quill.root.innerHTML = html leaves the Delta out of sync, which is
             // what made Enter insert at index 0 and threw the 'composing' MutationObserver
             // error on Ctrl+A → Delete → type.
+            //
+            // dangerouslyPasteHTML internally calls setSelection(end, SILENT) which
+            // updates the DOM selection. The browser then auto-scrolls the contenteditable
+            // into view — pulling the page down to the editor whenever it pre-populates
+            // with content below the fold. We snapshot scrollX/Y around the paste, blur
+            // the editor to drop the selection, then restore the page position both
+            // synchronously and on the next animation frame to defeat any queued scroll.
+            const savedX = window.scrollX, savedY = window.scrollY;
             quill.setContents([], 'silent');
             quill.clipboard.dangerouslyPasteHTML(0, initialHtml, 'silent');
+            quill.blur();
+            window.scrollTo(savedX, savedY);
+            requestAnimationFrame(function () { window.scrollTo(savedX, savedY); });
         }
 
         quill.on('text-change', function () {

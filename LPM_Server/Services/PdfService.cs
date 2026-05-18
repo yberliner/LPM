@@ -2717,52 +2717,150 @@ public class PdfService
     {
         QuestPDF.Settings.License = LicenseType.Community;
 
-        // Two-pass: first generate to count summary pages, then regenerate with correct total
-        int summaryPageCount = 1;
-        int totalPages = summaryPageCount + originalPageCount;
+        // Measure-then-pack: build the column packing using probe renders so each
+        // column is filled to the largest entry count that fits in one page.
+        var pages = PackPagesMeasured(pcName, summaries);
 
-        // Pass 1: render to count pages
-        var pass1 = BuildFolderSummaryDoc(pcName, summaries, 999).GeneratePdf();
+        // Two-pass page count: a single oversized entry (taller than one column)
+        // is force-accepted by the packer and may still split across pages at render
+        // time, so we measure the real page count once before producing the final PDF.
+        var pass1 = BuildFolderSummaryDoc(pcName, pages, 999).GeneratePdf();
+        int summaryPageCount;
         using (var ms1 = new System.IO.MemoryStream(pass1))
         using (var doc1 = PdfSharpCore.Pdf.IO.PdfReader.Open(ms1, PdfSharpCore.Pdf.IO.PdfDocumentOpenMode.Import))
         {
             summaryPageCount = doc1.PageCount;
         }
-        totalPages = summaryPageCount + originalPageCount;
+        int totalPages = summaryPageCount + originalPageCount;
 
-        // Pass 2: render with correct total
-        return BuildFolderSummaryDoc(pcName, summaries, totalPages).GeneratePdf();
+        return BuildFolderSummaryDoc(pcName, pages, totalPages).GeneratePdf();
     }
 
-    // Estimate entry height for page layout
-    // At FontSize 11pt in QuestPDF, each line is ~13pt. Padding is 8pt (4pt top + 4pt bottom).
-    private static float EstimateEntryHeight(DashboardService.SessionSummaryInfo s)
+    // Renders a single half-row entry (date column + "What & Results" column) with a
+    // per-side BorderBottom. Used for both the LEFT and RIGHT halves in production
+    // and in the column-fit probe.
+    private static void RenderHalfEntry(QuestPDF.Infrastructure.IContainer container,
+        DashboardService.SessionSummaryInfo entry)
     {
-        const float lineH = 13f;
-        float h = lineH; // date line
-        if (s.LengthSeconds > 0) h += lineH;
-        if (s.AdminSeconds > 0) h += lineH;
-        if (!string.IsNullOrWhiteSpace(s.Name)) h += lineH;
-        if (!string.IsNullOrWhiteSpace(s.SummaryHtml))
+        container.BorderBottom(1).BorderColor("#000").Row(entryRow =>
         {
-            var text = Regex.Replace(s.SummaryHtml!, "<[^>]+>", "");
-            var lines = Math.Max(1, (int)Math.Ceiling(text.Length / 40.0));
-            h += lines * lineH;
-        }
-        return h + 8; // padding
+            entryRow.ConstantItem(65).Padding(4).Column(dtCol =>
+            {
+                dtCol.Item().Text(FormatDateDDMMYY(entry.SessionDate)).FontSize(11).Bold();
+                if (entry.LengthSeconds > 0)
+                    dtCol.Item().Text($"S: {SecsToHMM(entry.LengthSeconds)}").FontSize(11).FontColor("#333");
+                if (entry.AdminSeconds > 0)
+                    dtCol.Item().Text($"A: {SecsToHMM(entry.AdminSeconds)}").FontSize(11).FontColor("#333");
+            });
+            entryRow.RelativeItem().BorderLeft(1).BorderColor("#000").Padding(4).Column(sumCol =>
+            {
+                if (!string.IsNullOrWhiteSpace(entry.SummaryHtml))
+                    RenderHtmlBlock(sumCol, entry.SummaryHtml!);
+            });
+        });
     }
 
-    // Per-column estimated cap. The physical content area on A4 is ≈ 700pt after
-    // margins and header; setting the cap at 580 leaves ~17% headroom for the
-    // Hebrew / multi-paragraph cases where EstimateEntryHeight under-counts wrap.
-    private const float PageUsableHeight = 580f;
+    // Renders a 1-page A4 probe with the same layout as production. LEFT column
+    // holds the candidate entries; RIGHT is empty. Returns true when the resulting
+    // PDF has exactly one page (i.e. the column fits).
+    private static bool ColumnFits(string pcName, List<DashboardService.SessionSummaryInfo> column)
+    {
+        var bytes = Document.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4);
+                page.Margin(25);
+                page.DefaultTextStyle(x => x.FontSize(11).FontColor("#1a1a1a").FontFamily("DejaVu Sans", "Noto Sans Hebrew"));
 
-    // Greedy left-first bipartite packing: drop each entry into LEFT while it
-    // still fits the per-column cap, then into RIGHT once left is full, then
-    // start a new page once both columns are full. Priority is to keep the
-    // left column as full as possible — partial space ends up on the right.
+                page.Header().Column(hdr =>
+                {
+                    hdr.Item().AlignCenter().PaddingBottom(8)
+                        .Text("FOLDER SUMMARY").FontSize(24).Bold();
+                    hdr.Item().PaddingBottom(8).Row(row =>
+                    {
+                        row.RelativeItem().Text(t =>
+                        {
+                            t.Span("PC Name: ").FontSize(16).FontColor("#333");
+                            t.Span(pcName).FontSize(16).Bold();
+                        });
+                        row.ConstantItem(140).AlignRight().Text(t =>
+                        {
+                            t.Span("Page: ").FontSize(16).Bold();
+                            t.Span("1").FontSize(16).Bold();
+                            t.Span(" / 1").FontSize(16).Bold();
+                        });
+                    });
+                    hdr.Item().BorderTop(1).BorderLeft(1).BorderRight(1).BorderColor("#000").Row(row =>
+                    {
+                        row.ConstantItem(65).Padding(4).AlignCenter().AlignMiddle().Text("Date & Time").FontSize(11).Bold().FontColor("#000");
+                        row.RelativeItem(4).BorderLeft(1).BorderColor("#000").Padding(4).AlignCenter().AlignMiddle()
+                            .Text("What & Results").FontSize(11).Bold().FontColor("#000");
+                        row.ConstantItem(3).Background("#000");
+                        row.ConstantItem(65).Padding(4).AlignCenter().AlignMiddle().Text("Date & Time").FontSize(11).Bold().FontColor("#000");
+                        row.RelativeItem(4).BorderLeft(1).BorderColor("#000").Padding(4).AlignCenter().AlignMiddle()
+                            .Text("What & Results").FontSize(11).Bold().FontColor("#000");
+                    });
+                });
+
+                page.Content().Border(1).BorderColor("#000").Row(outer =>
+                {
+                    outer.RelativeItem(4).Column(leftCol =>
+                    {
+                        foreach (var entry in column)
+                            RenderHalfEntry(leftCol.Item(), entry);
+                        leftCol.Item().Extend().Text("");
+                    });
+                    outer.ConstantItem(3).Background("#000");
+                    outer.RelativeItem(4).Column(rightCol =>
+                    {
+                        rightCol.Item().Extend().Text("");
+                    });
+                });
+            });
+        }).GeneratePdf();
+
+        using var ms = new System.IO.MemoryStream(bytes);
+        using var doc = PdfSharpCore.Pdf.IO.PdfReader.Open(ms, PdfSharpCore.Pdf.IO.PdfDocumentOpenMode.Import);
+        return doc.PageCount == 1;
+    }
+
+    // Binary-search the largest prefix of remaining entries that fits one column.
+    // Force-accepts an oversized first entry so packing always makes progress; the
+    // rendered output for an oversized entry will split internally (handled by the
+    // two-pass page count in GenerateSessionSummariesPdf).
+    private static List<DashboardService.SessionSummaryInfo> TakeMaxFit(
+        string pcName, List<DashboardService.SessionSummaryInfo> all, ref int i)
+    {
+        int remaining = all.Count - i;
+        if (remaining == 0) return new();
+
+        var single = all.GetRange(i, 1);
+        if (!ColumnFits(pcName, single))
+        {
+            i += 1;
+            return single;
+        }
+
+        int lo = 1, hi = remaining;
+        while (lo < hi)
+        {
+            int mid = (lo + hi + 1) / 2;
+            if (ColumnFits(pcName, all.GetRange(i, mid)))
+                lo = mid;
+            else
+                hi = mid - 1;
+        }
+        var result = all.GetRange(i, lo);
+        i += lo;
+        return result;
+    }
+
+    // Measure-then-pack: for each page, greedily fill LEFT then RIGHT with the
+    // largest run of entries that fits via probe-render measurement. Zero
+    // intentional empty space — only the final partial page is short.
     private static List<(List<DashboardService.SessionSummaryInfo> left, List<DashboardService.SessionSummaryInfo> right)>
-        PackPagesEven(List<DashboardService.SessionSummaryInfo> summaries)
+        PackPagesMeasured(string pcName, List<DashboardService.SessionSummaryInfo> summaries)
     {
         if (summaries.Count == 0) return [([], [])];
         var oldestFirst = summaries.AsEnumerable().Reverse().ToList();
@@ -2771,28 +2869,10 @@ public class PdfService
 
         while (i < oldestFirst.Count)
         {
-            var left  = new List<DashboardService.SessionSummaryInfo>();
-            var right = new List<DashboardService.SessionSummaryInfo>();
-            float leftH = 0f, rightH = 0f;
-
-            while (i < oldestFirst.Count)
-            {
-                float h = EstimateEntryHeight(oldestFirst[i]);
-                // Always accept the first entry on a page, even if oversized — this
-                // prevents an infinite loop on an entry larger than PageUsableHeight.
-                if (left.Count == 0 || leftH + h <= PageUsableHeight)
-                {
-                    left.Add(oldestFirst[i++]);
-                    leftH += h;
-                }
-                else if (rightH + h <= PageUsableHeight)
-                {
-                    right.Add(oldestFirst[i++]);
-                    rightH += h;
-                }
-                else break; // both columns full → next page
-            }
-
+            var left  = TakeMaxFit(pcName, oldestFirst, ref i);
+            var right = i < oldestFirst.Count
+                ? TakeMaxFit(pcName, oldestFirst, ref i)
+                : new List<DashboardService.SessionSummaryInfo>();
             pages.Add((left, right));
         }
 
@@ -2801,11 +2881,9 @@ public class PdfService
     }
 
     private Document BuildFolderSummaryDoc(string pcName,
-        List<DashboardService.SessionSummaryInfo> summaries, int totalPages)
+        List<(List<DashboardService.SessionSummaryInfo> left, List<DashboardService.SessionSummaryInfo> right)> pages,
+        int totalPages)
     {
-        // Same even-capacity packing as the FS modal in PcFolder.razor →
-        // modal pages match PDF pages exactly.
-        var pages = PackPagesEven(summaries);
         int summaryPageCount = pages.Count;
 
         return Document.Create(container =>
@@ -2816,7 +2894,6 @@ public class PdfService
                 // Backward page number: first summary page = totalPages, last = totalPages - summaryPageCount + 1
                 var displayPageNum = totalPages - pageIdx;
                 var (left, right) = pages[pageIdx];
-                int maxRows = Math.Max(left.Count, right.Count);
 
                 container.Page(page =>
                 {
@@ -2854,30 +2931,6 @@ public class PdfService
                                 .Text("What & Results").FontSize(11).Bold().FontColor("#000");
                         });
                     });
-
-                    // Render one half-row cell (Date & Time + What & Results) with a
-                    // per-side BorderBottom. Used for both left and right halves so the
-                    // horizontal divider only spans the side that has content — it never
-                    // crosses the centre divider into the other half.
-                    void RenderHalfEntry(QuestPDF.Infrastructure.IContainer container, DashboardService.SessionSummaryInfo entry)
-                    {
-                        container.BorderBottom(1).BorderColor("#000").Row(entryRow =>
-                        {
-                            entryRow.ConstantItem(65).Padding(4).Column(dtCol =>
-                            {
-                                dtCol.Item().Text(FormatDateDDMMYY(entry.SessionDate)).FontSize(11).Bold();
-                                if (entry.LengthSeconds > 0)
-                                    dtCol.Item().Text($"S: {SecsToHMM(entry.LengthSeconds)}").FontSize(11).FontColor("#333");
-                                if (entry.AdminSeconds > 0)
-                                    dtCol.Item().Text($"A: {SecsToHMM(entry.AdminSeconds)}").FontSize(11).FontColor("#333");
-                            });
-                            entryRow.RelativeItem().BorderLeft(1).BorderColor("#000").Padding(4).Column(sumCol =>
-                            {
-                                if (!string.IsNullOrWhiteSpace(entry.SummaryHtml))
-                                    RenderHtmlBlock(sumCol, entry.SummaryHtml!);
-                            });
-                        });
-                    }
 
                     // Left and right halves are now INDEPENDENT vertical Columns inside
                     // a single outer Row. Each side's per-entry BorderBottom is anchored
