@@ -1,0 +1,98 @@
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Configuration;
+using LPM.Services;
+using PdfSharpCore.Drawing;
+using PdfSharpCore.Pdf;
+
+namespace MakeTallTestPdf;
+
+public static class Program
+{
+    public static int Main(string[] args)
+    {
+        const string outPath = @"C:\tmp\TallTestPage.pdf";
+
+        using var doc = new PdfDocument();
+        AddPage(doc, "Normal Page (US Letter)", 612.0, 792.0);
+        AddPage(doc, "Tall Page",               1600.0, 2424.0);
+
+        // Serialise pre-normalisation bytes so we can run NormalizePdfPageSizes on them.
+        using var preMs = new MemoryStream();
+        doc.Save(preMs);
+        var preBytes = preMs.ToArray();
+        Console.WriteLine($"Pre-norm: {preBytes.Length:N0} bytes, 2 pages (612x792 + 1600x2424)");
+
+        // Run the same normaliser the session wizard / PcFolder upload uses.
+        // PdfSharpCore-only path (TryNormalizePdfDirect) → no Ghostscript / LibreOffice needed
+        // for our hand-built valid PDF. Both pages will end up at 1600x2424.
+        var config = new ConfigurationBuilder().Build();
+        var cache  = new MemoryCache(new MemoryCacheOptions());
+        var audit  = new FileAuditService(config);
+        var textAnn = new TextAnnotationService(config);
+        var folderSvc = new FolderService(config, cache, audit, textAnn);
+
+        var normBytes = folderSvc.NormalizePdfPageSizes(preBytes);
+        Console.WriteLine($"Post-norm: {normBytes.Length:N0} bytes");
+
+        System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(outPath)!);
+        File.WriteAllBytes(outPath, normBytes);
+        Console.WriteLine($"Wrote {outPath}");
+        Console.WriteLine($"Drop this into a PC folder. Both pages are at the unified normalized size.");
+        Console.WriteLine($"Page 1 content is the 612x792 'Normal' label upscaled ~2.6x to fit the canvas;");
+        Console.WriteLine($"Page 2 content is the 1600x2424 'Tall' label at native pt.");
+        Console.WriteLine($"Type text on each page with the same toolbar font size — both should look the same.");
+        return 0;
+    }
+
+    static void AddPage(PdfDocument doc, string label, double pageW, double pageH)
+    {
+        var pg = doc.AddPage();
+        pg.Width  = XUnit.FromPoint(pageW);
+        pg.Height = XUnit.FromPoint(pageH);
+
+        using var gfx = XGraphics.FromPdfPage(pg);
+
+        // Sizes scale up on the tall page so the pre-normalize content is readable
+        // both before and after normalization. pageScale = pageH / 792 is the same
+        // multiplier the fix applies to toolbar fontSize.
+        double s        = pageH / 792.0;
+        var title       = new XFont("Arial", 28 * s, XFontStyle.Bold);
+        var sub         = new XFont("Arial", 18 * s, XFontStyle.Regular);
+        var body        = new XFont("Arial", 14 * s, XFontStyle.Regular);
+        var mono        = new XFont("Courier New", 12 * s, XFontStyle.Regular);
+        var brush       = XBrushes.Black;
+        var grayPen     = new XPen(XColors.LightGray, 1);
+
+        gfx.DrawRectangle(grayPen, 24, 24, pageW - 48, pageH - 48);
+
+        gfx.DrawString(label, title, brush,
+            new XRect(0, 60 * s, pageW, 40 * s), XStringFormats.TopCenter);
+        gfx.DrawString($"Native size: {pageW:F0} × {pageH:F0} pt", sub, brush,
+            new XRect(0, 110 * s, pageW, 28 * s), XStringFormats.TopCenter);
+        gfx.DrawString($"pageScale = pageHeight / 792 ≈ {s:F2}", sub, brush,
+            new XRect(0, 145 * s, pageW, 28 * s), XStringFormats.TopCenter);
+
+        double y = 240 * s;
+        gfx.DrawString("Test the page-size-aware font fix:", body, brush, 80, y); y += 30 * s;
+        gfx.DrawString("1. Pick toolbar font size 14.", body, brush, 110, y); y += 24 * s;
+        gfx.DrawString("2. Type some text on this page.", body, brush, 110, y); y += 24 * s;
+        gfx.DrawString("3. Compare visual size with the same toolbar size on the OTHER page.", body, brush, 110, y); y += 24 * s;
+        gfx.DrawString("   With the fix: text on both pages should LOOK the same size.", body, brush, 110, y); y += 24 * s;
+        gfx.DrawString("   Without the fix: tall-page text would look ~3× smaller.", body, brush, 110, y);
+
+        y = 480 * s;
+        gfx.DrawString("Reference lines (drawn directly in the PDF, native pt):", mono, brush, 80, y);
+        y += 30 * s;
+        var ref14 = new XFont("Arial", 14, XFontStyle.Regular);
+        gfx.DrawString("This line is 14 pt (native, no pageScale).", ref14, brush, 80, y);
+        y += 50 * s;
+        var refScaled = new XFont("Arial", 14 * s, XFontStyle.Regular);
+        gfx.DrawString($"This line is 14 × {s:F2} = {14 * s:F2} pt (with pageScale).", refScaled, brush, 80, y);
+
+        gfx.DrawString("↓ Type your test text below ↓", sub, brush,
+            new XRect(0, pageH * 0.45, pageW, 28 * s), XStringFormats.TopCenter);
+
+        gfx.DrawString("Generated by MakeTallTestPdf · LPM dev tool",
+            mono, XBrushes.Gray, new XRect(0, pageH - 48 * s, pageW, 16 * s), XStringFormats.TopCenter);
+    }
+}

@@ -53,6 +53,26 @@ window.pcfViewer = {
         if (this.textInputEl) this.textInputEl.style.color = color;
     },
     setFontSize(size) { this.fontSize = size; },
+
+    // Page-size-aware fontSize multiplier. Toolbar fontSize is interpreted as
+    // "what it would look like on a standard US-Letter page" (792 pt tall).
+    // For PDFs with hyper-tall pages (e.g. lpm-norm output at 2424 pt), a literal
+    // 14 pt is microscopic, so we scale by pageHeightPt / 792 at write time only.
+    // Stored value remains in PDF points, but is now proportional to page size.
+    _pageHeightPt(paneId, pageIdx) {
+        const pane = this.panes[paneId];
+        if (!pane) return 792;
+        const pg = pane.pages && pane.pages[pageIdx];
+        if (pg && pg.pdfPtH > 0) return pg.pdfPtH;
+        if (pane.pdfPages && pane.pdfPages[pageIdx]) {
+            try { return pane.pdfPages[pageIdx].getViewport({ scale: 1 }).height; } catch (e) {}
+        }
+        return 792;
+    },
+    _pageScale(paneId, pageIdx) {
+        const h = this._pageHeightPt(paneId, pageIdx);
+        return h > 0 ? h / 792 : 1;
+    },
     setActivePane(paneId) { this.activePane = paneId; },
 
     // Proactively cancel any in-flight loadPdf for a pane.
@@ -615,7 +635,8 @@ window.pcfViewer = {
                 } catch(e) { console.log('[pcf-text] page', i, '— ERROR:', e.message); }
             })();
 
-            pane.pages.push({ canvas, overlay, vp, pageIdx: i, scale, srcDoc: pane.pdfDoc, srcPageNum: i + 1 });
+            const _naturalVp = page.getViewport({ scale: 1 });
+            pane.pages.push({ canvas, overlay, vp, pageIdx: i, scale, srcDoc: pane.pdfDoc, srcPageNum: i + 1, pdfPtW: _naturalVp.width, pdfPtH: _naturalVp.height });
             this._attachEvents(overlay, i, paneId);
             // If sidecar already resolved while we were rendering, apply its layers now.
             // This catches the race where the sidecar fetch completes before this page finished
@@ -1535,8 +1556,9 @@ window.pcfViewer = {
         // (carries maxWidth only) with existingIdx=-1 — for that case we use the toolbar font, not the
         // dummy's missing fontSize, so the restored input visually matches what the user was typing.
         const _paneBase = (this.panes[paneId]?.baseScale || 1);
+        const _pgScale = this._pageScale(paneId, pageIdx);
         const isEditingExistingAnn = isEditing && typeof existingIdx === 'number' && existingIdx >= 0;
-        const fontSize = isEditingExistingAnn ? (existingAnn.fontSize || 14) : (this.fontSize * _paneBase);
+        const fontSize = isEditingExistingAnn ? (existingAnn.fontSize || 14) : (this.fontSize * _paneBase * _pgScale);
 
         // Use wrapper-relative coords for positioning when provided (correct when
         // CSS zoom / max-width constraint is active); fall back to canvas coords.
@@ -1851,7 +1873,9 @@ window.pcfViewer = {
                         cur.lines = lines;
                         cur.color = self.drawColor;
                         // Toolbar fontSize is PDF points; in-memory storage is canvas pixels at current baseScale.
-                        cur.fontSize = self.fontSize * (self.panes[paneId]?.baseScale || 1);
+                        // Multiplied by _pageScale so "14" reads like 14pt on a US-Letter page even when the
+                        // underlying PDF page is hyper-tall (e.g. 2424 pt → pageScale ≈ 3.06).
+                        cur.fontSize = self.fontSize * (self.panes[paneId]?.baseScale || 1) * self._pageScale(paneId, pageIdx);
                         cur.maxWidth = input.offsetWidth;
                         cur.x = x;
                         cur.y = y;
