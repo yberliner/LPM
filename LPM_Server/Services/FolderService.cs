@@ -879,6 +879,127 @@ public class FolderService
         }
     }
 
+    public record MultiProgramPcRow(int PcId, string PcName, bool Solo, List<string> Files);
+
+    private const string ProgramBridgeFileName = "Program Bridge.pdf";
+
+    /// <summary>
+    /// Scans every PC folder on disk and returns those whose Front_Cover/Program/
+    /// directory contains more than one file (excluding the default 'Program Bridge.pdf').
+    /// Regular and Solo folders are reported as separate rows.
+    /// </summary>
+    public List<MultiProgramPcRow> GetMultiProgramPcs()
+    {
+        var result = new List<MultiProgramPcRow>();
+        if (!Directory.Exists(_basePath)) return result;
+
+        var nameByPcId = new Dictionary<int, string>();
+        using (var conn = new SqliteConnection(_connectionString))
+        {
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                SELECT pc.PcId,
+                       TRIM(p.FirstName || ' ' || COALESCE(NULLIF(p.LastName,''), '')) AS FullName
+                FROM core_pcs pc
+                JOIN core_persons p ON p.PersonId = pc.PcId";
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                var id = r.GetInt32(0);
+                var nm = r.IsDBNull(1) ? "" : r.GetString(1);
+                nameByPcId[id] = nm;
+            }
+        }
+
+        foreach (var dir in Directory.GetDirectories(_basePath))
+        {
+            var folderName = Path.GetFileName(dir);
+            var dashIdx = folderName.IndexOf('-');
+            if (dashIdx <= 0) continue;
+            if (!int.TryParse(folderName.AsSpan(0, dashIdx), out var pcId)) continue;
+
+            var programDir = Path.Combine(dir, "Front_Cover", "Program");
+            if (!Directory.Exists(programDir)) continue;
+
+            var files = Directory.GetFiles(programDir)
+                .Select(Path.GetFileName)
+                .Where(n => !string.IsNullOrEmpty(n) &&
+                            !string.Equals(n, ProgramBridgeFileName, StringComparison.OrdinalIgnoreCase))
+                .Select(n => n!)
+                .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (files.Count <= 1) continue;
+
+            var isSolo = folderName.EndsWith(" Solo", StringComparison.OrdinalIgnoreCase);
+            var pcName = nameByPcId.TryGetValue(pcId, out var nm) ? nm : $"PC {pcId}";
+
+            result.Add(new MultiProgramPcRow(pcId, pcName, isSolo, files));
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Returns decrypted bytes of a single file in this PC's Front_Cover/Program/ folder
+    /// with any .ann.json sidecar annotations baked into the PDF. Rejects path traversal
+    /// and the default 'Program Bridge.pdf'. For the Diagnosis preview pane only —
+    /// callers must enforce admin authorization.
+    /// </summary>
+    public byte[]? GetProgramFileBytes(int pcId, bool solo, string fileName)
+    {
+        if (string.IsNullOrEmpty(fileName)) return null;
+        // Disallow any path component — file must live directly in Program/
+        if (fileName.Contains('/') || fileName.Contains('\\') || fileName.Contains("..")) return null;
+        if (string.Equals(fileName, ProgramBridgeFileName, StringComparison.OrdinalIgnoreCase)) return null;
+
+        var pcFolder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
+        if (pcFolder == null) return null;
+
+        var programDir = Path.Combine(pcFolder, "Front_Cover", "Program");
+        var fullPath = Path.Combine(programDir, fileName);
+        // Defense-in-depth: ensure the resolved path is still inside programDir
+        var resolvedFull = Path.GetFullPath(fullPath);
+        var resolvedDir  = Path.GetFullPath(programDir) + Path.DirectorySeparatorChar;
+        if (!resolvedFull.StartsWith(resolvedDir, StringComparison.OrdinalIgnoreCase)) return null;
+        if (!File.Exists(resolvedFull)) return null;
+
+        return ReadAndBake(resolvedFull);
+    }
+
+    /// <summary>
+    /// Build an in-memory ZIP containing every program file in this PC's
+    /// Front_Cover/Program/ folder, except the default 'Program Bridge.pdf'.
+    /// Files on disk are AES-encrypted; they are decrypted before being added to the zip.
+    /// </summary>
+    public byte[]? BuildProgramFilesZip(int pcId, bool solo)
+    {
+        var pcFolder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
+        if (pcFolder == null) return null;
+
+        var programDir = Path.Combine(pcFolder, "Front_Cover", "Program");
+        if (!Directory.Exists(programDir)) return null;
+
+        var files = Directory.GetFiles(programDir)
+            .Where(f => !string.Equals(Path.GetFileName(f), ProgramBridgeFileName, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (files.Count == 0) return null;
+
+        using var ms = new MemoryStream();
+        using (var zip = new System.IO.Compression.ZipArchive(ms, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+        {
+            foreach (var file in files)
+            {
+                var entry = zip.CreateEntry(Path.GetFileName(file), System.IO.Compression.CompressionLevel.Fastest);
+                using var entryStream = entry.Open();
+                var plain = ReadAndBake(file);
+                entryStream.Write(plain, 0, plain.Length);
+            }
+        }
+        return ms.ToArray();
+    }
+
     /// <summary>
     /// Deletes Front_Cover/Back_Cover dirs only for the given (pcId, solo) entries.
     /// Use this when override should be scoped to a specific import (e.g. Single PC mode)

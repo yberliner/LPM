@@ -317,7 +317,14 @@ app.UseHttpsRedirection();
 
 app.Use(async (ctx, next) =>
 {
-    ctx.Response.Headers["X-Frame-Options"] = "DENY";
+    // Diagnosis preview endpoint embeds PDFs in a same-origin iframe — skip framing-block headers.
+    var path = ctx.Request.Path.Value ?? "";
+    var isPreviewEndpoint = path.StartsWith("/api/admin/multi-program-pcs-preview", StringComparison.OrdinalIgnoreCase);
+
+    if (!isPreviewEndpoint)
+    {
+        ctx.Response.Headers["X-Frame-Options"] = "DENY";
+    }
     ctx.Response.Headers["X-Content-Type-Options"] = "nosniff";
     ctx.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
     ctx.Response.Headers["Permissions-Policy"] = "camera=(self), microphone=(), geolocation=(), payment=()";
@@ -327,6 +334,7 @@ app.Use(async (ctx, next) =>
     // the redirect target must be listed in every affected directive — when a browser
     // follows a 301 while fetching a stylesheet/script, the FINAL URL must also match CSP.
     // Tighten further once all inline handlers are migrated to nonces.
+    var frameAncestors = isPreviewEndpoint ? "frame-ancestors 'self'; " : "frame-ancestors 'none'; ";
     ctx.Response.Headers["Content-Security-Policy"] =
         "default-src 'self'; " +
         "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.quilljs.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; " +
@@ -335,7 +343,8 @@ app.Use(async (ctx, next) =>
         "img-src    'self' data: blob:; " +
         "font-src   'self' data: https://cdn.jsdelivr.net https://cdn.quilljs.com https://fonts.gstatic.com; " +
         "connect-src 'self' ws: wss:; " +
-        "frame-ancestors 'none'; " +
+        "frame-src  'self' blob:; " +
+        frameAncestors +
         "base-uri 'self'; " +
         "form-action 'self'";
     await next();
@@ -1282,6 +1291,37 @@ app.MapGet("/api/admin/deleted-file", (string name, LPM.Services.FolderService f
     var data = folderSvc.GetBackupFileBytes(name);
     if (data == null) return Results.NotFound();
     return Results.File(data.Value.Bytes, data.Value.ContentType, name);
+}).RequireAuthorization("DiagnosisAccess");
+
+// Diagnosis → Multiple Program PCs tab: download ZIP of all program files
+// (excluding the default 'Program Bridge.pdf') for a single PC.
+app.MapGet("/api/admin/multi-program-pcs-zip", (int pcId, bool solo,
+    LPM.Services.FolderService folderSvc) =>
+{
+    var bytes = folderSvc.BuildProgramFilesZip(pcId, solo);
+    if (bytes == null) return Results.NotFound();
+    var safe = System.Text.RegularExpressions.Regex.Replace(
+        $"PC_{pcId}" + (solo ? "_Solo" : ""), @"[^A-Za-z0-9_\-]+", "_");
+    return Results.File(bytes, "application/zip", $"{safe}_Program_Files.zip");
+}).RequireAuthorization("DiagnosisAccess");
+
+// Diagnosis → Multiple Program PCs tab: preview a single program PDF inside an iframe.
+// The global security-headers middleware (see top of pipeline) recognises this exact
+// path and emits 'frame-ancestors self' / no X-Frame-Options so the iframe can render.
+app.MapGet("/api/admin/multi-program-pcs-preview", (int pcId, bool solo, string file,
+    HttpContext ctx, LPM.Services.FolderService folderSvc) =>
+{
+    var bytes = folderSvc.GetProgramFileBytes(pcId, solo, file);
+    if (bytes == null)
+    {
+        Console.WriteLine($"[multi-program-preview] NOT FOUND pcId={pcId} solo={solo} file='{file}'");
+        return Results.NotFound();
+    }
+    ctx.Response.Headers["Cache-Control"] = "private, no-store, max-age=0";
+    var ext = Path.GetExtension(file).ToLowerInvariant();
+    var mime = ext == ".pdf" ? "application/pdf" : "application/octet-stream";
+    Console.WriteLine($"[multi-program-preview] OK pcId={pcId} solo={solo} file='{file}' bytes={bytes.Length} mime={mime}");
+    return Results.File(bytes, mime, enableRangeProcessing: true);
 }).RequireAuthorization("DiagnosisAccess");
 
 // Per-circuit memory inventory PDFs (admin-only). Two variants:

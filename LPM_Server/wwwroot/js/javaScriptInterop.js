@@ -670,6 +670,52 @@ window.lpmTriggerDownload = function (url, filename) {
     document.body.removeChild(a);
 };
 
+// Diagnosis → Multiple Program PCs preview: render a PDF into a container div using
+// PDF.js (pdfjsLib is loaded globally via _Layout.cshtml). This bypasses the browser's
+// native PDF viewer entirely — works even when the browser is configured to download
+// PDFs instead of viewing them inline. Each page becomes a <canvas> appended to the
+// container, which is scrollable.
+window.lpmRenderPdfInContainer = async function (containerId, url) {
+    var container = document.getElementById(containerId);
+    if (!container) { console.warn('[lpmRenderPdfInContainer] container not found:', containerId); return; }
+    container.innerHTML = '<div style="color:#cbd5e1;padding:20px;text-align:center;">Loading PDF…</div>';
+    try {
+        var pdfjsLib = window['pdfjs-dist/build/pdf'];
+        if (!pdfjsLib) {
+            container.innerHTML = '<div style="color:#ef4444;padding:20px;">PDF.js library not loaded</div>';
+            return;
+        }
+        var resp = await fetch(url, { credentials: 'same-origin', cache: 'no-store' });
+        if (!resp.ok) {
+            console.error('[lpmRenderPdfInContainer] HTTP', resp.status, resp.statusText);
+            container.innerHTML = '<div style="color:#ef4444;padding:20px;">Failed to load PDF (HTTP ' + resp.status + ' ' + resp.statusText + ')</div>';
+            return;
+        }
+        var buffer = await resp.arrayBuffer();
+        var pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+        container.innerHTML = '';
+        var availWidth = container.clientWidth - 24;
+        for (var i = 1; i <= pdf.numPages; i++) {
+            var page = await pdf.getPage(i);
+            var baseVp = page.getViewport({ scale: 1 });
+            var scale = Math.min(Math.max(availWidth / baseVp.width, 0.6), 2.0);
+            var viewport = page.getViewport({ scale: scale });
+            var canvas = document.createElement('canvas');
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+            canvas.style.display = 'block';
+            canvas.style.margin = '0 auto 10px auto';
+            canvas.style.boxShadow = '0 2px 12px rgba(0,0,0,.4)';
+            canvas.style.background = '#fff';
+            container.appendChild(canvas);
+            await page.render({ canvasContext: canvas.getContext('2d'), viewport: viewport }).promise;
+        }
+    } catch (err) {
+        console.error('[lpmRenderPdfInContainer] error:', err);
+        container.innerHTML = '<div style="color:#ef4444;padding:20px;">Error rendering PDF: ' + (err && err.message ? err.message : err) + '</div>';
+    }
+};
+
 // Authenticated PDF download — fetches with credentials, validates content-type,
 // then triggers a blob download. Use this instead of lpmTriggerDownload when the
 // endpoint requires authentication: the <a download> click can race with Blazor's

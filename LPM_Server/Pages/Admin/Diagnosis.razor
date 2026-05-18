@@ -158,6 +158,15 @@
                 }
             </a>
         </li>
+        <li class="nav-item">
+            <a class="nav-link @(_diagTab == "multiProg" ? "active" : "")" @onclick="SwitchToMultiProgTab" href="javascript:void(0)">
+                <i class="ri-file-warning-line me-1"></i>Multiple Program PCs
+                @if (_multiProgRows.Count > 0)
+                {
+                    <span class="badge bg-secondary ms-1" style="font-size:.65rem;">@_multiProgRows.Count</span>
+                }
+            </a>
+        </li>
     </ul>
 
     @if (_diagTab == "health")
@@ -2732,6 +2741,165 @@
     </style>
 }
 
+@if (_diagTab == "multiProg")
+{
+    <div class="diag-editor-card mb-4">
+        <div class="diag-editor-header">
+            <i class="ri-file-warning-line me-2"></i>Multiple Program PCs
+            <span class="diag-editor-sub">PCs whose <code>Front_Cover/Program/</code> folder contains more than one file (the default <code>Program Bridge.pdf</code> is excluded). Click a file name to preview it below.</span>
+        </div>
+        <div class="diag-editor-body">
+            <div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+                <span class="diag-mp-stat">
+                    <i class="ri-list-check-2 me-1"></i>PCs found: <strong>@_multiProgRows.Count</strong>
+                </span>
+                <button class="btn btn-sm btn-outline-secondary ms-auto" @onclick="LoadMultiProgAsync"
+                        disabled="@_multiProgLoading" title="Re-scan PC folders">
+                    @if (_multiProgLoading)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                    }
+                    else
+                    {
+                        <i class="ri-refresh-line me-1"></i>
+                    }
+                    Refresh
+                </button>
+            </div>
+
+            @if (_multiProgLoading && _multiProgRows.Count == 0)
+            {
+                <div class="text-center py-4 text-muted">
+                    <div class="spinner-border spinner-border-sm me-2"></div>Scanning PC folders…
+                </div>
+            }
+            else if (_multiProgRows.Count == 0)
+            {
+                <div class="text-center py-4 text-muted fst-italic">
+                    No PCs have more than one program file.
+                </div>
+            }
+            else
+            {
+                <div class="diag-mp-scroll">
+                    <table class="diag-mp-table">
+                        <thead>
+                            <tr>
+                                <th class="diag-mp-sort" @onclick='() => SortMultiProgBy("PcName")'>PC Name@(MultiProgSortArrow("PcName"))</th>
+                                <th class="diag-mp-sort" @onclick='() => SortMultiProgBy("Solo")' style="text-align:center;">Is Solo@(MultiProgSortArrow("Solo"))</th>
+                                <th class="diag-mp-sort" @onclick='() => SortMultiProgBy("Count")' style="text-align:center;"># Files@(MultiProgSortArrow("Count"))</th>
+                                <th class="diag-mp-sort" @onclick='() => SortMultiProgBy("Files")'>Files@(MultiProgSortArrow("Files"))</th>
+                                <th style="text-align:center;width:90px;">Download</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in SortedMultiProgRows())
+                            {
+                                <tr>
+                                    <td style="@(row.Solo ? "color:#ea580c;font-weight:600;" : "")">
+                                        @row.PcName
+                                        @if (row.Solo)
+                                        {
+                                            <span style="display:inline-flex;align-items:center;justify-content:center;width:13px;height:13px;border-radius:3px;background:#ea580c;color:#fff;font-size:.58rem;font-weight:700;margin-left:5px;vertical-align:middle;">S</span>
+                                        }
+                                    </td>
+                                    <td style="text-align:center;">
+                                        @if (row.Solo)
+                                        {
+                                            <span style="color:#ea580c;font-weight:600;">Yes</span>
+                                        }
+                                        else
+                                        {
+                                            <span style="color:#64748b;">No</span>
+                                        }
+                                    </td>
+                                    <td style="text-align:center;font-variant-numeric:tabular-nums;font-weight:600;">@row.Files.Count</td>
+                                    <td>
+                                        @foreach (var f in row.Files)
+                                        {
+                                            <a href="javascript:void(0)" class="diag-mp-filelink"
+                                               @onclick="() => PreviewProgramFile(row.PcId, row.Solo, f)">@f</a><br/>
+                                        }
+                                    </td>
+                                    <td style="text-align:center;">
+                                        <button class="btn btn-sm btn-outline-primary"
+                                                title="Download all program files as ZIP"
+                                                @onclick="() => DownloadMultiProgZip(row.PcId, row.Solo, row.PcName)">
+                                            <i class="ri-download-2-line"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+                @if (_multiProgPreviewActive)
+                {
+                    <div class="mt-3" style="background:#0f172a;border:1px solid #334155;border-radius:8px;overflow:hidden;">
+                        <div class="d-flex align-items-center justify-content-between p-2"
+                             style="border-bottom:1px solid #334155;background:#1e293b;">
+                            <span style="color:#e2e8f0;font-weight:600;">
+                                <i class="ri-file-pdf-line me-1" style="color:#ef4444;"></i>@_multiProgPreviewName
+                                <a href="@_multiProgPreviewDirectUrl" target="_blank" rel="noopener"
+                                   class="ms-2" style="color:#60a5fa;font-size:.8rem;text-decoration:underline;"
+                                   title="Open in new tab">
+                                    <i class="ri-external-link-line"></i> Open in new tab
+                                </a>
+                            </span>
+                            <button class="btn btn-sm btn-secondary" @onclick="ClosePreview">
+                                <i class="ri-close-line me-1"></i>Close
+                            </button>
+                        </div>
+                        <div id="diagMultiProgIframe"
+                             style="width:100%;height:75vh;overflow:auto;background:#1e293b;padding:12px;"></div>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+
+    <style>
+        .diag-mp-stat {
+            display: inline-flex; align-items: center;
+            padding: 5px 12px; border-radius: 999px;
+            background: rgba(99,102,241,.10); color: #3730a3;
+            border: 1px solid rgba(99,102,241,.22);
+            font-size: .82rem; font-weight: 600;
+        }
+        .diag-mp-stat strong { font-variant-numeric: tabular-nums; }
+
+        .diag-mp-scroll { overflow-x: auto; border-radius: 8px; }
+        .diag-mp-table {
+            width: 100%; border-collapse: collapse; font-size: .85rem;
+            background: #fff; border: 1px solid #e5e7eb; border-radius: 8px;
+        }
+        .diag-mp-table thead th {
+            background: #f3f4f6; color: #374151; font-weight: 700;
+            padding: 9px 10px; text-align: left;
+            border-bottom: 2px solid #e5e7eb; font-size: .76rem;
+            text-transform: uppercase; letter-spacing: .03em;
+            white-space: nowrap;
+        }
+        .diag-mp-sort { cursor: pointer; user-select: none; }
+        .diag-mp-sort:hover { background: #e5e7eb; }
+        .diag-mp-table tbody td {
+            padding: 8px 10px; vertical-align: top;
+            border-bottom: 1px solid #f1f5f9; color: #1f2937;
+        }
+        .diag-mp-table tbody tr:hover { background: #f8fafc; }
+        .diag-mp-filelink {
+            color: #1d4ed8; text-decoration: none; font-size: .82rem;
+        }
+        .diag-mp-filelink:hover { text-decoration: underline; color: #1e3a8a; }
+
+        @@media (max-width: 768px) {
+            .diag-mp-table { font-size: .75rem; }
+            .diag-mp-table thead th, .diag-mp-table tbody td { padding: 6px 6px; }
+        }
+    </style>
+}
+
 <style>
     .merge-danger-banner {
         background: linear-gradient(135deg, #7f1d1d, #dc2626, #7f1d1d);
@@ -3400,6 +3568,126 @@
     // ── Tab ────────────────────────────────────────────────────────────────
     string _diagTab = "users";   // First-shown tab. Database tab loads on demand via SwitchToDbTab.
     bool   _dbLoaded;            // True once the DB tab's heavy reads have been kicked off
+
+    // ── Multiple Program PCs tab ───────────────────────────────────────────
+    List<FolderService.MultiProgramPcRow> _multiProgRows = new();
+    bool   _multiProgLoading;
+    string _multiProgSortCol = "PcName";
+    string _multiProgSortDir = "asc";
+    bool _multiProgPreviewActive;
+    string? _multiProgPreviewName;
+    string? _multiProgPreviewDirectUrl;
+    string? _multiProgPendingLoadUrl;
+
+    void SwitchToMultiProgTab()
+    {
+        _diagTab = "multiProg";
+        if (_multiProgRows.Count == 0 && !_multiProgLoading)
+        {
+            _ = LoadMultiProgAsync();
+        }
+    }
+
+    async Task LoadMultiProgAsync()
+    {
+        _multiProgLoading = true;
+        StateHasChanged();
+        try
+        {
+            var rows = await Task.Run(() => FolderSvc.GetMultiProgramPcs());
+            _multiProgRows = rows;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Diagnosis] Multiple Program PCs scan failed: {ex.Message}");
+            _multiProgRows = new();
+        }
+        finally
+        {
+            _multiProgLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    void SortMultiProgBy(string col)
+    {
+        if (_multiProgSortCol == col)
+            _multiProgSortDir = _multiProgSortDir == "asc" ? "desc" : "asc";
+        else
+        {
+            _multiProgSortCol = col;
+            _multiProgSortDir = col is "Count" or "Solo" ? "desc" : "asc";
+        }
+    }
+
+    string MultiProgSortArrow(string col)
+    {
+        if (_multiProgSortCol != col) return "";
+        return _multiProgSortDir == "asc" ? " ▲" : " ▼";
+    }
+
+    IEnumerable<FolderService.MultiProgramPcRow> SortedMultiProgRows()
+    {
+        IEnumerable<FolderService.MultiProgramPcRow> q = _multiProgSortCol switch
+        {
+            "Count" => _multiProgRows.OrderBy(r => r.Files.Count),
+            "Solo"  => _multiProgRows.OrderBy(r => r.Solo).ThenBy(r => r.PcName, StringComparer.OrdinalIgnoreCase),
+            "Files" => _multiProgRows.OrderBy(r => string.Join(",", r.Files), StringComparer.OrdinalIgnoreCase),
+            _       => _multiProgRows.OrderBy(r => r.PcName, StringComparer.OrdinalIgnoreCase),
+        };
+        return _multiProgSortDir == "desc" ? q.Reverse() : q;
+    }
+
+    void PreviewProgramFile(int pcId, bool solo, string fileName)
+    {
+        var url = $"/api/admin/multi-program-pcs-preview?pcId={pcId}" +
+                  $"&solo={solo.ToString().ToLowerInvariant()}" +
+                  $"&file={Uri.EscapeDataString(fileName)}" +
+                  $"&_t={DateTime.UtcNow.Ticks}";
+        _multiProgPreviewActive    = true;
+        _multiProgPreviewName      = fileName + (solo ? " (Solo)" : "");
+        _multiProgPreviewDirectUrl = url;
+        _multiProgPendingLoadUrl   = url;   // OnAfterRenderAsync will hand this to JS
+    }
+
+    void ClosePreview()
+    {
+        _multiProgPreviewActive    = false;
+        _multiProgPreviewName      = null;
+        _multiProgPreviewDirectUrl = null;
+        _multiProgPendingLoadUrl   = null;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_multiProgPendingLoadUrl != null)
+        {
+            var url = _multiProgPendingLoadUrl;
+            _multiProgPendingLoadUrl = null;
+            Console.WriteLine($"[Diagnosis] Rendering PDF preview via PDF.js → url='{url}'");
+            try
+            {
+                await JS.InvokeVoidAsync("lpmRenderPdfInContainer", "diagMultiProgIframe", url);
+                Console.WriteLine($"[Diagnosis] PDF preview render call returned for url='{url}'");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Diagnosis] lpmRenderPdfInContainer FAILED: {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+    }
+
+    async Task DownloadMultiProgZip(int pcId, bool solo, string pcName)
+    {
+        var url = $"/api/admin/multi-program-pcs-zip?pcId={pcId}&solo={solo.ToString().ToLowerInvariant()}" +
+                  $"&_t={DateTime.UtcNow.Ticks}";
+        // Strip only path-illegal chars — keep Hebrew/Unicode intact for the download attribute.
+        var baseName = string.IsNullOrWhiteSpace(pcName) ? $"PC_{pcId}" : pcName;
+        var safe = System.Text.RegularExpressions.Regex.Replace(baseName, @"[<>:""/\\|?*\x00-\x1f]+", "_");
+        var fileName = $"{safe}{(solo ? " (Solo)" : "")} - Program Files.zip";
+        Console.WriteLine($"[Diagnosis] Multi-Program ZIP download: PC {pcId} solo={solo} '{fileName}'");
+        await JS.InvokeVoidAsync("lpmTriggerDownload", url, fileName);
+    }
 
     // ── Inline delete confirmation (sess_* / cs_* rows) ───────────────────
     (string Table, string PkVal)? _pendingDelete;
