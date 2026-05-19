@@ -1305,6 +1305,34 @@ app.MapGet("/api/admin/multi-program-pcs-zip", (int pcId, bool solo,
     return Results.File(bytes, "application/zip", $"{safe}_Program_Files.zip");
 }).RequireAuthorization("DiagnosisAccess");
 
+// Diagnosis → Multiple Program PCs tab → Fix Program: combine selected PDFs (in user
+// order, with annotations baked), normalize, and save as "Combined programs N.pdf"
+// in the PC's Front_Cover/Program folder.
+app.MapPost("/api/admin/multi-program-pcs-combine",
+    async (LPM.Services.FolderService folderSvc, MultiProgramCombineRequest req) =>
+{
+    if (req == null || req.Files == null || req.Files.Count == 0)
+        return Results.BadRequest(new { ok = false, error = "Missing files" });
+
+    var result = await folderSvc.BuildCombinedProgramFileAsync(req.PcId, req.Solo, req.Files);
+    if (!result.Ok)
+        return Results.Json(new
+        {
+            ok = false,
+            error = result.Error ?? "Unknown error",
+            normalizeWarning = result.NormalizeWarning
+        });
+
+    return Results.Json(new
+    {
+        ok = true,
+        fileName = result.SavedFileName,
+        engine = result.Engine,
+        pageCount = result.PageCount,
+        normalizeWarning = result.NormalizeWarning
+    });
+}).RequireAuthorization("DiagnosisAccess");
+
 // Diagnosis → Multiple Program PCs tab: PDF report of the entire table.
 app.MapGet("/api/admin/multi-program-pcs-report", (LPM.Services.FolderService folderSvc) =>
 {
@@ -2700,3 +2728,8 @@ public record BackupDownloadedDto(
     string? FullPath,
     string? PcName,
     string? When);
+
+public record MultiProgramCombineRequest(
+    int PcId,
+    bool Solo,
+    List<string> Files);

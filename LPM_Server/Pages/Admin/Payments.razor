@@ -173,8 +173,8 @@
                                     }
                                     <i class="@ico me-1"></i>@lbl
                                 </td>
-                                <td class="py-2 small text-end fw-semibold">
-                                    @if (up.Amount <= 0)
+                                <td class="py-2 small text-end fw-semibold" style="@(up.Amount < 0 ? "color:#dc2626;" : "")">
+                                    @if (up.Amount == 0)
                                     {
                                         <text>&mdash;</text>
                                     }
@@ -388,20 +388,20 @@
                                             else if (item.ItemType == "Book") { <span style="color:#d97706;">Book</span> }
                                             else { @($"{item.HoursBought}h") }
                                         </td>
-                                        <td class="small text-end" style="color:#212529;">@(item.AmountPaid > 0 ? $"{CurrSym(_viewDetail.Currency)}{(int)Math.Round(item.AmountPaid)}" : "\u2014")</td>
+                                        <td class="small text-end" style="@(item.AmountPaid < 0 ? "color:#dc2626;" : "color:#212529;")">@(item.AmountPaid != 0 ? $"{CurrSym(_viewDetail.Currency)}{(int)Math.Round(item.AmountPaid)}" : "\u2014")</td>
                                     </tr>
                                 }
                             </tbody>
                             <tfoot style="background:#f8f9fa;">
                                 <tr style="color:#212529;">
                                     <td class="small fw-semibold" style="color:#212529;">@LS.T("stats.total")</td>
-                                    <td class="small text-center fw-semibold" style="color:#212529;">
-                                        @{ var hrs = _viewDetail.Items.Where(i => i.ItemType == "Auditing").Sum(i => i.HoursBought); }
-                                        @(hrs > 0 ? $"{hrs}h" : "\u2014")
+                                    @{ var hrs = _viewDetail.Items.Where(i => i.ItemType == "Auditing").Sum(i => i.HoursBought); }
+                                    <td class="small text-center fw-semibold" style="@(hrs < 0 ? "color:#dc2626;" : "color:#212529;")">
+                                        @(hrs != 0 ? $"{hrs}h" : "\u2014")
                                     </td>
-                                    <td class="small text-end fw-semibold" style="color:#212529;">
-                                        @{ var totalAmt = (int)Math.Round(_viewDetail.Items.Sum(i => i.AmountPaid)); }
-                                        @(totalAmt > 0 ? $"{CurrSym(_viewDetail.Currency)}{totalAmt}" : "\u2014")
+                                    @{ var totalAmt = (int)Math.Round(_viewDetail.Items.Sum(i => i.AmountPaid)); }
+                                    <td class="small text-end fw-semibold" style="@(totalAmt < 0 ? "color:#dc2626;" : "color:#212529;")">
+                                        @(totalAmt != 0 ? $"{CurrSym(_viewDetail.Currency)}{totalAmt}" : "\u2014")
                                     </td>
                                 </tr>
                             </tfoot>
@@ -443,7 +443,7 @@
                                                 }
                                                 <i class="@dico me-1" style="color:#212529;"></i>@dlbl
                                             </td>
-                                            <td class="small text-end fw-semibold" style="color:#212529;">@(pm.Amount > 0 ? $"{CurrSym(_viewDetail.Currency)}{pm.Amount}" : "\u2014")</td>
+                                            <td class="small text-end fw-semibold" style="@(pm.Amount < 0 ? "color:#dc2626;" : "color:#212529;")">@(pm.Amount != 0 ? $"{CurrSym(_viewDetail.Currency)}{pm.Amount}" : "\u2014")</td>
                                             <td class="small" style="color:#212529;">@(pm.PaymentDate != null ? Fmt(pm.PaymentDate) : "\u2014")</td>
                                             <td class="text-center">
                                                 @if (pm.MethodType == "ToBePaid" || pm.MethodType == "Credit" || pm.MethodType == "Transfer")

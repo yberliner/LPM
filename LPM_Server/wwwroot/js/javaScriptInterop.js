@@ -670,6 +670,26 @@ window.lpmTriggerDownload = function (url, filename) {
     document.body.removeChild(a);
 };
 
+// Same-origin POST helper that returns the response body as a string. Cookies are
+// automatically included. Used by the Diagnosis 'Fix Program' submit to call the
+// /api/admin/multi-program-pcs-combine endpoint without needing an HttpClient on the
+// Blazor server side.
+window.lpmPostJson = async function (url, payloadJson) {
+    try {
+        var resp = await fetch(url, {
+            method: 'POST',
+            credentials: 'same-origin',
+            cache: 'no-store',
+            headers: { 'Content-Type': 'application/json' },
+            body: payloadJson
+        });
+        var text = await resp.text();
+        return JSON.stringify({ status: resp.status, ok: resp.ok, body: text });
+    } catch (err) {
+        return JSON.stringify({ status: 0, ok: false, body: '', error: (err && err.message) ? err.message : String(err) });
+    }
+};
+
 // Diagnosis → Multiple Program PCs preview: render a PDF into a container div using
 // PDF.js (pdfjsLib is loaded globally via _Layout.cshtml). This bypasses the browser's
 // native PDF viewer entirely — works even when the browser is configured to download

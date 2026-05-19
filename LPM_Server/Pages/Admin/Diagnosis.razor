@@ -2795,6 +2795,7 @@
                                 <th class="diag-mp-sort" @onclick='() => SortMultiProgBy("Solo")' style="text-align:center;">Is Solo@(MultiProgSortArrow("Solo"))</th>
                                 <th class="diag-mp-sort" @onclick='() => SortMultiProgBy("Count")' style="text-align:center;"># Files@(MultiProgSortArrow("Count"))</th>
                                 <th class="diag-mp-sort" @onclick='() => SortMultiProgBy("Files")'>Files@(MultiProgSortArrow("Files"))</th>
+                                <th style="text-align:center;width:110px;">Fix Program</th>
                                 <th style="text-align:center;width:90px;">Download</th>
                             </tr>
                         </thead>
@@ -2826,6 +2827,13 @@
                                             <a href="javascript:void(0)" class="diag-mp-filelink"
                                                @onclick="() => PreviewProgramFile(row.PcId, row.Solo, f)">@f</a><br/>
                                         }
+                                    </td>
+                                    <td style="text-align:center;">
+                                        <button class="diag-mp-fix-btn"
+                                                title="Combine selected program PDFs into one normalized file"
+                                                @onclick="() => OpenFixProgramModal(row.PcId, row.Solo, row.PcName, row.Files)">
+                                            <i class="ri-tools-fill"></i>
+                                        </button>
                                     </td>
                                     <td style="text-align:center;">
                                         <button class="btn btn-sm btn-outline-primary"
@@ -2899,11 +2907,126 @@
         }
         .diag-mp-filelink:hover { text-decoration: underline; color: #1e3a8a; }
 
+        .diag-mp-fix-btn {
+            background: linear-gradient(135deg, #f59e0b, #ef4444);
+            border: none; border-radius: 6px; color: #fff;
+            width: 36px; height: 32px; cursor: pointer;
+            display: inline-flex; align-items: center; justify-content: center;
+            font-size: 1.05rem;
+            box-shadow: 0 0 8px rgba(245,158,11,.55), 0 0 14px rgba(239,68,68,.35);
+            animation: diagMpFixGlow 1.6s ease-in-out infinite;
+            transition: transform .15s ease;
+        }
+        .diag-mp-fix-btn:hover { transform: scale(1.08); }
+        .diag-mp-fix-btn:active { transform: scale(.95); }
+        @@keyframes diagMpFixGlow {
+            0%, 100% { box-shadow: 0 0 8px rgba(245,158,11,.55), 0 0 14px rgba(239,68,68,.35); }
+            50%      { box-shadow: 0 0 14px rgba(245,158,11,.85), 0 0 22px rgba(239,68,68,.65); }
+        }
+
         @@media (max-width: 768px) {
             .diag-mp-table { font-size: .75rem; }
             .diag-mp-table thead th, .diag-mp-table tbody td { padding: 6px 6px; }
         }
     </style>
+}
+
+@if (_fixProgModalOpen)
+{
+    <div style="position:fixed;inset:0;background:rgba(15,23,42,.6);z-index:9998;
+                display:flex;align-items:center;justify-content:center;padding:20px;"
+         @onclick="CloseFixProgramModal">
+        <div style="background:#fff;border-radius:10px;max-width:680px;width:100%;
+                    max-height:90vh;display:flex;flex-direction:column;
+                    box-shadow:0 20px 60px rgba(0,0,0,.4);"
+             @onclick:stopPropagation="true">
+            <div style="padding:14px 18px;border-bottom:1px solid #e5e7eb;
+                        background:linear-gradient(135deg,#f59e0b,#ef4444);color:#fff;border-radius:10px 10px 0 0;
+                        display:flex;align-items:center;justify-content:space-between;">
+                <div>
+                    <div style="font-weight:700;font-size:1.05rem;">
+                        <i class="ri-tools-fill me-2"></i>Fix Program — @_fixProgPcName
+                    </div>
+                    <div style="font-size:.78rem;opacity:.92;margin-top:2px;">
+                        Assign numbers (1, 2, 3…) for the files you want to combine, in order. Leave blank to skip.
+                    </div>
+                </div>
+                <button style="background:transparent;border:none;color:#fff;font-size:1.4rem;cursor:pointer;"
+                        @onclick="CloseFixProgramModal" title="Close">×</button>
+            </div>
+
+            <div style="padding:14px 18px;overflow-y:auto;">
+                @if (_fixProgBusy)
+                {
+                    <div class="text-center py-3">
+                        <div class="spinner-border text-warning" role="status"></div>
+                        <div class="mt-2" style="color:#475569;font-size:.85rem;">
+                            Combining + normalizing… this may take up to 30 seconds.
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <table style="width:100%;border-collapse:collapse;font-size:.85rem;">
+                        <thead>
+                            <tr style="background:#f3f4f6;">
+                                <th style="text-align:center;padding:6px;width:70px;border-bottom:1px solid #e5e7eb;">Order</th>
+                                <th style="text-align:left;padding:6px;border-bottom:1px solid #e5e7eb;">File name</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @for (int i = 0; i < _fixProgFiles.Count; i++)
+                            {
+                                var idx = i;
+                                <tr style="border-bottom:1px solid #f1f5f9;">
+                                    <td style="text-align:center;padding:6px;">
+                                        <input type="number" min="1" max="@_fixProgFiles.Count"
+                                               class="form-control form-control-sm text-center"
+                                               style="width:60px;display:inline-block;font-variant-numeric:tabular-nums;"
+                                               value="@(_fixProgOrders[idx]?.ToString() ?? "")"
+                                               @oninput="(ChangeEventArgs e) => OnFixProgOrderChanged(idx, e.Value?.ToString())" />
+                                    </td>
+                                    <td style="padding:6px;font-family:Consolas,monospace;color:#1f2937;">
+                                        @_fixProgFiles[idx]
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+
+                    @if (!string.IsNullOrEmpty(_fixProgError))
+                    {
+                        <div class="alert alert-danger mt-3 mb-0 py-2" style="font-size:.85rem;">
+                            <i class="ri-error-warning-fill me-1"></i>@_fixProgError
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(_fixProgSuccess))
+                    {
+                        <div class="alert alert-success mt-3 mb-0 py-2" style="font-size:.85rem;">
+                            <i class="ri-checkbox-circle-fill me-1"></i>@_fixProgSuccess
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(_fixProgWarning))
+                    {
+                        <div class="alert alert-warning mt-3 mb-0 py-2" style="font-size:.85rem;">
+                            <i class="ri-alert-fill me-1"></i>@_fixProgWarning
+                        </div>
+                    }
+                }
+            </div>
+
+            <div style="padding:12px 18px;border-top:1px solid #e5e7eb;
+                        display:flex;justify-content:flex-end;gap:8px;background:#fafafa;border-radius:0 0 10px 10px;">
+                <button class="btn btn-sm btn-secondary" @onclick="CloseFixProgramModal" disabled="@_fixProgBusy">
+                    Close
+                </button>
+                <button class="btn btn-sm btn-warning fw-bold" @onclick="SubmitFixProgram"
+                        disabled="@(_fixProgBusy || _fixProgCompleted)">
+                    <i class="ri-tools-fill me-1"></i>Combine + Normalize
+                </button>
+            </div>
+        </div>
+    </div>
 }
 
 <style>
@@ -3585,6 +3708,19 @@
     string? _multiProgPreviewDirectUrl;
     string? _multiProgPendingLoadUrl;
 
+    // ── Fix Program modal state ──
+    bool _fixProgModalOpen;
+    bool _fixProgBusy;
+    bool _fixProgCompleted;
+    int _fixProgPcId;
+    bool _fixProgSolo;
+    string _fixProgPcName = "";
+    List<string> _fixProgFiles = new();
+    List<int?> _fixProgOrders = new();
+    string _fixProgError = "";
+    string _fixProgSuccess = "";
+    string _fixProgWarning = "";
+
     void SwitchToMultiProgTab()
     {
         _diagTab = "multiProg";
@@ -3680,6 +3816,139 @@
             {
                 Console.WriteLine($"[Diagnosis] lpmRenderPdfInContainer FAILED: {ex.GetType().Name}: {ex.Message}");
             }
+        }
+    }
+
+    void OpenFixProgramModal(int pcId, bool solo, string pcName, List<string> files)
+    {
+        _fixProgPcId       = pcId;
+        _fixProgSolo       = solo;
+        _fixProgPcName     = pcName + (solo ? " (Solo)" : "");
+        _fixProgFiles      = files.ToList();
+        _fixProgOrders     = Enumerable.Repeat<int?>(null, _fixProgFiles.Count).ToList();
+        _fixProgError      = "";
+        _fixProgSuccess    = "";
+        _fixProgWarning    = "";
+        _fixProgBusy       = false;
+        _fixProgCompleted  = false;
+        _fixProgModalOpen  = true;
+    }
+
+    void CloseFixProgramModal()
+    {
+        if (_fixProgBusy) return;
+        _fixProgModalOpen = false;
+    }
+
+    void OnFixProgOrderChanged(int idx, string? raw)
+    {
+        if (idx < 0 || idx >= _fixProgOrders.Count) return;
+        _fixProgError = "";
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            _fixProgOrders[idx] = null;
+            return;
+        }
+        if (int.TryParse(raw, out var n) && n >= 1 && n <= _fixProgFiles.Count)
+            _fixProgOrders[idx] = n;
+        else
+            _fixProgOrders[idx] = null;
+    }
+
+    async Task SubmitFixProgram()
+    {
+        _fixProgError   = "";
+        _fixProgWarning = "";
+        _fixProgSuccess = "";
+
+        // Build (fileName, order) pairs for assigned entries
+        var assigned = new List<(string Name, int Order)>();
+        for (int i = 0; i < _fixProgFiles.Count; i++)
+            if (_fixProgOrders[i].HasValue)
+                assigned.Add((_fixProgFiles[i], _fixProgOrders[i]!.Value));
+
+        if (assigned.Count == 0)
+        {
+            _fixProgError = "Assign a number (1, 2, …) to at least one file.";
+            return;
+        }
+
+        // Validate: numbers must form a contiguous 1..K sequence with no duplicates
+        var orders = assigned.Select(a => a.Order).OrderBy(o => o).ToList();
+        for (int i = 0; i < orders.Count; i++)
+        {
+            if (orders[i] != i + 1)
+            {
+                _fixProgError = orders.Distinct().Count() != orders.Count
+                    ? "Order numbers must be unique."
+                    : $"Order numbers must form a contiguous sequence 1..{orders.Count} (got {string.Join(",", orders)}).";
+                return;
+            }
+        }
+
+        var ordered = assigned.OrderBy(a => a.Order).Select(a => a.Name).ToList();
+
+        _fixProgBusy = true;
+        StateHasChanged();
+        try
+        {
+            var payload = new { pcId = _fixProgPcId, solo = _fixProgSolo, files = ordered };
+            var json    = System.Text.Json.JsonSerializer.Serialize(payload);
+            Console.WriteLine($"[Diagnosis] Fix Program submit: PC {_fixProgPcId} solo={_fixProgSolo} files=[{string.Join(", ", ordered)}]");
+
+            var rawWrap = await JS.InvokeAsync<string>("lpmPostJson",
+                "/api/admin/multi-program-pcs-combine", json);
+
+            using var wrapDoc = System.Text.Json.JsonDocument.Parse(rawWrap);
+            var wrapRoot  = wrapDoc.RootElement;
+            var httpOk    = wrapRoot.TryGetProperty("ok", out var hOkEl) && hOkEl.GetBoolean();
+            var status    = wrapRoot.TryGetProperty("status", out var stEl) ? stEl.GetInt32() : 0;
+            var body      = wrapRoot.TryGetProperty("body", out var bdEl) ? bdEl.GetString() ?? "" : "";
+            var fetchErr  = wrapRoot.TryGetProperty("error", out var feEl) ? feEl.GetString() : null;
+
+            if (!httpOk)
+            {
+                _fixProgError = !string.IsNullOrEmpty(fetchErr)
+                    ? $"Network error: {fetchErr}"
+                    : $"Server returned HTTP {status}.";
+                Console.WriteLine($"[Diagnosis] Fix Program HTTP FAIL status={status} body='{body}' err='{fetchErr}'");
+                return;
+            }
+
+            using var doc  = System.Text.Json.JsonDocument.Parse(body);
+            var root       = doc.RootElement;
+            var ok         = root.TryGetProperty("ok", out var okEl) && okEl.GetBoolean();
+            var warn       = root.TryGetProperty("normalizeWarning", out var nwEl) && nwEl.GetBoolean();
+
+            if (!ok)
+            {
+                var err = root.TryGetProperty("error", out var errEl) ? errEl.GetString() : "Unknown error";
+                _fixProgError = err ?? "Unknown error";
+                Console.WriteLine($"[Diagnosis] Fix Program FAILED for PC {_fixProgPcId}: {_fixProgError}");
+                return;
+            }
+
+            var fileName  = root.GetProperty("fileName").GetString() ?? "";
+            var engine    = root.TryGetProperty("engine", out var eEl) ? eEl.GetString() : "";
+            var pageCount = root.TryGetProperty("pageCount", out var pcEl) ? pcEl.GetInt32() : 0;
+
+            _fixProgSuccess = $"Saved '{fileName}' ({pageCount} pages, normalized via {engine}).";
+            if (warn) _fixProgWarning = "Normalization could not complete — the combined PDF was saved without normalization.";
+            _fixProgCompleted = true;
+            Console.WriteLine($"[Diagnosis] Fix Program OK: '{fileName}' engine={engine} pages={pageCount} warn={warn}");
+
+            // Refresh table so the new combined file appears
+            await LoadMultiProgAsync();
+        }
+        catch (Exception ex)
+        {
+            _fixProgError = $"Network/server error: {ex.Message}";
+            Console.WriteLine($"[Diagnosis] Fix Program EXCEPTION: {ex.GetType().Name}: {ex.Message}");
+        }
+        finally
+        {
+            _fixProgBusy = false;
+            StateHasChanged();
         }
     }
 

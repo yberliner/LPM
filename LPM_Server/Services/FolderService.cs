@@ -1066,6 +1066,133 @@ public class FolderService
         }).GeneratePdf();
     }
 
+    public record CombinedProgramResult(
+        bool   Ok,
+        string SavedFileName,
+        string Engine,
+        int    PageCount,
+        bool   NormalizeWarning,
+        string? Error);
+
+    /// <summary>
+    /// Combine multiple program PDFs (in user-specified order) into a single PDF,
+    /// baking each input file's .ann.json annotations first. Then normalize the
+    /// result via Ghostscript/LibreOffice (race) and save it as
+    /// "Combined programs N.pdf" (first available N in 1..100) inside the PC's
+    /// Front_Cover/Program folder.
+    ///
+    /// If normalization fails, the non-normalized combined PDF is saved anyway
+    /// and NormalizeWarning=true is returned so the caller can warn the user.
+    /// </summary>
+    public async Task<CombinedProgramResult> BuildCombinedProgramFileAsync(
+        int pcId, bool solo, List<string> orderedFileNames)
+    {
+        if (orderedFileNames == null || orderedFileNames.Count == 0)
+            return new(false, "", "", 0, false, "No files selected");
+
+        var pcFolder = solo ? FindSoloPcFolder(pcId) : FindPcFolder(pcId);
+        if (pcFolder == null)
+            return new(false, "", "", 0, false, "PC folder not found on disk");
+
+        var programDir = Path.Combine(pcFolder, "Front_Cover", "Program");
+        if (!Directory.Exists(programDir))
+            return new(false, "", "", 0, false, "Program directory not found");
+
+        var resolvedDir = Path.GetFullPath(programDir) + Path.DirectorySeparatorChar;
+
+        // Validate each input filename and collect full paths in user order
+        var fullPaths = new List<string>(orderedFileNames.Count);
+        foreach (var name in orderedFileNames)
+        {
+            if (string.IsNullOrEmpty(name))                                          return new(false, "", "", 0, false, "Empty filename in input");
+            if (name.Contains('/') || name.Contains('\\') || name.Contains(".."))    return new(false, "", "", 0, false, $"Invalid filename: {name}");
+            if (!name.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))          return new(false, "", "", 0, false, $"Only PDFs allowed: {name}");
+            if (string.Equals(name, ProgramBridgeFileName, StringComparison.OrdinalIgnoreCase))
+                return new(false, "", "", 0, false, "'Program Bridge.pdf' cannot be combined");
+
+            var full = Path.GetFullPath(Path.Combine(programDir, name));
+            if (!full.StartsWith(resolvedDir, StringComparison.OrdinalIgnoreCase))   return new(false, "", "", 0, false, $"Path escape: {name}");
+            if (!File.Exists(full))                                                  return new(false, "", "", 0, false, $"File not found: {name}");
+            fullPaths.Add(full);
+        }
+
+        // Combine pages with annotations baked (mirrors MergeSessionPdfs)
+        byte[] combinedBytes;
+        int pageCount;
+        try
+        {
+            using var output = new PdfSharpCore.Pdf.PdfDocument();
+            foreach (var filePath in fullPaths)
+            {
+                var bytes = ReadAndBake(filePath);
+                using var ms = new MemoryStream(bytes);
+                using var doc = PdfSharpCore.Pdf.IO.PdfReader.Open(ms, PdfSharpCore.Pdf.IO.PdfDocumentOpenMode.Import);
+                for (int i = 0; i < doc.PageCount; i++)
+                    output.AddPage(doc.Pages[i]);
+            }
+            if (output.PageCount == 0)
+                return new(false, "", "", 0, false, "Combined PDF has no pages");
+            pageCount = output.PageCount;
+            using var resMs = new MemoryStream();
+            output.Save(resMs);
+            combinedBytes = resMs.ToArray();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[FolderService] BuildCombinedProgramFile: combine failed PC {pcId}: {ex.Message}");
+            return new(false, "", "", 0, false, $"Combine failed: {ex.Message}");
+        }
+
+        // Normalize via Ghostscript + LibreOffice race
+        bool normalizeWarning = false;
+        string engine = "(none)";
+        byte[] finalBytes = combinedBytes;
+        try
+        {
+            var (normBytes, normEngine) = await RaceNormalizeAsync(combinedBytes, 20_000);
+            if (normBytes != null)
+            {
+                finalBytes = normBytes;
+                engine = normEngine;
+            }
+            else
+            {
+                normalizeWarning = true;
+                Console.WriteLine($"[FolderService] BuildCombinedProgramFile: normalize failed for PC {pcId} — saving non-normalized");
+            }
+        }
+        catch (Exception ex)
+        {
+            normalizeWarning = true;
+            Console.WriteLine($"[FolderService] BuildCombinedProgramFile: normalize threw for PC {pcId}: {ex.Message}");
+        }
+
+        // Find first available "Combined programs N.pdf" name in 1..100
+        string? savedName = null;
+        for (int n = 1; n <= 100; n++)
+        {
+            var candidate = $"Combined programs {n}.pdf";
+            if (!File.Exists(Path.Combine(programDir, candidate)))
+            {
+                savedName = candidate;
+                break;
+            }
+        }
+        if (savedName == null)
+            return new(false, "", engine, pageCount, normalizeWarning,
+                       "All 'Combined programs 1..100' names are taken");
+
+        var saved = SaveSectionFileToPath(
+            pcId, "Front_Cover/Program", savedName, finalBytes,
+            overwrite: false, solo: solo, enforcePdf: true);
+        if (!saved)
+            return new(false, "", engine, pageCount, normalizeWarning,
+                       $"Failed to save '{savedName}'");
+
+        Console.WriteLine($"[FolderService] BuildCombinedProgramFile: saved '{savedName}' for PC {pcId} via {engine} (pages={pageCount}, normWarn={normalizeWarning})");
+        return new(true, savedName, engine, pageCount, normalizeWarning, null);
+    }
+
     /// <summary>
     /// Build an in-memory ZIP containing every program file in this PC's
     /// Front_Cover/Program/ folder, except the default 'Program Bridge.pdf'.
